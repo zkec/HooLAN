@@ -1,0 +1,184 @@
+/* Fallback styling for the proxy-manager dashboard.
+ *
+ * Tailwind comes from a CDN, which is unavailable in the one case this UI
+ * matters most: the gateway is down and the Pi has no route to the internet.
+ * These rules keep the page readable and every control usable on their own.
+ * They are deliberately plain -- Tailwind's utilities override them when it
+ * does load, because index.html links this file first.
+ */
+
+:root {
+  --pm-bg: #020617;
+  --pm-panel: #0f172a;
+  --pm-line: #1e293b;
+  --pm-text: #f1f5f9;
+  --pm-muted: #94a3b8;
+  --pm-accent: #0284c7;
+  --pm-good: #10b981;
+  --pm-warn: #f59e0b;
+  --pm-bad: #f43f5e;
+}
+
+.pm-body {
+  margin: 0;
+  background: var(--pm-bg);
+  color: var(--pm-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.pm-mono,
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.pm-muted { color: var(--pm-muted); }
+
+.pm-header {
+  background: var(--pm-panel);
+  border-bottom: 1px solid var(--pm-line);
+}
+
+.pm-title { margin: 0; }
+
+.pm-card {
+  background: var(--pm-panel);
+  border: 1px solid var(--pm-line);
+  border-radius: 8px;
+}
+
+.pm-pill {
+  border: 1px solid var(--pm-line);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.pm-input {
+  background: var(--pm-bg);
+  color: var(--pm-text);
+  border: 1px solid var(--pm-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.pm-btn {
+  background: transparent;
+  color: var(--pm-text);
+  border: 1px solid var(--pm-line);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pm-btn:hover:not(:disabled) { border-color: var(--pm-muted); }
+.pm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pm-btn-primary {
+  background: var(--pm-accent);
+  border-color: var(--pm-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Switches: without Tailwind's peer-checked variants the track would never
+ * move, so drive it from :checked here too. */
+.pm-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+
+.pm-switch-track {
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 24px;
+  flex: none;
+  border-radius: 999px;
+  background: #334155;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.pm-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  transition: transform 0.15s ease-in-out;
+}
+
+input:checked + .pm-switch-track { background: var(--pm-good); }
+input:checked + .pm-switch-track::after { transform: translateX(20px); }
+input:focus-visible + .pm-switch-track { outline: 2px solid var(--pm-good); outline-offset: 2px; }
+input:disabled + .pm-switch-track { opacity: 0.5; }
+
+/* Keep the checkbox reachable by keyboard while visually hidden. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.pm-table { width: 100%; border-collapse: collapse; }
+.pm-table th,
+.pm-table td { padding: 8px 12px; text-align: left; }
+.pm-table tbody tr { border-top: 1px solid var(--pm-line); }
+.pm-table tbody tr:hover { background: rgba(148, 163, 184, 0.08); }
+.pm-table tbody tr[aria-selected="true"] { background: rgba(16, 185, 129, 0.12); }
+.pm-table tbody tr:focus-visible { outline: 2px solid var(--pm-accent); outline-offset: -2px; }
+
+/* Latency buckets. Colour is a shortcut, never the only signal: the cell also
+ * carries the number or the word "timeout" for anyone who cannot tell these
+ * apart. */
+.pm-lat-good { color: var(--pm-good); font-weight: 600; }
+.pm-lat-ok   { color: var(--pm-warn); font-weight: 600; }
+.pm-lat-slow { color: var(--pm-bad); font-weight: 600; }
+.pm-lat-none { color: var(--pm-muted); }
+
+.pm-note {
+  border: 1px solid var(--pm-warn);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #fde68a;
+}
+
+.pm-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 288px;
+}
+
+.pm-toast {
+  background: var(--pm-panel);
+  border: 1px solid var(--pm-line);
+  border-left: 3px solid var(--pm-accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.pm-toast-ok  { border-left-color: var(--pm-good); }
+.pm-toast-err { border-left-color: var(--pm-bad); }
+
+.hidden { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

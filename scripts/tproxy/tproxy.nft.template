@@ -1,0 +1,145 @@
+#!/usr/sbin/nft -f
+#
+# GENERATED FILE -- DO NOT EDIT.
+# Source: scripts/tproxy/tproxy.nft.template + scripts/tproxy/tproxy.conf
+# Renderer: scripts/tproxy/apply.sh
+#
+# Smart Gateway TPROXY interception for sing-box, on a Pi that also hosts a
+# Docker stack (NPM / AdGuard Home / wg-easy / Jellyfin).
+#
+# IPv4 only. IPv6 LAN interception is a deliberate omission for now — clients
+# should get no IPv6 connectivity while this gateway is active, otherwise they
+# will leak around sing-box.
+#
+# Hook priority: `mangle` == -150, i.e. we run BEFORE Docker's iptables-nft
+# DNAT chains at -100 (PREROUTING) and DNAT at -100 (OUTPUT). That ordering is
+# what makes the `fib daddr type local` bypass work: at -150 the destination
+# address is still the original one (NPM on 80/443, AdGuard on 53, ...), not
+# whatever docker-proxy will rewrite it to later.
+#
+# DOCKER COEXISTENCE. This file creates no iptables rules, touches no
+# DOCKER-USER chain, and claims no chain name Docker uses. nft and iptables-nft
+# share one kernel ruleset per hook; Docker's own rules run after ours and are
+# left entirely alone.
+
+table inet proxy_tproxy {
+    comment "TPROXY interception for sing-box (smart gateway)"
+
+    # The Pi's own LAN subnet(s), computed by apply.sh from live addresses on
+    # LAN_IF (NOT a hardcoded /24). Traffic destined inside the Pi's own subnet
+    # never leaves the LAN and must not be intercepted: Jellyfin on :8096,
+    # aria2 on :6800, NPM healthchecks, mDNS, the lot.
+    set lan_cidrs {
+        type ipv4_addr
+        flags interval
+        elements = { {{LAN_CIDR_LIST}} }
+    }
+
+    # Source prefixes exempt from interception (the Pi's own outbound if you
+    # choose to proxy it later — see SELF_ORIGIN_NETS in tproxy.conf).
+    set self_origin {
+        type ipv4_addr
+        flags interval
+        elements = { {{SELF_ORIGIN_LIST}} }
+    }
+
+    # Destinations that must reach the real internet or local stack, never
+    # sing-box. Includes RFC1918 wholesale, which covers the Docker bridge
+    # (172.17.0.0/16) and wg-easy's WireGuard subnet (10.42.42.0/24).
+    set bypass_daddrs {
+        type ipv4_addr
+        flags interval
+        elements = {
+            0.0.0.0/8,          # this-network / "unspecified"
+            100.64.0.0/10,      # CGNAT: Tailscale, some ISP DS-Lite tunnels
+            127.0.0.0/8,        # loopback
+            169.254.0.0/16,     # link-local, SSDP discovery
+            172.16.0.0/12,      # RFC1918 -- Docker bridges, overlays
+            192.168.0.0/16,     # RFC1918
+            10.0.0.0/8,         # RFC1918 -- covers wg-easy 10.42.42.0/24
+            224.0.0.0/4,        # multicast
+            240.0.0.0/4         # reserved / broadcast
+        }
+    }
+
+    # ---------------------------------------------------------------------
+    # PREROUTING: the interception point for LAN clients (traffic arriving on
+    # LAN_IF from OpenWrt and forwarded toward WAN). Docker bridge/veth
+    # traffic is exempted by interface AND by destination set above.
+    chain prerouting {
+        type filter hook prerouting priority mangle; policy accept;
+        comment "sing-box TPROXY interception (LAN clients)"
+
+        # 1. Already TPROXY'd by us (re-injected packets carry the mark).
+        #    Prevents loops and makes double-apply harmless.
+        meta mark {{TPROXY_FWMARK}} accept
+
+        # 2. Reply/related traffic must never be re-steered: the conntrack
+        #    tuple and the socket assignment have to agree.
+        ct state { established, related } accept
+
+        # 3. Docker's bridge/veth interfaces. Traffic arriving here is either
+        #    container->container or container->Pi; both must bypass sing-box.
+        iifname { "lo", "docker0", "br-*", "veth*", "vethe*" } accept
+
+        # 4. THE LOAD-BEARING RULE.
+        #    Any packet whose destination is a socket bound on THIS host --
+        #    regardless of interface or port. This is what protects the entire
+        #    Docker stack: NPM on 80/443, AdGuard on 53, Jellyfin on 8096,
+        #    wg-easy's admin UI on 8080, and every -p publish added later.
+        #    A port list can never achieve that, because it is always written
+        #    against the ports that exist today. `fib daddr type local`
+        #    consults the FIB: true exactly when the kernel would deliver the
+        #    packet to a local socket on this machine. Because we run at
+        #    priority mangle (-150), before Docker's DNAT (-100), the daddr
+        #    seen here is still the original one.
+        fib daddr type { local, broadcast, multicast } accept
+
+        # 5. Same-subnet LAN traffic never leaves via WAN — don't intercept.
+        ip daddr @lan_cidrs accept
+
+        # 6. RFC1918/multicast/reserved destinations and the wg subnet.
+        ip daddr @bypass_daddrs accept
+
+        # 7. Source exemptions (Pi's own traffic, if routed in here).
+        ip saddr @self_origin accept
+        ip saddr { 127.0.0.0/8, 0.0.0.0/32 } accept
+
+        # 8. Intercept. `tproxy` only applies to tcp/udp; restricting l4proto
+        #    is mandatory or nft rejects the rule at load. The mark is set in
+        #    the same rule so the policy-routing lookup (fwmark -> table 100
+        #    -> local route, installed by apply.sh) delivers the packet to
+        #    sing-box's transparent listener. The packet is NOT DNAT'd, so
+        #    sing-box sees the true client address via IP_TRANSPARENT.
+        meta l4proto { tcp, udp } meta mark set {{TPROXY_FWMARK}} tproxy ip to :{{TPROXY_PORT}}
+    }
+
+    # ---------------------------------------------------------------------
+    # OUTPUT: bypass-only. Locally generated traffic CANNOT be tproxy'd
+    # directly (there is no way to deliver it to a transparent socket without
+    # routing gymnastics that would fight Docker's own rules). Instead this
+    # chain documents and enforces that the Pi's own outbound is never
+    # captured by anything we install — protecting NPM->container calls,
+    # AdGuard upstream queries, apt, and the Go backend's control plane.
+    # If you later want to route the Pi's own traffic through sing-box, use
+    # sing-box's TUN mode or the documented mark-based policy-routing
+    # trick, NOT a tproxy redirect on this hook.
+    chain output {
+        type filter hook output priority mangle; policy accept;
+        comment "explicit non-interception of locally generated traffic"
+        accept
+    }
+
+    # ---------------------------------------------------------------------
+    # POSTROUTING: SNAT the re-injected outbound. Once sing-box accepts a
+    # TPROXY'd connection, its new outbound socket may need SNAT on the WAN
+    # side; matching on our own mark keeps this from ever colliding with
+    # Docker's MASQUERADE chain or with traffic you later route through a
+    # tunnel. (Sing-box's own outbound is normally unmarked, so this is a
+    # safety net for marked edge cases.)
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        comment "SNAT for marked re-injected traffic"
+        meta mark {{TPROXY_FWMARK}} masquerade
+    }
+}
