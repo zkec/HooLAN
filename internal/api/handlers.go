@@ -12,7 +12,6 @@
 package api
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,15 +23,20 @@ import (
 	"strings"
 	"time"
 
+	"proxy-manager/internal/logstream"
 	"proxy-manager/internal/store"
 	"proxy-manager/internal/subscription"
 )
 
 // RouterOptions configures the HTTP surface.
 type RouterOptions struct {
-	// Token, when set, is required as "Authorization: Bearer <token>" on every
-	// /api route. Empty means no authentication.
+	// Token enables bearer API authentication and browser session login.
+	// Empty preserves the explicitly unauthenticated deployment mode.
 	Token string
+	// SecureCookies requires HTTPS cookies when TLS terminates at a trusted
+	// reverse proxy. Forwarded headers are never trusted automatically.
+	SecureCookies bool
+	Logs          *logstream.Hub
 	// ExposeCredentials includes UUIDs and passwords in node responses. Off by
 	// default: the store file is 0600 for exactly this reason, and a UI does not
 	// need them to render a node list.
@@ -45,16 +49,21 @@ func NewRouter(svc *Service, opts RouterOptions) http.Handler {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
-	h := &handlers{svc: svc, opts: opts, log: opts.Logger}
+	h := &handlers{svc: svc, opts: opts, log: opts.Logger, auth: newSessionStore()}
 
 	mux := http.NewServeMux()
 	// Explicit method guards rather than Go 1.22 method patterns: go.mod targets
 	// 1.21 so the Pi can build with the distro toolchain.
-	mux.Handle("/api/nodes", only(http.MethodGet, h.listNodes))
+	mux.Handle("/api/nodes", http.HandlerFunc(h.nodes))
 	mux.Handle("/api/nodes/refresh", only(http.MethodPost, h.refreshNodes))
 	mux.Handle("/api/proxy/toggle", only(http.MethodPost, h.toggleProxy))
 	mux.Handle("/api/proxy/select", only(http.MethodPost, h.selectProxy))
 	mux.Handle("/api/status", only(http.MethodGet, h.status))
+	mux.Handle("/api/auth/session", only(http.MethodGet, h.authSession))
+	mux.Handle("/api/auth/login", only(http.MethodPost, h.login))
+	mux.Handle("/api/auth/logout", only(http.MethodPost, h.logout))
+	mux.Handle("/api/logs", only(http.MethodGet, h.logs))
+	h.registerDashboardRoutes(mux)
 	// Unauthenticated liveness probe: systemd and monitoring need it, and it
 	// exposes nothing.
 	mux.Handle("/healthz", only(http.MethodGet, h.health))
@@ -73,6 +82,7 @@ type handlers struct {
 	svc  *Service
 	opts RouterOptions
 	log  *slog.Logger
+	auth *sessionStore
 }
 
 // --- middleware -------------------------------------------------------------
@@ -88,37 +98,6 @@ func only(method string, fn http.HandlerFunc) http.Handler {
 			return
 		}
 		fn(w, r)
-	})
-}
-
-func (h *handlers) authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Scoped to /api rather than applied to everything. A browser cannot
-		// attach an Authorization header to a document, stylesheet or script
-		// load, so gating the dashboard's own files on the token would make the
-		// UI unreachable in exactly the configuration that needs it most. The
-		// assets are a static shell holding no secrets; every operation that
-		// touches the engine, the ruleset or node metadata is under /api and
-		// stays behind the token. /healthz is exempt for systemd and monitoring.
-		if h.opts.Token == "" || !strings.HasPrefix(r.URL.Path, "/api") {
-			next.ServeHTTP(w, r)
-			return
-		}
-		const prefix = "Bearer "
-		got := r.Header.Get("Authorization")
-		if !strings.HasPrefix(got, prefix) {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			writeError(w, http.StatusUnauthorized, "missing bearer token")
-			return
-		}
-		// Constant-time: a length-independent comparison leaks nothing useful
-		// about the token via response timing.
-		if subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(got, prefix)),
-			[]byte(h.opts.Token)) != 1 {
-			writeError(w, http.StatusUnauthorized, "invalid bearer token")
-			return
-		}
-		next.ServeHTTP(w, r)
 	})
 }
 
@@ -149,24 +128,50 @@ func (h *handlers) logRequests(next http.Handler) http.Handler {
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status      int
+	wroteHeader bool
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
+	if r.wroteHeader {
+		return
+	}
+	r.wroteHeader = true
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
 }
+
+func (r *statusRecorder) Write(p []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	return r.ResponseWriter.Write(p)
+}
+
+// Unwrap lets ResponseController reach the real connection for SSE deadlines.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+func (r *statusRecorder) FlushError() error {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	return http.NewResponseController(r.ResponseWriter).Flush()
+}
+
+func (r *statusRecorder) Flush() { _ = r.FlushError() }
 
 // --- GET /api/nodes ---------------------------------------------------------
 
 // NodeView is one node as the API presents it. Credentials are omitted unless
 // RouterOptions.ExposeCredentials is set.
 type NodeView struct {
-	ID       string `json:"id"`
-	Tag      string `json:"tag"`
-	Protocol string `json:"protocol"`
-	Server   string `json:"server"`
-	Port     int    `json:"port"`
+	SubscriptionIDs []string `json:"subscription_ids"`
+	Manual          bool     `json:"manual"`
+	ID              string   `json:"id"`
+	Tag             string   `json:"tag"`
+	Protocol        string   `json:"protocol"`
+	Server          string   `json:"server"`
+	Port            int      `json:"port"`
 
 	Transport string `json:"transport,omitempty"`
 	Security  string `json:"security,omitempty"`
@@ -268,6 +273,7 @@ func (h *handlers) viewOf(rec store.Record, tagByID map[string]string, selectedI
 	if h.opts.ExposeCredentials {
 		v.UUID, v.Password, v.Method = n.UUID, n.Password, n.Method
 	}
+	v.SubscriptionIDs, v.Manual = h.svc.NodeOrigins(rec.ID)
 	return v
 }
 
@@ -513,6 +519,9 @@ func decodeBody(r *http.Request, dst any) error {
 			return nil
 		}
 		return fmt.Errorf("invalid JSON body: %w", err)
+	}
+	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain exactly one JSON object")
 	}
 	return nil
 }

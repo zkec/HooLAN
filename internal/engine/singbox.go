@@ -25,7 +25,7 @@ import (
 // connection hangs.
 const (
 	DefaultTProxyPort = 7892
-	DefaultListen     = "::" // dual-stack; nftables ruleset is v4-only for now
+	DefaultListen     = "0.0.0.0" // nftables interception and policy routing are IPv4
 	DefaultTag        = "tproxy-in"
 	DefaultSelector   = "proxy"
 	DefaultDirect     = "direct"
@@ -72,11 +72,13 @@ type Options struct {
 	Listen     string
 	InboundTag string
 
-	// RoutingMark is written to every outbound as routing_mark. Set it to the
-	// TPROXY_FWMARK from tproxy.conf ONLY if you later tighten the nftables
-	// OUTPUT chain to intercept locally-generated traffic; with the current
-	// bypass-only OUTPUT chain, 0 (omitted) is correct.
+	// RoutingMark is written to outbounds as routing_mark. Keep it zero for
+	// this gateway. The interception mark routes packets locally and must
+	// never be used for the engine's new outbound connections.
 	RoutingMark int
+	// DNSServer is an optional IP or IP:port for the engine's UDP resolver.
+	// Empty uses the system resolver. It does not reconfigure local AdGuard.
+	DNSServer string
 
 	LogLevel string
 	// DNS is emitted verbatim when non-nil. Left nil by default: the DNS schema
@@ -193,7 +195,8 @@ func (o *Options) setDefaults() {
 // Manager renders config and supervises one sing-box process.
 // All exported methods are safe for concurrent use.
 type Manager struct {
-	opts Options
+	opts       Options
+	settingsMu sync.RWMutex
 
 	mu     sync.Mutex
 	cmd    *exec.Cmd
@@ -217,6 +220,8 @@ func (m *Manager) ConfigPath() string { return m.opts.ConfigPath }
 // outbounds by tag and a provider repeating "🇺🇸 US" twelve times would
 // otherwise collapse into one outbound and break the selector.
 func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
+	m.settingsMu.RLock()
+	defer m.settingsMu.RUnlock()
 	if len(nodes) == 0 {
 		return nil, errors.New("engine: no nodes to build config from")
 	}
@@ -360,32 +365,9 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	})
 
 	rules := []RouteRule{
-		// LOOP BREAKER -- must stay first, ahead of even `sniff`.
-		//
-		// A connection whose destination is BOTH a local/private address AND
-		// our own TPROXY port is, by definition, this engine talking to its own
-		// listener. Left unhandled it is matched by the `ip_is_private` rule
-		// below and sent to `direct`, which dials 127.0.0.1:TPROXY_PORT, which
-		// the tproxy inbound accepts, which routes to `direct` again: an
-		// unbounded userspace connection storm that looks like
-		//
-		//   inbound/tproxy[tproxy-in]: inbound connection to 127.0.0.1:7892
-		//   outbound/direct[direct]:   outbound connection to 127.0.0.1:7892
-		//
-		// and saturates the Pi. NO nftables rule can prevent this: a loopback
-		// dial from a local process never traverses the prerouting hook, so
-		// `iifname "lo"` / `fib daddr type local` / bypass_daddrs are all
-		// bypassed. It has to be caught here, in routing.
-		//
-		// Matching daddr AND port (rather than port alone) keeps a LAN client's
-		// legitimate connection to some public host on 7892 working. Both loop
-		// variants are covered, because `ip_is_private` is true for loopback as
-		// well as RFC1918 -- so a dial to 127.0.0.1:7892 and one to
-		// PI_LAN_IP:7892 are both rejected.
-		//
-		// Default reject method (TCP RST / ICMP unreachable) is deliberate: the
-		// dialer learns immediately instead of holding the connection until
-		// timeout.
+		// Reject accidental private-address dials to the transparent listener.
+		// Readiness uses /proc and never dials this port. The nftables local
+		// bypass intentionally leaves loopback traffic outside interception.
 		{
 			IPIsPrivate: true,
 			Port:        []int{m.opts.TProxyPort},
@@ -402,11 +384,8 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 			Sniffer: []string{"http", "tls", "quic", "dns"},
 			Timeout: "300ms",
 		},
-		// Hijack DNS from LAN clients into the engine so a proxied
-		// client cannot resolve around the tunnel. AdGuard still
-		// serves LAN DNS directly -- that traffic never reaches this
-		// inbound, because the nftables `fib daddr type local` rule
-		// accepts it before interception.
+		// Forward intercepted DNS to its original resolver through the proxy.
+		// This is not hijack-dns. Local AdGuard queries bypass interception.
 		{
 			Protocol: []string{"dns"},
 			Action:   "route",
@@ -427,35 +406,30 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		AutoDetectInterface: true,
 	}
 	dns := m.opts.DNS
+	// Outbound server names need a resolver even when Iran bypass is off.
+	if dns == nil {
+		server, err := dnsServerOptions(m.opts.DNSServer)
+		if err != nil {
+			return nil, err
+		}
+		dns = &DNSOptions{Servers: []any{server}}
+		route.DefaultDomainResolver = &DomainResolverOptions{Server: DefaultResolverTag}
+	}
 	if !m.opts.DisableIranBypass {
 		route.RuleSet = IranRuleSets(DefaultFetchOutbound, DefaultBootstrapResolverTag,
 			m.opts.BlockIranAds, m.opts.LegacyDownloadDetour)
 
-		// Rule-set downloads need three things that are easy to get wrong; all
-		// three were found by RUNNING a generated config on 1.14.0, not by
-		// reading docs, because `sing-box check` accepts every broken variant:
-		//
-		//  1. A dedicated direct outbound with at least one dial setting. A
-		//     detour to a bare `direct` is a startup FATAL ("detour to an empty
-		//     direct outbound makes no sense").
-		//  2. route.default_domain_resolver. Without it 1.14 aborts with
-		//     "missing route.default_domain_resolver ... is deprecated".
-		//  3. A bootstrap DNS server reached through that direct outbound. A
-		//     `type: local` server is not enough here: with route.final pointing
-		//     at the proxy selector, the engine's own lookups go through
-		//     unreachable proxy nodes and time out, so startup fails before any
-		//     proxy exists to make them reachable.
+		// Bootstrap rule-set downloads independently of a working proxy or
+		// AdGuard. Typed local/UDP resolvers use their own dialers, not
+		// route.final. A non-empty direct-fetch outbound is required by 1.14.
 		route.DefaultDomainResolver = &DomainResolverOptions{Server: DefaultResolverTag}
-		if dns == nil {
-			dns = &DNSOptions{Servers: []any{
-				map[string]any{"type": "local", "tag": DefaultResolverTag},
-				map[string]any{
-					"type":   "udp",
-					"tag":    DefaultBootstrapResolverTag,
-					"server": DefaultBootstrapDNS,
-					"detour": DefaultFetchOutbound,
-				},
-			}}
+		if m.opts.DNS == nil {
+			dns.Servers = append(dns.Servers, map[string]any{
+				"type":   "udp",
+				"tag":    DefaultBootstrapResolverTag,
+				"server": DefaultBootstrapDNS,
+				"detour": DefaultFetchOutbound,
+			})
 		}
 		// Appended after sniff/DNS/private so those keep priority; the Iran
 		// rules themselves are internally ordered (ads reject before bypass).

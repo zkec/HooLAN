@@ -84,14 +84,15 @@ Bypassed (never proxied):
 
 | Match | Why |
 | --- | --- |
-| `meta mark 0x1` | Already intercepted; prevents re-entry |
-| `ct state established,related` | Reply traffic must not be re-steered |
 | `iifname lo, docker0, br-*, veth*` | Container and loopback traffic |
 | `fib daddr type local` | **Every** port bound on this host, present and future |
 | `ip daddr @lan_cidrs` | Same-subnet traffic never leaves the LAN |
 | `ip daddr @bypass_daddrs` | RFC1918, CGNAT, multicast, link-local |
 
-Everything else, TCP and UDP, gets marked and TPROXY'd.
+On `LAN_IF`, remaining IPv4 TCP and UDP packets are assigned to TPROXY and
+then marked. This includes established client packets. Named counters record
+attempts, successful socket assignments, failures, and marked INPUT/OUTPUT.
+Failed socket lookups fall back to ordinary forwarding without adding our mark.
 
 IPv4 only, deliberately. Clients should get **no** IPv6 connectivity while this
 gateway is active, or they will route around sing-box entirely. Disable IPv6 RA
@@ -107,9 +108,8 @@ and DHCPv6 on your router.
   router. If the Pi takes its gateway from DHCP and DHCP points at the Pi, you
   get a routing loop on boot.
 - `nftables`, `iproute2`, `bash`, and Go 1.21+ (or build elsewhere and copy).
-- `sing-box` 1.11 or newer. The generated config uses rule actions
-  (`action: sniff`, `action: reject`), which replaced the pre-1.11 inbound
-  `sniff` fields.
+- `sing-box` 1.14 or newer. The default generated config uses typed DNS
+  servers and `http_client` settings for rule-set downloads (tested against 1.14).
 - Root, for `CAP_NET_ADMIN`.
 - A proxy subscription URL, or a file of `vless://` / `vmess://` / `trojan://`
   / `ss://` / `hysteria2://` links.
@@ -151,7 +151,7 @@ it.
 
 ### 2. Install sing-box
 
-Use the official repo so you get 1.11+; the Debian archive version is usually
+Use the official repo so you get 1.14+; the Debian archive version is usually
 too old.
 
 ```bash
@@ -201,6 +201,7 @@ go vet ./... && go test ./...
 sudo install -Dm755 proxy-manager /opt/proxy-manager/proxy-manager
 sudo install -Dm755 scripts/tproxy/apply.sh   /opt/proxy-manager/scripts/tproxy/apply.sh
 sudo install -Dm755 scripts/tproxy/remove.sh  /opt/proxy-manager/scripts/tproxy/remove.sh
+sudo install -Dm755 scripts/tproxy/diagnose.sh /opt/proxy-manager/scripts/tproxy/diagnose.sh
 sudo install -Dm644 scripts/tproxy/tproxy.nft.template \
                                               /opt/proxy-manager/scripts/tproxy/tproxy.nft.template
 
@@ -226,14 +227,16 @@ scraped for template substitution.
 LAN_IF="eth0"            # interface facing your clients
 TPROXY_PORT="7892"       # must equal -tproxy-port
 TPROXY_FWMARK="0x1"      # mark proving we intercepted the packet
-TPROXY_TABLE="100"       # policy routing table
-PI_LAN_IP="192.168.3.5"  # only a fallback if LAN_IF has no address at boot
+TPROXY_TABLE="100"       # dedicated policy routing table
+TPROXY_RULE_PRIORITY="10000" # free priority before main-table lookup
+PI_LAN_IP="192.168.3.5"  # site reference; LAN_IF must have a live IPv4 address
 SELF_ORIGIN_NETS=""      # extra source prefixes to never intercept
 WG_RP_FILTER="yes"       # zero rp_filter on wg* interfaces
 ```
 
-`TPROXY_PORT` here and `-tproxy-port` on the binary must match. If they drift,
-interception lands on a closed port and every LAN connection hangs.
+`TPROXY_PORT` here and `-tproxy-port` on the binary must match. The service
+checks this before enabling interception and requires IPv4 TCP and UDP wildcard
+listeners owned by the sing-box PID. The default listen address is `0.0.0.0`.
 
 The LAN subnet is **discovered from the live addresses on `LAN_IF`**, not
 hardcoded — a `/22` site works correctly without editing the template.
@@ -387,29 +390,22 @@ This is the constraint the ruleset is built around, and it is handled:
   8096. A port list would only cover the ports that existed when it was written.
 - `bypass_daddrs` covers `172.16.0.0/12` (bridges), `10.0.0.0/8` (WireGuard
   subnets) and the rest of RFC1918.
-- `remove.sh` deletes only its own table and flushes only table 100. It
+- `remove.sh` deletes only its own table, full-mark policy rules and local default route. It
   deliberately does **not** reset `ip_forward` or `rp_filter`, since those are
   host-wide and Docker may depend on them.
 
-Two things you may still need, depending on your host. Docker sets the `FORWARD`
-policy to `DROP`, and a gateway has to forward:
+Sing-box opens new outbound sockets sourced from the Pi. These use the normal
+host route; no special MASQUERADE rule is needed for them. Keep sing-box's
+outbound `routing_mark` at zero. The TPROXY mark is reserved for local delivery.
 
-```bash
-sudo iptables -P FORWARD ACCEPT
-sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-```
+Bypassed traffic is different: it follows the host's forwarding rules and needs
+a return route or site-specific SNAT. Docker may install forwarding drops.
+Check the complete firewall before changing policies; an ACCEPT in one base
+chain does not override a DROP in another. Avoid broad MASQUERADE rules as a
+substitute for diagnosing the intercepted path.
 
-And if asymmetric routing trips reverse-path filtering:
-
-```bash
-echo 'net.ipv4.conf.all.rp_filter=0'  | sudo tee -a /etc/sysctl.d/99-gateway.conf
-echo 'net.ipv4.conf.eth0.rp_filter=0' | sudo tee -a /etc/sysctl.d/99-gateway.conf
-sudo sysctl --system
-```
-
-Neither is installed by this project — they change host-wide behaviour, so they
-are yours to own. Persist them with `iptables-persistent` or a systemd unit;
-they do not survive a reboot on their own.
+Use [the packet-path diagnostic guide](docs/network-diagnostics.md) to distinguish
+socket lookup, policy routing, INPUT filtering, and outbound connectivity.
 
 ---
 
@@ -420,7 +416,8 @@ they do not survive a reboot on their own.
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `-listen` | `:8080` | API and dashboard bind address |
-| `-token` | `$PROXY_MANAGER_TOKEN` | Bearer token for `/api`; empty disables auth |
+| `-token` | `$PROXY_MANAGER_TOKEN` | API bearer token and browser login; empty disables auth |
+| `-secure-cookies` | `false` | Require Secure session cookies behind an HTTPS reverse proxy |
 | `-sub` | — | Subscription URL or file; repeatable or comma-separated |
 | `-scripts` | probed | Directory with `apply.sh`, `remove.sh`, `tproxy.conf` |
 | `-tproxy-port` | `7892` | Must equal `TPROXY_PORT` in `tproxy.conf` |
@@ -460,9 +457,10 @@ Generated route rules, in order:
    `127.0.0.1:7892` and sing-box dials its own listener in an unbounded loop.
 2. **Sniff** — extracts SNI/Host, since TPROXY hands over an IP and no domain.
    Every domain-based rule depends on this having run.
-3. **DNS hijack** — DNS from LAN clients goes through the proxy, so a client
-   cannot resolve around the tunnel. AdGuard still serves LAN DNS directly; that
-   traffic is bypassed by `fib daddr type local` before it ever reaches sing-box.
+3. **DNS forwarding** — intercepted DNS goes through the proxy to the original
+   resolver (`action: route`, not `hijack-dns`). DNS addressed to local AdGuard
+   bypasses interception. The dashboard DNS setting changes the engine resolver
+   used for outbound server names; it does not reconfigure AdGuard.
 4. **Private destinations → direct.**
 5. **Iran rule-sets → direct** (on by default), with optional ad/tracker
    rejection.
@@ -475,7 +473,11 @@ Clash API with no config regeneration.
 
 ## API
 
-All `/api` routes require `Authorization: Bearer <token>` when `-token` is set.
+With `-token` set, API clients use `Authorization: Bearer <token>`. The browser
+logs in at `/login.html` and uses an HttpOnly session cookie plus a CSRF header
+for mutations. Login/session discovery are public; privileged routes are protected.
+See [dashboard routes, persistence and deployment](docs/dashboard.md) for the new
+subscription, manual-config, latency, DNS, Iran bypass and SSE log controls.
 
 | Method | Path | Body | Purpose |
 | --- | --- | --- | --- |
@@ -526,10 +528,8 @@ A sing-box self-connection loop: the engine is dialing its own listener, each
 connection spawning another. The giveaway is `outbound/direct[direct]` pointing
 at the TPROXY port.
 
-**No nftables rule can fix this.** A loopback dial from a local process never
-traverses the `prerouting` hook, so `iifname "lo"`, `fib daddr type local` and
-`bypass_daddrs` are all bypassed. It has to be caught in sing-box's routing,
-which is what route rule 0 does. If you see this, confirm the reject rule is
+The firewall deliberately bypasses loopback/local traffic. Route rule 0 rejects
+private destinations on the TPROXY listener port to prevent self-dialing. If you see this, confirm the reject rule is
 present in the generated config:
 
 ```bash
@@ -538,18 +538,20 @@ jq '.route.rules[0]' /etc/proxy-manager/singbox/config.json
 ```
 
 Also make sure nothing external is probing 7892 in a loop. Readiness is checked
-by reading `/proc/net/tcp`, precisely so the health check does not create the
-connection it is testing for.
+by reading the engine PID’s IPv4 TCP/UDP socket tables and socket inodes, so
+the health check creates no connection of its own.
 
 ### TCP connections hang or reset
 
-Check that `ct state { established, related } accept` is present in the
-prerouting chain. Removing it re-steers reply packets, and the conntrack tuple
-and socket assignment then disagree, breaking every handshake.
+Do not restore a blanket `ct state established,related accept` in prerouting:
+client ACK/data packets also need transparent socket assignment and a local
+route. Reloading now atomically replaces the owned table and sets, so stale
+rules cannot survive an apply.
 
-```bash
-sudo nft list table inet proxy_tproxy | grep -A2 'ct state'
-```
+For a stall after this correction, capture the gateway **while enabled** using
+[diagnose.sh](scripts/tproxy/diagnose.sh). An absent table, empty table 100 and no
+7892 listeners describe an off/cleaned-up gateway, not a packet-path failure.
+Follow [the counter interpretation guide](docs/network-diagnostics.md).
 
 ### A container or local service became unreachable
 

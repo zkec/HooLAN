@@ -22,6 +22,10 @@
 # share one kernel ruleset per hook; Docker's own rules run after ours and are
 # left entirely alone.
 
+# One nft transaction replaces our table AND sets. `add` is idempotent;
+# the following delete also works on first installation. Never flush ruleset.
+add table inet proxy_tproxy
+delete table inet proxy_tproxy
 table inet proxy_tproxy {
     comment "TPROXY interception for sing-box (smart gateway)"
 
@@ -62,84 +66,76 @@ table inet proxy_tproxy {
         }
     }
 
-    # ---------------------------------------------------------------------
-    # PREROUTING: the interception point for LAN clients (traffic arriving on
-    # LAN_IF from OpenWrt and forwarded toward WAN). Docker bridge/veth
-    # traffic is exempted by interface AND by destination set above.
+    # Named counters make socket lookup failures visible without packet tracing.
+    counter lan_packets {}
+    counter bypass_local {}
+    counter bypass_private {}
+    counter bypass_source {}
+    counter tproxy_attempt_tcp {}
+    counter tproxy_assigned_tcp {}
+    counter tproxy_failed_tcp {}
+    counter tproxy_attempt_udp {}
+    counter tproxy_assigned_udp {}
+    counter tproxy_failed_udp {}
+    counter marked_input {}
+    counter marked_output {}
+
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
         comment "sing-box TPROXY interception (LAN clients)"
 
-        # 1. Already TPROXY'd by us (re-injected packets carry the mark).
-        #    Prevents loops and makes double-apply harmless.
-        meta mark {{TPROXY_FWMARK}} accept
+        # Intercept only the interface configured as facing LAN clients.
+        # Docker ingress is explicitly exempt even if LAN_IF is misconfigured.
+        iifname { "lo", "docker0", "br-*", "veth*" } accept
+        iifname != "{{LAN_IF}}" accept
+        meta nfproto != ipv4 accept
+        counter name lan_packets
 
-        # 2. Reply/related traffic must never be re-steered: the conntrack
-        #    tuple and the socket assignment have to agree.
-        ct state { established, related } accept
+        # Preserve host services (including published Docker ports 80/443/53)
+        # BEFORE Docker DNAT at -100 changes their destination. Protect every
+        # local destination, not just today's published port list.
+        fib daddr type { local, broadcast, multicast } counter name bypass_local accept
+        ip daddr @lan_cidrs counter name bypass_private accept
+        ip daddr 10.42.42.0/24 counter name bypass_private accept
+        ip daddr @bypass_daddrs counter name bypass_private accept
+        ip saddr @self_origin counter name bypass_source accept
+        ip saddr { 127.0.0.0/8, 0.0.0.0/32 } counter name bypass_source accept
 
-        # 3. Docker's bridge/veth interfaces. Traffic arriving here is either
-        #    container->container or container->Pi; both must bypass sing-box.
-        iifname { "lo", "docker0", "br-*", "veth*", "vethe*" } accept
+        # Every client packet, including established TCP ACK/data and UDP
+        # replies within a flow, must be assigned to its transparent socket.
+        # A packet mark is NOT inherited automatically from conntrack.
+        # nft TPROXY aborts the current rule (NFT_BREAK) on lookup failure.
+        # Set the routing mark AFTER successful assignment: marking first
+        # blackholes failures in the local-route table with no usable socket.
+        meta l4proto tcp counter name tproxy_attempt_tcp
+        meta l4proto tcp tproxy ip to :{{TPROXY_PORT}} meta mark set {{TPROXY_FWMARK}} counter name tproxy_assigned_tcp accept
+        meta l4proto tcp counter name tproxy_failed_tcp
+        meta l4proto udp counter name tproxy_attempt_udp
+        meta l4proto udp tproxy ip to :{{TPROXY_PORT}} meta mark set {{TPROXY_FWMARK}} counter name tproxy_assigned_udp accept
+        meta l4proto udp counter name tproxy_failed_udp
 
-        # 4. THE LOAD-BEARING RULE.
-        #    Any packet whose destination is a socket bound on THIS host --
-        #    regardless of interface or port. This is what protects the entire
-        #    Docker stack: NPM on 80/443, AdGuard on 53, Jellyfin on 8096,
-        #    wg-easy's admin UI on 8080, and every -p publish added later.
-        #    A port list can never achieve that, because it is always written
-        #    against the ports that exist today. `fib daddr type local`
-        #    consults the FIB: true exactly when the kernel would deliver the
-        #    packet to a local socket on this machine. Because we run at
-        #    priority mangle (-150), before Docker's DNAT (-100), the daddr
-        #    seen here is still the original one.
-        fib daddr type { local, broadcast, multicast } accept
-
-        # 5. Same-subnet LAN traffic never leaves via WAN — don't intercept.
-        ip daddr @lan_cidrs accept
-
-        # 6. RFC1918/multicast/reserved destinations and the wg subnet.
-        ip daddr @bypass_daddrs accept
-
-        # 7. Source exemptions (Pi's own traffic, if routed in here).
-        ip saddr @self_origin accept
-        ip saddr { 127.0.0.0/8, 0.0.0.0/32 } accept
-
-        # 8. Intercept. `tproxy` only applies to tcp/udp; restricting l4proto
-        #    is mandatory or nft rejects the rule at load. The mark is set in
-        #    the same rule so the policy-routing lookup (fwmark -> table 100
-        #    -> local route, installed by apply.sh) delivers the packet to
-        #    sing-box's transparent listener. The packet is NOT DNAT'd, so
-        #    sing-box sees the true client address via IP_TRANSPARENT.
-        meta l4proto { tcp, udp } meta mark set {{TPROXY_FWMARK}} tproxy ip to :{{TPROXY_PORT}}
+        # A failed lookup falls back to ordinary forwarding. Only clear our
+        # exact reserved mark if it was already present on ingress; preserve
+        # unrelated marks. Fallback needs the site's normal forwarding/NAT.
+        meta l4proto { tcp, udp } meta mark {{TPROXY_FWMARK}} meta mark set 0
     }
 
-    # ---------------------------------------------------------------------
-    # OUTPUT: bypass-only. Locally generated traffic CANNOT be tproxy'd
-    # directly (there is no way to deliver it to a transparent socket without
-    # routing gymnastics that would fight Docker's own rules). Instead this
-    # chain documents and enforces that the Pi's own outbound is never
-    # captured by anything we install — protecting NPM->container calls,
-    # AdGuard upstream queries, apt, and the Go backend's control plane.
-    # If you later want to route the Pi's own traffic through sing-box, use
-    # sing-box's TUN mode or the documented mark-based policy-routing
-    # trick, NOT a tproxy redirect on this hook.
+    # Observation only. Reaching INPUT proves the marked packet was routed
+    # locally, but another INPUT base chain can still reject it afterwards.
+    chain input {
+        type filter hook input priority mangle; policy accept;
+        meta nfproto ipv4 meta mark {{TPROXY_FWMARK}} counter name marked_input
+    }
+
+    # The Pi and sing-box generate ordinary outbound sockets; they must use
+    # the host's main routing table. A nonzero count here calls for checking
+    # outbound routing_mark, tcp_fwmark_accept, and other marking rules.
     chain output {
         type filter hook output priority mangle; policy accept;
-        comment "explicit non-interception of locally generated traffic"
-        accept
+        meta nfproto ipv4 meta mark {{TPROXY_FWMARK}} counter name marked_output
     }
 
-    # ---------------------------------------------------------------------
-    # POSTROUTING: SNAT the re-injected outbound. Once sing-box accepts a
-    # TPROXY'd connection, its new outbound socket may need SNAT on the WAN
-    # side; matching on our own mark keeps this from ever colliding with
-    # Docker's MASQUERADE chain or with traffic you later route through a
-    # tunnel. (Sing-box's own outbound is normally unmarked, so this is a
-    # safety net for marked edge cases.)
-    chain postrouting {
-        type nat hook postrouting priority srcnat; policy accept;
-        comment "SNAT for marked re-injected traffic"
-        meta mark {{TPROXY_FWMARK}} masquerade
-    }
+    # No NAT is required for sing-box's newly created, locally sourced
+    # outbound sockets. Site-specific NAT for BYPASSED/forwarded LAN traffic
+    # belongs to the host/router's existing firewall configuration.
 }

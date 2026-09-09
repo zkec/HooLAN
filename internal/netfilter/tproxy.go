@@ -7,12 +7,15 @@ package netfilter
 // audited and tested without cgo or third-party Go nft libraries.
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -90,22 +93,61 @@ func (m *Manager) Remove(ctx context.Context) error {
 	return m.run(ctx, m.removeScript)
 }
 
-// Status reports whether the interception table is currently loaded.
-// Uses `nft list table inet proxy_tproxy` — exit 0 == loaded, non-zero == absent.
+// ValidatePort checks the literal port in the administrator-owned shell config
+// without executing it. The supported config format is KEY="value" (or a bare
+// decimal value); shell expansion cannot safely be validated by the service.
+// Service startup calls this optional check before installing interception.
+func (m *Manager) ValidatePort(port int) error {
+	f, err := os.Open(m.confFile)
+	if err != nil {
+		return fmt.Errorf("netfilter: read port configuration: %w", err)
+	}
+	defer f.Close()
+	found := ""
+	scan := bufio.NewScanner(f)
+	for scan.Scan() {
+		line := strings.TrimSpace(scan.Text())
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) != "TPROXY_PORT" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+			value = value[1 : len(value)-1]
+		}
+		found = value // shell semantics: the last assignment wins
+	}
+	if err := scan.Err(); err != nil {
+		return fmt.Errorf("netfilter: scan port configuration: %w", err)
+	}
+	configured, err := strconv.Atoi(found)
+	if err != nil || configured < 1 || configured > 65535 {
+		return fmt.Errorf("netfilter: TPROXY_PORT must be a literal port in %s", m.confFile)
+	}
+	if configured != port {
+		return fmt.Errorf("netfilter: TPROXY_PORT=%d in %s differs from engine port %d", configured, m.confFile, port)
+	}
+	return nil
+}
+
+// Status reports whether the interception table is currently loaded. Listing
+// table names distinguishes absence from permission or netlink failures.
 func (m *Manager) Status(ctx context.Context) (bool, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "nft", "list", "table", "inet", "proxy_tproxy")
+	cmd := exec.CommandContext(ctx, "nft", "list", "tables")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		// nft returns exit 1 when table does not exist — not an error
-		if _, ok := err.(*exec.ExitError); ok {
-			return false, nil
-		}
+	out, err := cmd.Output()
+	if err != nil {
 		return false, fmt.Errorf("nft status: %w: %s", err, stderr.String())
 	}
-	return true, nil
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.TrimSpace(line) == "table inet proxy_tproxy" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *Manager) run(ctx context.Context, script string) error {

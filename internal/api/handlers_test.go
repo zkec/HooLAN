@@ -71,6 +71,7 @@ type fakeEngine struct {
 	running  bool
 	applied  [][]subscription.Node
 	listener net.Listener // stands in for the tproxy inbound
+	udp      net.PacketConn
 
 	applyErr error
 	startErr error
@@ -99,11 +100,18 @@ func (f *fakeEngine) Start(context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.listener == nil {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		ln, err := net.Listen("tcp4", "0.0.0.0:0")
 		if err != nil {
 			return err
 		}
 		f.listener = ln
+		udp, err := net.ListenPacket("udp4", ln.Addr().String())
+		if err != nil {
+			ln.Close()
+			f.listener = nil
+			return err
+		}
+		f.udp = udp
 	}
 	f.running = true
 	return nil
@@ -128,7 +136,7 @@ func (f *fakeEngine) Running() bool {
 
 func (f *fakeEngine) Pid() int {
 	if f.Running() {
-		return 4242
+		return os.Getpid()
 	}
 	return 0
 }
@@ -149,6 +157,9 @@ func (f *fakeEngine) close() {
 	defer f.mu.Unlock()
 	if f.listener != nil {
 		f.listener.Close()
+	}
+	if f.udp != nil {
+		f.udp.Close()
 	}
 }
 
@@ -431,9 +442,9 @@ func TestMethodNotAllowed(t *testing.T) {
 	if code != http.StatusMethodNotAllowed {
 		t.Errorf("GET on a POST route = %d, want 405", code)
 	}
-	code, _ = h.do(http.MethodPost, "/api/nodes", "")
+	code, _ = h.do(http.MethodDelete, "/api/nodes", "")
 	if code != http.StatusMethodNotAllowed {
-		t.Errorf("POST on a GET route = %d, want 405", code)
+		t.Errorf("DELETE on a GET/POST route = %d, want 405", code)
 	}
 }
 
@@ -542,6 +553,9 @@ func TestEngineCrashRemovesRules(t *testing.T) {
 		t.Fatalf("enable = %d (%v)", code, body)
 	}
 
+	h.eng.mu.Lock()
+	h.eng.running = false
+	h.eng.mu.Unlock()
 	h.svc.HandleEngineExit(errors.New("signal: killed"))
 
 	deadline := time.Now().Add(3 * time.Second)

@@ -128,11 +128,16 @@ type Service struct {
 	// refreshing guards against concurrent refreshes; a second request gets 409
 	// rather than a second latency sweep competing for the same CPU and ports.
 	refreshing bool
+	closing    bool
 }
 
 // State is the persisted operator intent.
 type State struct {
-	ProxyEnabled bool `json:"proxy_enabled"`
+	Subscriptions []Subscription  `json:"subscriptions,omitempty"`
+	ManualNodeIDs map[string]bool `json:"manual_node_ids,omitempty"`
+	DNSServer     string          `json:"dns_server,omitempty"`
+	IranBypass    *bool           `json:"iran_bypass,omitempty"`
+	ProxyEnabled  bool            `json:"proxy_enabled"`
 	// AutoSelect true means the urltest group drives the choice.
 	AutoSelect bool `json:"auto_select"`
 	// SelectedNodeID is a store record ID, not a tag: tags are
@@ -144,8 +149,11 @@ type State struct {
 
 // JobStatus reports on a refresh job.
 type JobStatus struct {
-	ID    string `json:"id,omitempty"`
-	State string `json:"state"` // "idle" | "running" | "succeeded" | "failed"
+	Kind           string `json:"kind,omitempty"`
+	SubscriptionID string `json:"subscription_id,omitempty"`
+	NodeID         string `json:"node_id,omitempty"`
+	ID             string `json:"id,omitempty"`
+	State          string `json:"state"` // "idle" | "running" | "succeeded" | "failed"
 
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	FinishedAt time.Time `json:"finished_at,omitempty"`
@@ -211,6 +219,11 @@ func New(cfg Config) (*Service, error) {
 		st = State{AutoSelect: true}
 	}
 	s.state = st
+	s.seedSubscriptions()
+	if err := s.configureEngineRouting(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("api: load routing settings: %w", err)
+	}
 	return s, nil
 }
 
@@ -305,7 +318,10 @@ func (s *Service) Restore(ctx context.Context) error {
 // ctx should be a fresh context, not the cancelled root: teardown still has to
 // run when the process is on its way out.
 func (s *Service) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	s.closing = true
 	s.jobCancel()
+	s.mu.Unlock()
 
 	done := make(chan struct{})
 	go func() {
@@ -370,6 +386,13 @@ func (s *Service) HandleEngineExit(exitErr error) {
 	s.log.Error("engine exited unexpectedly while proxy was enabled; "+
 		"removing tproxy rules to fail open", "err", exitErr)
 	go func() {
+		s.opMu.Lock()
+		defer s.opMu.Unlock()
+		// A completed reload can replace the process before this goroutine
+		// obtains the lifecycle lock. Never tear down its healthy replacement.
+		if s.cfg.Engine.Running() {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.cfg.Firewall.Remove(ctx); err != nil {
@@ -394,6 +417,12 @@ func (s *Service) setIntentionalStop(v bool) {
 func (s *Service) SetProxyEnabled(ctx context.Context, enabled bool) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	s.mu.RLock()
+	closing := s.closing
+	s.mu.RUnlock()
+	if closing {
+		return errors.New("api: shutting down")
+	}
 
 	if enabled {
 		if err := s.enable(ctx); err != nil {
@@ -416,19 +445,38 @@ var ErrNoNodes = errors.New("api: no enabled nodes; refresh a subscription first
 // enable renders config, starts the engine, confirms it listens, then installs
 // the ruleset. Caller must hold opMu.
 func (s *Service) enable(ctx context.Context) error {
+	s.mu.RLock()
+	enabled := s.proxyEnabled
+	s.mu.RUnlock()
+	if enabled {
+		if s.cfg.Engine.Running() {
+			return nil
+		}
+		s.mu.Lock()
+		s.proxyEnabled = false
+		s.mu.Unlock()
+	}
+	// Clear stale rules before rendering/starting, including startup failures.
+	if err := s.cfg.Firewall.Remove(ctx); err != nil {
+		return fmt.Errorf("api: remove stale interception before startup: %w", err)
+	}
+	if v, ok := s.cfg.Firewall.(interface{ ValidatePort(int) error }); ok {
+		if err := v.ValidatePort(s.cfg.Engine.TProxyPort()); err != nil {
+			return err
+		}
+	}
 	nodes := s.cfg.Store.EnabledNodes()
 	if len(nodes) == 0 {
 		return ErrNoNodes
 	}
 	if err := s.applyEngine(ctx, nodes); err != nil {
+		s.cleanupFailedEnable()
 		return err
 	}
 	// The engine binds TPROXY_PORT asynchronously after Start returns. Loading
 	// rules before it does means intercepted packets hit a closed port.
 	if err := s.waitEngineListening(ctx); err != nil {
-		s.setIntentionalStop(true)
-		defer s.setIntentionalStop(false)
-		_ = s.cfg.Engine.Stop(ctx)
+		s.cleanupFailedEnable()
 		return fmt.Errorf("api: engine did not open tproxy port: %w", err)
 	}
 	// Best-effort: a failed reselect leaves the engine on its config default
@@ -440,18 +488,19 @@ func (s *Service) enable(ctx context.Context) error {
 	if err := s.cfg.Firewall.Apply(ctx); err != nil {
 		// Roll back rather than leave a running engine with no interception and
 		// a half-loaded ruleset.
-		if rmErr := s.cfg.Firewall.Remove(ctx); rmErr != nil {
-			s.log.Error("rollback: could not remove partial ruleset", "err", rmErr)
-		}
-		s.setIntentionalStop(true)
-		defer s.setIntentionalStop(false)
-		_ = s.cfg.Engine.Stop(ctx)
+		s.cleanupFailedEnable()
 		return fmt.Errorf("api: apply tproxy rules: %w", err)
 	}
 
 	s.mu.Lock()
 	s.proxyEnabled = true
 	s.mu.Unlock()
+	// Publishing enabled first makes a concurrent exit visible to OnExit;
+	// the explicit check covers exits that happened just before publication.
+	if !s.cfg.Engine.Running() {
+		s.cleanupFailedEnable()
+		return errors.New("sing-box exited while installing interception")
+	}
 	s.log.Info("proxy enabled", "pid", s.cfg.Engine.Pid(), "nodes", len(nodes))
 	return nil
 }
@@ -482,6 +531,9 @@ func (s *Service) applyEngine(ctx context.Context, nodes []subscription.Node) er
 	// otherwise trip the crash handler.
 	s.setIntentionalStop(true)
 	defer s.setIntentionalStop(false)
+	if err := s.configureEngineRouting(); err != nil {
+		return err
+	}
 
 	// Apply mutates nodes in place via DedupeTags, so the ID->tag index is built
 	// from the same slice afterwards, not before.
@@ -523,7 +575,10 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		listening, err := tcpPortIsListening(port)
+		if !s.cfg.Engine.Running() {
+			return errors.New("sing-box exited before its TPROXY listeners became ready")
+		}
+		listening, err := tproxySocketsReady(s.cfg.Engine.Pid(), port)
 		if err != nil {
 			return err
 		}
@@ -532,7 +587,7 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("api: tproxy port %d never reached LISTEN: %w", port, ctx.Err())
+			return fmt.Errorf("api: sing-box PID %d did not own both IPv4 TCP and UDP wildcard listeners on port %d: %w", s.cfg.Engine.Pid(), port, ctx.Err())
 		case <-ticker.C:
 		}
 	}
@@ -779,142 +834,17 @@ var ErrNoSubscriptions = errors.New("api: no subscription URLs configured")
 // that invites client timeouts and gives no way to observe progress; callers
 // poll GET /api/status instead.
 func (s *Service) StartRefresh(prune bool) (JobStatus, error) {
-	if len(s.cfg.SubscriptionURLs) == 0 {
+	sources := s.subscriptionSnapshot()
+	if len(sources) == 0 {
 		return JobStatus{}, ErrNoSubscriptions
 	}
-	if err := s.jobCtx.Err(); err != nil {
-		return JobStatus{}, fmt.Errorf("api: shutting down: %w", err)
-	}
-
-	s.mu.Lock()
-	if s.refreshing {
-		j := s.job
-		s.mu.Unlock()
-		return j, ErrRefreshInProgress
-	}
-	s.refreshing = true
-	s.job = JobStatus{
-		ID:           fmt.Sprintf("refresh-%d", time.Now().UnixNano()),
-		State:        "running",
-		StartedAt:    time.Now(),
-		SourcesTotal: len(s.cfg.SubscriptionURLs),
-	}
-	j := s.job
-	s.mu.Unlock()
-
-	s.jobs.Add(1)
-	go func() {
-		defer s.jobs.Done()
-		ctx, cancel := context.WithTimeout(s.jobCtx, s.cfg.RefreshTimeout)
-		defer cancel()
-
-		err := s.refresh(ctx, prune)
-
-		s.mu.Lock()
-		s.refreshing = false
-		s.job.FinishedAt = time.Now()
-		if err != nil {
-			s.job.State = "failed"
-			s.job.Error = err.Error()
-		} else {
-			s.job.State = "succeeded"
-		}
-		s.mu.Unlock()
-		if err != nil {
-			s.log.Error("refresh failed", "err", err)
-		} else {
-			s.log.Info("refresh finished", "added", j.NodesAdded, "state", "succeeded")
-		}
-	}()
-	return j, nil
+	return s.startJob(JobStatus{Kind: "refresh", SourcesTotal: len(sources)}, func(ctx context.Context) error {
+		return s.refreshSources(ctx, sources, prune)
+	})
 }
 
-// refresh does the work: fetch every source, parse, upsert, sweep latency, and
-// reload a running engine.
 func (s *Service) refresh(ctx context.Context, prune bool) error {
-	var (
-		all      []subscription.Node
-		fetchErr []error
-		okCount  int
-	)
-	for _, src := range s.cfg.SubscriptionURLs {
-		raw, err := s.fetchSubscription(ctx, src)
-		if err != nil {
-			fetchErr = append(fetchErr, err)
-			s.warn(fmt.Sprintf("fetch %s: %v", src, err))
-			continue
-		}
-		nodes, parseErrs := subscription.ParseSubscription(raw)
-		for _, pe := range parseErrs {
-			s.warn(fmt.Sprintf("parse %s: %v", src, pe))
-		}
-		if len(nodes) == 0 {
-			fetchErr = append(fetchErr, fmt.Errorf("%s: no usable nodes", src))
-			continue
-		}
-		okCount++
-		all = append(all, nodes...)
-	}
-
-	s.mu.Lock()
-	s.job.SourcesOK = okCount
-	s.job.NodesParsed = len(all)
-	s.mu.Unlock()
-
-	if len(all) == 0 {
-		return fmt.Errorf("api: no nodes from any source: %w", errors.Join(fetchErr...))
-	}
-
-	added, updated, err := s.cfg.Store.UpsertNodes(all)
-	s.mu.Lock()
-	s.job.NodesAdded, s.job.NodesUpdated = added, updated
-	s.mu.Unlock()
-	if err != nil {
-		return fmt.Errorf("api: store nodes: %w", err)
-	}
-
-	// Prune only when every source answered. A provider serving a truncated
-	// list during an outage would otherwise delete good nodes and their history.
-	if prune {
-		if len(fetchErr) > 0 {
-			s.warn("skipping prune: at least one source failed")
-		} else {
-			removed, err := s.cfg.Store.Prune(store.KeepSet(all))
-			if err != nil {
-				return fmt.Errorf("api: prune: %w", err)
-			}
-			s.mu.Lock()
-			s.job.NodesPruned = removed
-			s.mu.Unlock()
-		}
-	}
-
-	if err := s.sweepLatency(ctx); err != nil {
-		return err
-	}
-
-	// A running engine keeps serving the old node set until it is reloaded.
-	if s.cfg.Engine.Running() {
-		s.opMu.Lock()
-		defer s.opMu.Unlock()
-		nodes := s.cfg.Store.EnabledNodes()
-		if len(nodes) == 0 {
-			return nil
-		}
-		if err := s.applyEngine(ctx, nodes); err != nil {
-			return err
-		}
-		if err := s.waitEngineListening(ctx); err != nil {
-			return fmt.Errorf("api: engine did not reopen tproxy port after reload: %w", err)
-		}
-		if err := s.applySelection(ctx); err != nil {
-			s.warn(fmt.Sprintf("reapply selection after reload: %v", err))
-		}
-		s.mu.Lock()
-		s.job.EngineReloaded = true
-		s.mu.Unlock()
-	}
-	return nil
+	return s.refreshSources(ctx, s.subscriptionSnapshot(), prune)
 }
 
 // sweepLatency probes every enabled node and records the results.

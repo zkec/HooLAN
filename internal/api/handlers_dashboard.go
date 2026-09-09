@@ -1,0 +1,166 @@
+package api
+
+import (
+	"errors"
+	"net/http"
+
+	"proxy-manager/internal/store"
+)
+
+func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/subscriptions", h.subscriptions)
+	mux.Handle("/api/subscriptions/refresh", only(http.MethodPost, h.refreshSubscription))
+	mux.Handle("/api/subscriptions/test", only(http.MethodPost, h.testSubscription))
+	mux.Handle("/api/nodes/test", only(http.MethodPost, h.testNode))
+	mux.HandleFunc("/api/settings", h.settings)
+}
+
+func (h *handlers) nodes(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.listNodes(w, r)
+	case http.MethodPost:
+		var req struct {
+			Link string `json:"link"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		id, err := h.svc.AddManualNode(r.Context(), req.Link)
+		if err != nil {
+			h.dashboardError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"node_id": id, "message": "Manual config saved"})
+	default:
+		methodsNotAllowed(w, "GET, POST")
+	}
+}
+
+func (h *handlers) subscriptions(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"subscriptions": h.svc.Subscriptions()})
+	case http.MethodPost:
+		var req struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		sub, err := h.svc.AddSubscription(req.Name, req.URL)
+		if err != nil {
+			h.dashboardError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, sub)
+	default:
+		methodsNotAllowed(w, "GET, POST")
+	}
+}
+
+func (h *handlers) refreshSubscription(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"subscription_id"`
+	}
+	if err := decodeBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	job, err := h.svc.StartSubscriptionRefresh(req.ID)
+	h.writeJob(w, job, err)
+}
+
+func (h *handlers) testSubscription(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"subscription_id"`
+	}
+	if err := decodeBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	job, err := h.svc.StartLatencyTest("", req.ID)
+	h.writeJob(w, job, err)
+}
+
+func (h *handlers) testNode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"node_id"`
+	}
+	if err := decodeBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	job, err := h.svc.StartLatencyTest(req.ID, "")
+	h.writeJob(w, job, err)
+}
+
+func (h *handlers) settings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, h.svc.Settings())
+	case http.MethodPut:
+		var req struct {
+			DNSServer  *string `json:"dns_server"`
+			IranBypass *bool   `json:"iran_bypass"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if req.DNSServer == nil && req.IranBypass == nil {
+			writeError(w, http.StatusBadRequest, "provide dns_server or iran_bypass")
+			return
+		}
+		settings := h.svc.Settings()
+		if req.DNSServer != nil {
+			settings.DNSServer = *req.DNSServer
+		}
+		if req.IranBypass != nil {
+			settings.IranBypass = *req.IranBypass
+		}
+		settings, err := h.svc.UpdateSettings(r.Context(), settings)
+		if err != nil {
+			h.dashboardError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	default:
+		methodsNotAllowed(w, "GET, PUT")
+	}
+}
+
+func (h *handlers) writeJob(w http.ResponseWriter, job JobStatus, err error) {
+	if errors.Is(err, ErrRefreshInProgress) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "another refresh or latency test is running", "refresh": job})
+		return
+	}
+	if err != nil {
+		h.dashboardError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "started", "refresh": job, "poll": "/api/status"})
+}
+
+func (h *handlers) dashboardError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, ErrInvalidInput):
+		status = http.StatusBadRequest
+	case errors.Is(err, store.ErrNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, ErrNoTester), errors.Is(err, ErrNoSubscriptions):
+		status = http.StatusServiceUnavailable
+	case errors.Is(err, ErrNoNodes), errors.Is(err, ErrRefreshInProgress):
+		status = http.StatusConflict
+	}
+	writeError(w, status, err.Error())
+}
+
+func methodsNotAllowed(w http.ResponseWriter, allow string) {
+	w.Header().Set("Allow", allow)
+	writeError(w, http.StatusMethodNotAllowed, "method not allowed; use "+allow)
+}

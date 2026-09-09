@@ -1,137 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="color-scheme" content="dark" />
-<title>Proxy Manager</title>
-<!-- style.css first so Tailwind wins on specificity ties. It is a self-hosted
-     fallback: when the Pi has no working internet the CDN below never loads,
-     and that is exactly when this dashboard is needed most. -->
-<link rel="stylesheet" href="style.css" />
-<script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Proxy Manager</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/app.js" defer></script>
 </head>
-<body class="pm-body bg-slate-950 text-slate-100 antialiased">
-
-<header class="pm-header sticky top-0 z-20 border-b border-slate-800 bg-slate-900">
-  <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-    <h1 class="pm-title text-base font-semibold tracking-tight sm:text-lg">Proxy&nbsp;Manager</h1>
-    <span id="engine-status" class="pm-pill rounded-full border border-slate-700 px-3 py-1 text-xs font-medium text-slate-400">Loading…</span>
-    <span id="updated" class="pm-muted ml-auto text-xs text-slate-500" aria-live="polite"></span>
-    <button id="token-btn" type="button" class="pm-btn rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium hover:bg-slate-800">API token</button>
-    <label for="proxy-toggle" class="pm-switch inline-flex cursor-pointer items-center gap-2 select-none">
-      <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Proxy</span>
-      <input id="proxy-toggle" type="checkbox" class="peer sr-only" />
-      <span class="pm-switch-track relative block h-6 w-11 rounded-full bg-slate-700 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-emerald-500 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400 peer-disabled:opacity-50"></span>
-      <span id="proxy-toggle-label" class="pm-mono w-8 text-xs text-slate-400">off</span>
-    </label>
-  </div>
-</header>
-
-<main class="mx-auto max-w-6xl space-y-4 px-4 py-5">
-
-  <div id="banner" class="pm-note hidden rounded-md border border-amber-600 bg-amber-950 px-4 py-3 text-sm text-amber-200" role="alert"></div>
-
-  <!-- Status strip ------------------------------------------------------- -->
-  <section aria-label="Gateway status" class="pm-grid grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-    <div class="pm-card rounded-lg border border-slate-800 bg-slate-900 p-3">
-      <div class="pm-muted text-xs uppercase tracking-wide text-slate-500">Engine</div>
-      <div id="stat-engine" class="mt-1 text-lg font-semibold">—</div>
-      <div id="stat-pid" class="pm-muted pm-mono text-xs text-slate-500">&nbsp;</div>
-    </div>
-    <div class="pm-card rounded-lg border border-slate-800 bg-slate-900 p-3">
-      <div class="pm-muted text-xs uppercase tracking-wide text-slate-500">TPROXY rules</div>
-      <div id="stat-rules" class="mt-1 text-lg font-semibold">—</div>
-      <div id="stat-rules-err" class="pm-muted text-xs text-rose-400">&nbsp;</div>
-    </div>
-    <div class="pm-card rounded-lg border border-slate-800 bg-slate-900 p-3">
-      <div class="pm-muted text-xs uppercase tracking-wide text-slate-500">Nodes</div>
-      <div id="stat-nodes" class="mt-1 text-lg font-semibold">—</div>
-      <div id="stat-nodes-sub" class="pm-muted text-xs text-slate-500">&nbsp;</div>
-    </div>
-    <div class="pm-card rounded-lg border border-slate-800 bg-slate-900 p-3">
-      <div class="pm-muted text-xs uppercase tracking-wide text-slate-500">Active outbound</div>
-      <div id="stat-active" class="mt-1 truncate text-lg font-semibold">—</div>
-      <div id="stat-active-sub" class="pm-muted text-xs text-slate-500">&nbsp;</div>
-    </div>
-  </section>
-
-  <!-- Subscription ------------------------------------------------------- -->
-  <section aria-labelledby="sub-h" class="pm-card rounded-lg border border-slate-800 bg-slate-900 p-4">
-    <h2 id="sub-h" class="text-sm font-semibold uppercase tracking-wide text-slate-400">Subscription</h2>
-    <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
-      <div class="grow">
-        <label for="sub-url" class="sr-only">Subscription URL</label>
-        <input id="sub-url" type="url" inputmode="url" spellcheck="false" placeholder="https://provider.example/sub?token=…"
-               class="pm-input w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm placeholder:text-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500" />
-        <p id="sub-note" class="pm-muted mt-2 text-xs leading-relaxed text-slate-500"></p>
-      </div>
-      <div class="flex shrink-0 flex-col gap-2">
-        <button id="refresh-btn" type="button"
-                class="pm-btn pm-btn-primary rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50">
-          Refresh &amp; Test Ping
-        </button>
-        <label class="pm-muted inline-flex items-center gap-2 text-xs text-slate-400">
-          <input id="prune" type="checkbox" class="rounded border-slate-600 bg-slate-950" />
-          Prune removed nodes
-        </label>
+<body>
+  <a class="skip-link" href="#main">Skip to dashboard</a>
+  <header class="header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="Proxy Manager home"><span class="brand-icon" aria-hidden="true">P</span><span>Proxy Manager<small>SMART GATEWAY</small></span></a>
+      <span id="engine-status" class="pill">Connecting…</span>
+      <div class="header-actions">
+        <label class="switch" for="proxy-toggle"><span>Proxy</span><input id="proxy-toggle" type="checkbox" role="switch" disabled /><span class="switch-track" aria-hidden="true"></span><span id="proxy-toggle-label" class="switch-label">Off</span></label>
+        <button id="logout-btn" type="button" class="button subtle" hidden>Sign out</button>
       </div>
     </div>
-    <div id="job" class="pm-muted mt-3 border-t border-slate-800 pt-3 text-xs text-slate-400" aria-live="polite"></div>
-    <details id="job-warnings" class="mt-2 hidden text-xs">
-      <summary class="cursor-pointer text-amber-400">Warnings</summary>
-      <ul id="job-warnings-list" class="mt-2 list-disc space-y-1 pl-5 text-slate-400"></ul>
-    </details>
-  </section>
-
-  <!-- Selection ---------------------------------------------------------- -->
-  <section aria-labelledby="sel-h" class="pm-card rounded-lg border border-slate-800 bg-slate-900 p-4">
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <div class="mr-auto">
-        <h2 id="sel-h" class="text-sm font-semibold uppercase tracking-wide text-slate-400">Auto-switch (urltest)</h2>
-        <p id="sel-note" class="pm-muted mt-1 text-xs text-slate-500">Lets the engine pick the fastest reachable node and move off it when it degrades.</p>
+  </header>
+  <main id="main" class="main">
+    <noscript><p class="notice">JavaScript is required to control this gateway.</p></noscript>
+    <div id="banner" class="notice" role="alert" hidden></div>
+    <div class="page-heading"><div><p class="eyebrow">YOUR NETWORK, AT A GLANCE</p><h1>Gateway dashboard</h1><p class="muted">Manage connections, test routes, and keep your network moving.</p></div><span id="updated" class="muted small">Waiting for gateway</span></div>
+    <section class="stats" aria-label="Gateway status">
+      <article class="card stat"><p class="eyebrow">Engine</p><h2 id="stat-engine">—</h2><p id="stat-pid" class="muted small">Waiting for status</p></article>
+      <article class="card stat"><p class="eyebrow">TPROXY rules</p><h2 id="stat-rules">—</h2><p id="stat-rules-err" class="muted small">Waiting for status</p></article>
+      <article class="card stat"><p class="eyebrow">Configurations</p><h2 id="stat-nodes">—</h2><p id="stat-nodes-sub" class="muted small">Waiting for status</p></article>
+      <article class="card stat"><p class="eyebrow">Active outbound</p><h2 id="stat-active" class="truncate">—</h2><p id="stat-active-sub" class="muted small">Waiting for status</p></article>
+    </section>
+    <section class="card selection" aria-labelledby="selection-heading">
+      <div><h2 id="selection-heading">Automatic selection</h2><p class="muted small">Choose the fastest reachable node automatically, or activate a config below to pin it.</p></div>
+      <label class="switch" for="auto-toggle"><input id="auto-toggle" type="checkbox" role="switch" disabled aria-label="Automatic node selection" /><span class="switch-track" aria-hidden="true"></span><span id="auto-toggle-label" class="switch-label">Manual</span></label>
+    </section>
+    <div class="tabs" role="tablist" aria-label="Dashboard sections">
+      <button id="tab-subscriptions" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panel-subscriptions" data-tab="subscriptions">Subscriptions <span id="subscription-count" class="count">0</span></button>
+      <button id="tab-manual" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-manual" tabindex="-1" data-tab="manual">Manual Configs <span id="manual-count" class="count">0</span></button>
+      <button id="tab-settings" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1" data-tab="settings">Settings</button>
+      <button id="tab-logs" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-logs" tabindex="-1" data-tab="logs">Live logs <span id="log-dot" class="dot" aria-hidden="true"></span></button>
+    </div>
+    <section id="job-panel" class="job-panel" aria-label="Background task" hidden>
+      <p id="job" role="status"></p>
+      <details id="job-warnings" hidden><summary>Task warnings</summary><ul id="job-warnings-list"></ul></details>
+    </section>
+    <section id="panel-subscriptions" role="tabpanel" aria-labelledby="tab-subscriptions" tabindex="0">
+      <div class="card form-card">
+        <h2>Add a subscription</h2><p class="muted small">Save a source URL, then refresh it to import and test its nodes.</p>
+        <form id="subscription-form" class="subscription-form">
+          <div class="field"><label for="sub-name">Name <span class="muted">(optional)</span></label><input id="sub-name" name="name" type="text" maxlength="120" placeholder="My provider" autocomplete="off" /></div>
+          <div class="field field-grow"><label for="sub-url">Subscription URL</label><input id="sub-url" name="url" type="url" inputmode="url" required spellcheck="false" autocomplete="off" placeholder="https://provider.example/subscription" /></div>
+          <button class="button primary" type="submit" data-mutation>Add subscription</button>
+        </form>
       </div>
-      <label for="auto-toggle" class="pm-switch inline-flex cursor-pointer items-center gap-2 select-none">
-        <input id="auto-toggle" type="checkbox" class="peer sr-only" />
-        <span class="pm-switch-track relative block h-7 w-14 rounded-full bg-slate-700 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-emerald-500 peer-checked:after:translate-x-7 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400 peer-disabled:opacity-50"></span>
-        <span id="auto-toggle-label" class="pm-mono w-14 text-xs text-slate-400">manual</span>
-      </label>
-    </div>
-  </section>
-
-  <!-- Nodes -------------------------------------------------------------- -->
-  <section id="nodes" aria-labelledby="nodes-h" class="pm-card rounded-lg border border-slate-800 bg-slate-900">
-    <div class="flex flex-wrap items-center gap-2 border-b border-slate-800 px-4 py-3">
-      <h2 id="nodes-h" class="mr-auto text-sm font-semibold uppercase tracking-wide text-slate-400">Nodes</h2>
-      <span class="pm-muted text-xs text-slate-500">Fastest first · click a row to pin it</span>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="pm-table w-full text-left text-sm">
-        <thead class="pm-muted text-xs uppercase tracking-wide text-slate-500">
-          <tr>
-            <th scope="col" class="px-4 py-2 font-medium">Tag</th>
-            <th scope="col" class="px-4 py-2 font-medium">Protocol</th>
-            <th scope="col" class="hidden px-4 py-2 font-medium md:table-cell">Server</th>
-            <th scope="col" class="px-4 py-2 font-medium">Latency</th>
-            <th scope="col" class="hidden px-4 py-2 font-medium sm:table-cell">Checked</th>
-            <th scope="col" class="px-4 py-2 text-right font-medium">Action</th>
-          </tr>
-        </thead>
-        <tbody id="node-rows" class="divide-y divide-slate-800"></tbody>
-      </table>
-    </div>
-    <p id="nodes-empty" class="pm-muted hidden px-4 py-6 text-sm text-slate-500">
-      No nodes yet. Configure a subscription with <code class="pm-mono">-sub</code> and hit Refresh&nbsp;&amp;&nbsp;Test&nbsp;Ping.
-    </p>
-  </section>
-
-  <footer class="pm-muted flex flex-wrap gap-x-4 gap-y-1 pb-6 text-xs text-slate-600">
-    <span id="foot-config" class="pm-mono"></span>
-    <span id="foot-poll" class="ml-auto"></span>
-  </footer>
-</main>
-
-<div id="toasts" class="pm-toasts fixed bottom-4 right-4 z-30 flex w-72 flex-col gap-2" aria-live="polite" aria-atomic="false"></div>
-<script src="app.js"></script>
+      <div class="section-heading"><div><h2>Your subscriptions</h2><p class="muted small">Each source keeps its own node list. Latencies are shown fastest first.</p></div><button id="refresh-all-btn" class="button" type="button" data-mutation data-job>Refresh all &amp; test</button></div>
+      <div id="subscriptions-list" class="stack"></div>
+      <div id="subscriptions-empty" class="empty card" hidden><span class="empty-symbol" aria-hidden="true">↗</span><h3>No subscriptions yet</h3><p class="muted">Add a subscription URL above to bring your provider’s nodes into the gateway.</p></div>
+    </section>
+    <section id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" tabindex="0" hidden>
+      <div class="card form-card"><h2>Add a configuration</h2><p class="muted small">Paste a single node link, such as vless://, vmess://, trojan:// or ss://.</p><form id="node-form" class="node-form"><div class="field field-grow"><label for="node-link">Node link</label><input id="node-link" name="link" type="text" required spellcheck="false" autocomplete="off" placeholder="vless://…" /></div><button class="button primary" type="submit" data-mutation>Add config</button></form></div>
+      <div class="section-heading"><div><h2>Manual configurations</h2><p class="muted small">Test latency individually, then activate a node to use it.</p></div></div>
+      <div id="manual-nodes" class="card"></div>
+      <div id="manual-empty" class="empty card" hidden><span class="empty-symbol" aria-hidden="true">+</span><h3>No manual configs yet</h3><p class="muted">Add a node link above. Your configuration is saved on this gateway.</p></div>
+    </section>
+    <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+      <form id="settings-form" class="card settings-card">
+        <h2>Routing &amp; DNS</h2><p class="muted small">Changes are saved on the gateway and applied to the running engine.</p>
+        <div class="setting"><div class="field"><label for="dns-server">DNS server</label><p id="dns-help" class="muted small">Resolver used by the proxy engine. Leave blank for the system resolver, or enter an IP address with an optional port, for example 1.1.1.1 or [2606:4700:4700::1111]:53. Local AdGuard DNS traffic still bypasses interception.</p><input id="dns-server" name="dns_server" type="text" spellcheck="false" autocomplete="off" aria-describedby="dns-help" placeholder="System resolver" /></div></div>
+        <div class="setting setting-row"><div><label for="iran-bypass">Iran bypass</label><p id="iran-help" class="muted small">Route Iranian destinations directly, outside the selected proxy.</p></div><label class="switch" for="iran-bypass"><input id="iran-bypass" type="checkbox" role="switch" aria-describedby="iran-help" /><span class="switch-track" aria-hidden="true"></span><span id="iran-label" class="switch-label">Off</span></label></div>
+        <div class="form-footer"><span id="settings-note" class="muted small" role="status"></span><button class="button primary" type="submit" data-mutation>Save settings</button></div>
+      </form>
+    </section>
+    <section id="panel-logs" role="tabpanel" aria-labelledby="tab-logs" tabindex="0" hidden>
+      <div class="card log-card">
+        <div class="log-toolbar"><div><h2>Live logs</h2><p id="log-status" class="muted small" role="status">Stream is off. Turn it on to view recent and incoming logs.</p></div><div class="log-actions"><button id="clear-logs-btn" type="button" class="button subtle">Clear view</button><label class="switch" for="logs-toggle"><input id="logs-toggle" type="checkbox" role="switch" aria-label="Live log stream" /><span class="switch-track" aria-hidden="true"></span><span id="logs-label" class="switch-label">Off</span></label></div></div>
+        <div id="log-lines" class="log-lines" tabindex="0" role="log" aria-label="Gateway and sing-box logs" aria-live="off"><p id="logs-empty" class="log-placeholder">Service and sing-box logs will appear here.</p></div>
+        <div class="log-footer muted small"><span id="log-count">0 lines</span><span>Latest 500 lines · pause anytime · scroll up to read</span></div>
+      </div>
+    </section>
+    <footer class="footer"><span>Proxy Manager · Raspberry Pi gateway</span><span id="foot-poll">Connecting to API…</span></footer>
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
 </body>
 </html>

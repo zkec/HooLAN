@@ -95,8 +95,8 @@ func TestBuildConfigTProxyInbound(t *testing.T) {
 	if in.Type != "tproxy" {
 		t.Errorf("inbound type = %q, want tproxy", in.Type)
 	}
-	if in.Listen != "::" {
-		t.Errorf("listen = %q, want ::", in.Listen)
+	if in.Listen != "0.0.0.0" {
+		t.Errorf("listen = %q, want 0.0.0.0 for IPv4 interception", in.Listen)
 	}
 	if in.ListenPort != 7892 {
 		t.Errorf("listen_port = %d, want 7892", in.ListenPort)

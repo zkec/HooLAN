@@ -151,19 +151,17 @@ func (h *handlers) staticHandler() http.Handler {
 		hdr.Set("X-Content-Type-Options", "nosniff")
 		hdr.Set("Referrer-Policy", "no-referrer")
 		hdr.Set("X-Frame-Options", "DENY")
-		if name == "/index.html" {
+		if strings.HasSuffix(name, ".html") {
 			// Revalidate the entry point every load so a binary upgrade is
 			// picked up without a hard refresh; the ETag keeps that cheap.
 			hdr.Set("Cache-Control", "no-cache")
-			// Tailwind is loaded from its CDN and injects styles at runtime, so
-			// style-src has to allow inline. Everything else stays locked to
-			// this origin: no frames, no objects, no form posts elsewhere.
+			// All dashboard/login scripts and styles are embedded locally.
 			hdr.Set("Content-Security-Policy",
-				"default-src 'self'; script-src 'self' https://cdn.tailwindcss.com; "+
-					"style-src 'self' 'unsafe-inline'; img-src 'self' data:; "+
+				"default-src 'self'; script-src 'self'; "+
+					"style-src 'self'; img-src 'self' data:; "+
 					"connect-src 'self'; font-src 'self' data:; "+
 					"object-src 'none'; frame-ancestors 'none'; base-uri 'none'; "+
-					"form-action 'none'")
+					"form-action 'self'")
 		} else {
 			hdr.Set("Cache-Control", "no-cache")
 		}

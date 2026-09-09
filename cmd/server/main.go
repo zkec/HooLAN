@@ -28,6 +28,7 @@ import (
 
 	"proxy-manager/internal/api"
 	"proxy-manager/internal/engine"
+	"proxy-manager/internal/logstream"
 	"proxy-manager/internal/netfilter"
 	"proxy-manager/internal/store"
 	"proxy-manager/internal/tester"
@@ -50,24 +51,25 @@ func (r *repeatable) Set(v string) error {
 }
 
 type config struct {
-	listen      string
-	token       string
-	storePath   string
-	statePath   string
-	configPath  string
-	cachePath   string
-	singBox     string
-	scriptsDir  string
-	subs        repeatable
-	clashAPI    string
-	clashSecret string
-	tproxyPort  int
-	logLevel    string
-	probeURL    string
-	concurrency int
-	timeout     time.Duration
-	exposeCreds bool
-	noRestore   bool
+	listen        string
+	token         string
+	storePath     string
+	statePath     string
+	configPath    string
+	cachePath     string
+	singBox       string
+	scriptsDir    string
+	subs          repeatable
+	clashAPI      string
+	clashSecret   string
+	tproxyPort    int
+	logLevel      string
+	probeURL      string
+	concurrency   int
+	timeout       time.Duration
+	exposeCreds   bool
+	secureCookies bool
+	noRestore     bool
 }
 
 func main() {
@@ -86,7 +88,9 @@ func parseFlags() config {
 	var cfg config
 	flag.StringVar(&cfg.listen, "listen", ":8080", "HTTP listen address for the API")
 	flag.StringVar(&cfg.token, "token", os.Getenv("PROXY_MANAGER_TOKEN"),
-		"bearer token required on /api routes (env PROXY_MANAGER_TOKEN); empty disables auth")
+		"API bearer token and browser login token (env PROXY_MANAGER_TOKEN); empty disables auth")
+	flag.BoolVar(&cfg.secureCookies, "secure-cookies", false,
+		"require HTTPS browser cookies behind a trusted HTTPS reverse proxy; preserve the public Host header")
 	flag.StringVar(&cfg.storePath, "store", "/var/lib/proxy-manager/nodes.json",
 		"node store file")
 	flag.StringVar(&cfg.statePath, "state", "/var/lib/proxy-manager/state.json",
@@ -136,6 +140,10 @@ func newLogger(level string) *slog.Logger {
 }
 
 func run(cfg config, log *slog.Logger) error {
+	logs := logstream.New(cfg.token, cfg.clashSecret)
+	defer logs.Close()
+	log = slog.New(logstream.NewTeeHandler(log.Handler(), logs))
+	slog.SetDefault(log)
 	// Signal handling is installed before anything is started, so a SIGTERM
 	// arriving during startup is still honoured rather than killing the process
 	// with a half-loaded ruleset.
@@ -202,8 +210,8 @@ func run(cfg config, log *slog.Logger) error {
 	svcRef = svc
 
 	warnIfExposed(cfg, log)
-	if len(cfg.subs) == 0 {
-		log.Warn("no subscription URLs configured; POST /api/nodes/refresh will fail until -sub is set")
+	if len(svc.Subscriptions()) == 0 {
+		log.Info("no subscriptions configured; add a subscription or manual config in the dashboard")
 	}
 	if cfg.clashAPI == "" {
 		log.Warn("clash api disabled; POST /api/proxy/select cannot switch nodes on a running engine")
@@ -213,6 +221,8 @@ func run(cfg config, log *slog.Logger) error {
 		Addr: cfg.listen,
 		Handler: api.NewRouter(svc, api.RouterOptions{
 			Token:             cfg.token,
+			SecureCookies:     cfg.secureCookies,
+			Logs:              logs,
 			ExposeCredentials: cfg.exposeCreds,
 			Logger:            log.With("src", "http"),
 		}),
@@ -223,6 +233,8 @@ func run(cfg config, log *slog.Logger) error {
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	// End SSE requests before waiting for HTTP shutdown to drain.
+	srv.RegisterOnShutdown(logs.Close)
 
 	// Bind before restoring the proxy so a port clash fails fast, without having
 	// started an engine and loaded a ruleset that then has to be torn down.
@@ -255,6 +267,7 @@ func run(cfg config, log *slog.Logger) error {
 	case err := <-serveErr:
 		if err != nil {
 			// The listener died on its own; still tear down engine and rules.
+			logs.Close()
 			shutdown(svc, srv, log)
 			return fmt.Errorf("http server: %w", err)
 		}
@@ -263,6 +276,7 @@ func run(cfg config, log *slog.Logger) error {
 		// Restore default signal handling so a second Ctrl-C / SIGTERM during a
 		// slow teardown kills the process instead of being swallowed.
 		stop()
+		logs.Close() // release SSE handlers before HTTP graceful shutdown
 		shutdown(svc, srv, log)
 	}
 	return nil

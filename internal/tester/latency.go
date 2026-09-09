@@ -154,6 +154,12 @@ func (t *Tester) TestNode(ctx context.Context, node subscription.Node) Result {
 // engine instance, so probing them in isolation would fail with
 // "dependency not found". They are probed with their full chain rendered.
 func (t *Tester) TestNodes(ctx context.Context, nodes []subscription.Node) []Result {
+	return t.TestSelectedNodes(ctx, nodes, nodes)
+}
+
+// TestSelectedNodes probes targets with the complete inventory available for
+// resolving detour dependencies, without probing those dependencies separately.
+func (t *Tester) TestSelectedNodes(ctx context.Context, nodes, inventory []subscription.Node) []Result {
 	results := make([]Result, len(nodes))
 	sem := make(chan struct{}, t.opts.Concurrency)
 	var wg sync.WaitGroup
@@ -169,7 +175,7 @@ func (t *Tester) TestNodes(ctx context.Context, nodes []subscription.Node) []Res
 				results[i] = Result{Tag: n.Tag, Err: ctx.Err()}
 				return
 			}
-			results[i] = t.testWithChain(ctx, n, nodes)
+			results[i] = t.testWithChain(ctx, n, inventory)
 		}(i, n)
 	}
 	wg.Wait()
