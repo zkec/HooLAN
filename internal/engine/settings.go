@@ -8,6 +8,14 @@ import (
 	"strings"
 )
 
+// ConfigureAutoSelection controls background URL tests on the next Apply.
+// Keep the administrator's DisableAutoSwitch option independent of UI state.
+func (m *Manager) ConfigureAutoSelection(auto bool) {
+	m.settingsMu.Lock()
+	defer m.settingsMu.Unlock()
+	m.manualSelection = !auto
+}
+
 // NormalizeDNSServer validates the browser setting without resolving hostnames
 // or allowing bootstrap dependencies on the very resolver being configured.
 func NormalizeDNSServer(value string) (string, error) {

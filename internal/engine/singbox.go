@@ -30,8 +30,8 @@ const (
 	DefaultSelector   = "proxy"
 	DefaultDirect     = "direct"
 	// DefaultURLTest is the auto-switch group's tag. It is the first member of
-	// the selector, so the UI toggles auto vs manual by selecting this tag or a
-	// node tag via the Clash API -- no config regeneration needed.
+	// the selector in auto mode. Manual mode omits this group entirely so its
+	// background probes stop; switching modes requires config regeneration.
 	DefaultURLTest = "auto"
 
 	// DefaultProbeURL matches internal/tester so the auto-switch and the
@@ -195,8 +195,9 @@ func (o *Options) setDefaults() {
 // Manager renders config and supervises one sing-box process.
 // All exported methods are safe for concurrent use.
 type Manager struct {
-	opts       Options
-	settingsMu sync.RWMutex
+	opts            Options
+	settingsMu      sync.RWMutex
+	manualSelection bool
 
 	mu     sync.Mutex
 	cmd    *exec.Cmd
@@ -331,7 +332,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 
 	// An empty urltest is a hard startup failure ("missing tags", verified on
 	// 1.14.0), so the group is omitted when every node is chained.
-	autoEnabled := !m.opts.DisableAutoSwitch && len(autoMembers) > 0
+	autoEnabled := !m.opts.DisableAutoSwitch && !m.manualSelection && len(autoMembers) > 0
 	if autoEnabled {
 		outbounds = append(outbounds, &URLTestOutbound{
 			Type:      "urltest",
@@ -345,12 +346,10 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 			// slightly stale route for connections already in flight.
 			InterruptExistConnections: false,
 		})
-		// First member => the selector's default, so a fresh install
-		// auto-switches until the operator picks a node explicitly. The UI
-		// toggles auto vs manual by selecting "auto" or a node tag through the
-		// Clash API; no config regeneration required.
+		// Changing auto/manual mode rebuilds this group: merely selecting a
+		// different member does not stop URLTest's background probes.
 		selectorMembers = append(selectorMembers, DefaultURLTest)
-	} else if m.opts.DisableAutoSwitch {
+	} else if m.opts.DisableAutoSwitch || m.manualSelection {
 		m.opts.Logger.Debug("auto-switch disabled by option")
 	} else {
 		m.opts.Logger.Warn("auto-switch omitted: no unchained nodes to test")

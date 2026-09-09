@@ -4,6 +4,12 @@ The dashboard is compiled into the Go binary. All HTML, CSS and vanilla JavaScri
 are local; it needs no CDN or frontend build step. Build with `go build ./cmd/server`.
 The default generated configuration targets sing-box 1.14.
 
+Manual selection removes the background URLTest group. Switching between Auto
+and manual briefly restarts sing-box with interception removed during restart;
+switching between manual nodes only updates the selector. Subscription refresh
+skips its automatic latency sweep in manual mode. Explicit single-node and
+subscription test buttons remain available in either mode.
+
 ## Browser access
 
 Set `PROXY_MANAGER_TOKEN` in the service environment. Open the dashboard and sign

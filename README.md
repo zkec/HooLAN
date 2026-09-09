@@ -465,9 +465,12 @@ Generated route rules, in order:
 5. **Iran rule-sets → direct** (on by default), with optional ad/tracker
    rejection.
 
-Nodes are grouped under a `urltest` group tagged `auto` plus a `selector` tagged
-`proxy`, so switching between automatic and a specific node happens over the
-Clash API with no config regeneration.
+Auto mode includes a `urltest` group tagged `auto` and a `selector` tagged
+`proxy`. Manual mode omits URLTest so other nodes are not probed in the
+background. Switching modes briefly restarts the engine with interception
+removed during the restart; switching between manual nodes uses the Clash API
+without restarting. Subscription refresh skips automatic probes in manual
+mode, while the explicit latency-test buttons remain available.
 
 ---
 

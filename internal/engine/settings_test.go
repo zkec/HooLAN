@@ -2,6 +2,35 @@ package engine
 
 import "testing"
 
+func TestManualSelectionRemovesBackgroundProbes(t *testing.T) {
+	for _, disabled := range []bool{false, true} {
+		m := NewManager(Options{Logger: quietLogger(), DisableAutoSwitch: disabled})
+		for _, auto := range []bool{true, false, true} {
+			m.ConfigureAutoSelection(auto)
+			cfg, err := m.BuildConfig(testNodes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, outbound := range cfg.Outbounds {
+				if _, ok := outbound.(*URLTestOutbound); ok {
+					found = true
+				}
+				if selector, ok := outbound.(*SelectorOutbound); ok {
+					for _, member := range selector.Outbounds {
+						if member == DefaultURLTest && (!auto || disabled) {
+							t.Fatal("selector references disabled URLTest group")
+						}
+					}
+				}
+			}
+			if found != (auto && !disabled) {
+				t.Fatalf("auto=%v disabled=%v: URLTest present=%v", auto, disabled, found)
+			}
+		}
+	}
+}
+
 func TestRuntimeDNSAndIranSettings(t *testing.T) {
 	m := NewManager(Options{Logger: quietLogger()})
 	if err := m.ConfigureRouting("9.9.9.9:5353", false); err != nil {

@@ -141,8 +141,8 @@ type CacheFileOptions struct {
 // This is the control channel for live selector changes. Switching the active
 // node by regenerating config and calling Apply would drop every connection on
 // the LAN and cost a few seconds of downtime; a PUT to the Clash API's
-// /proxies/{group} switches the selector in place with no restart. That is what
-// the "toggle auto vs manual via the Clash API" note on DefaultURLTest means.
+// /proxies/{group} switches between manual nodes in place with no restart.
+// Auto/manual transitions rebuild the config to remove or restore URLTest.
 //
 // Requires a sing-box built with the with_clash_api tag (official releases are).
 // The option block itself always parses, so a build without the tag accepts this

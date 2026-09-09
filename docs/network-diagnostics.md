@@ -40,6 +40,26 @@ fallback still needs the site's normal forwarding and return routing/NAT.
 
 ## Specific checks after removing the established bypass
 
+UFW's `ufw-not-local` INPUT chain was a confirmed blocker on this Pi. Its
+`fib daddr type local` lookup omits the interception mark; the final DROP can
+reject TPROXY packets retaining their original public destination. INPUT's
+default ACCEPT does not override that drop.
+
+To persist the tested exception, back up `/etc/ufw/before.rules` and insert
+these lines inside its existing `*filter` section, after chain declarations
+but before the existing `-A ufw-before-input` rules:
+
+```text
+-A ufw-before-input -i eth0 -s 192.168.3.0/24 -p tcp -m mark --mark 0x1/0xffffffff -j ACCEPT
+-A ufw-before-input -i eth0 -s 192.168.3.0/24 -p udp -m mark --mark 0x1/0xffffffff -j ACCEPT
+```
+
+Run `sudo ufw reload`, remove the temporary phone-specific INPUT exceptions,
+and test a fresh LAN connection with the proxy ON. Adapt the interface, trusted
+client subnet and reserved mark for other installations. Keep these exceptions
+in UFW: an ACCEPT in an earlier separate nftables base chain cannot override
+its later DROP. Do not limit them to port 7892; the original port is preserved.
+
 1. **Verify the deployed generation.** Copy the updated template, apply/remove
    scripts and Go binary. Restart only after installation. An old `nft -f`
    implementation appended rules rather than replacing them. The new batch

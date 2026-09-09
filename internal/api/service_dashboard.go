@@ -191,6 +191,12 @@ func (s *Service) Settings() Settings {
 }
 
 func (s *Service) configureEngineRouting() error {
+	if configurable, ok := s.cfg.Engine.(interface{ ConfigureAutoSelection(bool) }); ok {
+		s.mu.RLock()
+		auto := s.state.AutoSelect
+		s.mu.RUnlock()
+		configurable.ConfigureAutoSelection(auto)
+	}
 	settings := s.Settings()
 	if configurable, ok := s.cfg.Engine.(interface{ ConfigureRouting(string, bool) error }); ok {
 		return configurable.ConfigureRouting(settings.DNSServer, settings.IranBypass)
@@ -441,8 +447,13 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, pr
 		s.warn("skipping prune: at least one source failed")
 	}
 	s.opMu.Unlock()
-	if err := s.sweepLatency(ctx); err != nil {
-		return err
+	s.mu.RLock()
+	auto := s.state.AutoSelect
+	s.mu.RUnlock()
+	if auto {
+		if err := s.sweepLatency(ctx); err != nil {
+			return err
+		}
 	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()

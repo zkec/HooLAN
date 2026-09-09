@@ -665,6 +665,8 @@ var ErrNoSelector = errors.New("api: no control API configured")
 // stopped there is nothing to change yet, and the selection takes effect at the
 // next start.
 func (s *Service) Select(ctx context.Context, auto bool, nodeID string) (applied bool, err error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !auto && nodeID == "" {
 		return false, errors.New("api: node id required when auto is false")
 	}
@@ -675,12 +677,16 @@ func (s *Service) Select(ctx context.Context, auto bool, nodeID string) (applied
 	}
 
 	s.mu.Lock()
+	oldAuto, oldNodeID := s.state.AutoSelect, s.state.SelectedNodeID
 	s.state.AutoSelect = auto
 	s.state.SelectedNodeID = ""
 	if !auto {
 		s.state.SelectedNodeID = nodeID
 	}
 	saveErr := s.saveState()
+	if saveErr != nil {
+		s.state.AutoSelect, s.state.SelectedNodeID = oldAuto, oldNodeID
+	}
 	s.mu.Unlock()
 	if saveErr != nil {
 		return false, saveErr
@@ -688,6 +694,13 @@ func (s *Service) Select(ctx context.Context, auto bool, nodeID string) (applied
 
 	if !s.cfg.Engine.Running() {
 		return false, nil
+	}
+	if _, configurable := s.cfg.Engine.(interface{ ConfigureAutoSelection(bool) }); configurable && oldAuto != auto {
+		// URLTest starts probing even when the selector points elsewhere.
+		// Rebuild with interception removed before stopping the listener.
+		if err := s.reloadRunningLocked(ctx); err != nil {
+			return false, err
+		}
 	}
 	if err := s.applySelection(ctx); err != nil {
 		return false, err

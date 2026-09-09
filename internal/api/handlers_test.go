@@ -570,6 +570,33 @@ func TestEngineCrashRemovesRules(t *testing.T) {
 
 // --- POST /api/proxy/select -------------------------------------------------
 
+type selectionEngine struct{ *fakeEngine }
+
+func (f *selectionEngine) ConfigureAutoSelection(auto bool) {
+	f.log.add(fmt.Sprintf("auto=%v", auto))
+}
+
+func TestSelectionModeRebuildsWithInterceptionRemoved(t *testing.T) {
+	h := newHarness(t, testNodes(), func(cfg *Config) {
+		cfg.Engine = &selectionEngine{cfg.Engine.(*fakeEngine)}
+	})
+	if err := h.svc.SetProxyEnabled(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	for _, auto := range []bool{false, true} {
+		start := len(h.calls.snapshot())
+		id := h.store.All()[0].ID
+		if applied, err := h.svc.Select(context.Background(), auto, id); err != nil || !applied {
+			t.Fatalf("auto=%v applied=%v err=%v", auto, applied, err)
+		}
+		calls := strings.Join(h.calls.snapshot()[start:], ",")
+		want := fmt.Sprintf("fw.Remove,auto=%v,engine.Apply,engine.Start,fw.Apply", auto)
+		if calls != want {
+			t.Fatalf("transition calls=%s want=%s", calls, want)
+		}
+	}
+}
+
 func TestSelectNodeByID(t *testing.T) {
 	h := newHarness(t, testNodes(), nil)
 	if code, body := h.do(http.MethodPost, "/api/proxy/toggle", `{"enabled":true}`); code != 200 {

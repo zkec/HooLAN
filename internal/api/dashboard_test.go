@@ -102,6 +102,9 @@ func TestManualLatencyAndSubscriptionLatencyAreScoped(t *testing.T) {
 	defer provider.Close()
 	h := newHarness(t, nil, nil)
 	manual := addTestManual(t, h)
+	if _, err := h.svc.Select(context.Background(), false, manual); err != nil {
+		t.Fatal(err)
+	}
 	sub := addTestSubscription(t, h, provider.URL)
 	if _, err := h.svc.StartSubscriptionRefresh(sub); err != nil {
 		t.Fatal(err)
@@ -136,6 +139,28 @@ func TestManualLatencyAndSubscriptionLatencyAreScoped(t *testing.T) {
 	rec, _ := h.store.Get(manual)
 	if rec.LastLatencyMS != 42 {
 		t.Fatalf("latency not recorded: %+v", rec)
+	}
+}
+
+func TestManualRefreshSkipsAutomaticLatency(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, providerLink) }))
+	defer provider.Close()
+	probed := false
+	h := newHarness(t, testNodes(), func(cfg *Config) {
+		cfg.Tester = &fakeTester{results: func(nodes []subscription.Node) []tester.Result {
+			probed = true
+			return nil
+		}}
+	})
+	if _, err := h.svc.Select(context.Background(), false, h.store.All()[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	addTestSubscription(t, h, provider.URL)
+	if err := h.svc.refresh(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if probed {
+		t.Fatal("manual refresh launched an automatic latency sweep")
 	}
 }
 
