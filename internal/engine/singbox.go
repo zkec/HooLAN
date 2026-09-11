@@ -11,12 +11,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
+	"proxy-manager/internal/store"
 	"proxy-manager/internal/subscription"
 )
 
@@ -197,6 +200,7 @@ func (o *Options) setDefaults() {
 type Manager struct {
 	opts            Options
 	settingsMu      sync.RWMutex
+	deviceRoutes    map[string]string
 	manualSelection bool
 	rulePolicy      *RulePolicy
 	ruleFiles       map[string]string
@@ -445,6 +449,31 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	}
 	route.Rules = rules
 	m.applyRulePolicy(route)
+	// Resolve stable IDs only after outbound tags have been deduplicated.
+	tagsByID := map[string]string{}
+	for _, n := range nodes {
+		if renderedTags[n.Tag] && !n.ChainInternal {
+			tagsByID[store.NodeID(n)] = n.Tag
+		}
+	}
+	ips := make([]string, 0, len(m.deviceRoutes))
+	for ip := range m.deviceRoutes {
+		ips = append(ips, ip)
+	}
+	sort.Strings(ips)
+	for _, ip := range ips {
+		addr, err := netip.ParseAddr(ip)
+		tag := tagsByID[m.deviceRoutes[ip]]
+		if err != nil || tag == "" {
+			continue
+		} // missing/disabled nodes use global default
+		addr = addr.Unmap()
+		route.Rules = append(route.Rules, RouteRule{
+			Inbound:      []string{m.opts.InboundTag},
+			SourceIPCIDR: []string{netip.PrefixFrom(addr, addr.BitLen()).String()},
+			Action:       "route", Outbound: tag,
+		})
+	}
 
 	cfg := &Config{
 		Log:       &LogOptions{Level: m.opts.LogLevel, Timestamp: true},
@@ -867,4 +896,14 @@ func (w *logWriter) Write(p []byte) (int, error) {
 
 func trimEOL(s string) string {
 	return string(bytes.TrimRight([]byte(s), "\r\n \t"))
+}
+
+// ConfigureDeviceRoutes snapshots IP -> stable node ID assignments.
+func (m *Manager) ConfigureDeviceRoutes(routes map[string]string) {
+	m.settingsMu.Lock()
+	defer m.settingsMu.Unlock()
+	m.deviceRoutes = make(map[string]string, len(routes))
+	for ip, id := range routes {
+		m.deviceRoutes[ip] = id
+	}
 }

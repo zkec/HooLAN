@@ -137,6 +137,8 @@ type Service struct {
 
 // State is the persisted operator intent.
 type State struct {
+	DeviceAliases      map[string]string  `json:"device_aliases,omitempty"`
+	DeviceRoutes       map[string]string  `json:"device_routes,omitempty"`
 	Usage              Usage              `json:"usage"`
 	RuleScheduleAnchor time.Time          `json:"rule_schedule_anchor,omitempty"`
 	RulePolicy         *engine.RulePolicy `json:"rule_policy,omitempty"`

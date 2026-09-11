@@ -1,10 +1,11 @@
 # Configuration workflow
 
-The embedded dashboard has three tabs: **Configurations**, **Settings**, and
-**Live logs**. Configurations combines source management, manual imports, one
-node list, the Chain Builder and expandable usage statistics. Settings combines
-DNS, the Iran toggle, editable routing rules and rule-set update schedules.
-Old hashes (`#manual`, `#subscriptions`, `#usage`, `#rules`) map to their new tabs.
+The dashboard has Configurations, Usage, Settings and Live logs tabs. Manual
+configurations and subscriptions use separate matching cards inside Configurations.
+Usage includes per-node and per-device traffic, aliases and route assignments;
+see [Device usage and routing](device-routing.md). Settings combines DNS, Iran
+and custom rules with rule-set scheduling. Legacy `#manual` and `#subscriptions`
+hashes map to Configurations; `#rules` maps to Settings.
 
 ## Strict synchronization
 
@@ -25,8 +26,8 @@ are unaffected by source pruning.
 
 ## Batch operations
 
-Each visible configuration has a checkbox. A single global bar offers Select
-all, Bulk Ping and Bulk Delete; it displays the count of unique selected IDs.
+Each visible configuration has a checkbox. Each group offers Select all, Bulk Ping and Bulk Delete; it displays the count
+of selected IDs in that group. Selections are independent between groups.
 Selection survives polling, and IDs that disappear during sync are deselected.
 Ping/Delete/Chain buttons are no longer shown per row; Activate remains.
 
@@ -63,6 +64,7 @@ apply to all these mutations.
 
 ## Chain Builder
 
+The dedicated builder card sits between Add a configuration and Add a subscription.
 Choose 2–8 distinct enabled single-hop configurations and arrange them with
 Add hop, Move up/down and Remove. The preview shows **first hop → ... → exit**.
 Save creates a new independently identifiable configuration; original nodes and
@@ -91,8 +93,8 @@ restarts the engine with interception removed during the transition.
 
 | File | Responsibility |
 | --- | --- |
-| `internal/api/web/index.html` | Three tabs, unified list, bulk bar and ordered Chain Builder |
-| `internal/api/web/app.js` | Checkbox state, batch requests, hop ordering, merged tabs and usage |
+| `internal/api/web/index.html` | Four tabs, matching source cards, group actions and ordered Chain Builder |
+| `internal/api/web/app.js` | Checkbox state, batch requests, hop ordering, dedicated usage and device controls |
 | `internal/api/web/style.css` | Bulk bar and chain layout |
 | `internal/api/handlers_dashboard.go`, `node_edit.go` | Array request decoding and `/api/chains` route |
 | `internal/api/batch.go` | Batch validation, deletion, selected probes and independent chain creation |

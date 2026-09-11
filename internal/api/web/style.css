@@ -1207,4 +1207,12 @@ dialog::backdrop { background: #0009; }
 .chain-hops { padding-left: 1.5rem; }
 .chain-hops li { margin: .75rem 0; }
 #chain-preview { overflow-wrap: anywhere; }
-.usage-details { margin: 1rem 0; }
+
+/* Configuration groups use the same card structure for manual and subscribed nodes. */
+.config-group { overflow: hidden; }
+.config-group .bulk-bar { border-top: 1px solid var(--line); padding: 12px 18px; }
+#manual-group { margin-bottom: 18px; }
+.device-name-form { display: flex; gap: 8px; align-items: center; }
+.device-name-form input { min-width: 130px; max-width: 220px; }
+.device-table select { min-width: 180px; max-width: 320px; }
+.device-table th { text-align: left; }

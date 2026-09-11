@@ -200,6 +200,12 @@ func (s *Service) configureEngineRouting() error {
 		s.mu.RUnlock()
 		configurable.ConfigureAutoSelection(auto)
 	}
+	if configurable, ok := s.cfg.Engine.(interface{ ConfigureDeviceRoutes(map[string]string) }); ok {
+		s.mu.RLock()
+		routes := copyStrings(s.state.DeviceRoutes)
+		s.mu.RUnlock()
+		configurable.ConfigureDeviceRoutes(routes)
+	}
 	settings := s.Settings()
 	if configurable, ok := s.cfg.Engine.(interface{ ConfigureRouting(string, bool) error }); ok {
 		return configurable.ConfigureRouting(settings.DNSServer, settings.IranBypass)
@@ -473,6 +479,8 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, _ 
 			}
 		}
 	}
+	oldRoutes := s.state.DeviceRoutes
+	s.state.DeviceRoutes = withoutRoutes(oldRoutes, invalid)
 	oldAuto, oldSelected := s.state.AutoSelect, s.state.SelectedNodeID
 	if invalid[s.state.SelectedNodeID] {
 		s.state.AutoSelect = true
@@ -500,6 +508,7 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, _ 
 	}
 	if err != nil {
 		s.state.Subscriptions = previous
+		s.state.DeviceRoutes = oldRoutes
 		s.state.AutoSelect = oldAuto
 		s.state.SelectedNodeID = oldSelected
 		err = errors.Join(err, s.cfg.Store.ReplaceRecords(before))

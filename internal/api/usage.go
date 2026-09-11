@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type Bytes struct {
 	Download uint64 `json:"download"`
 }
 type Usage struct {
+	Devices    map[string]Bytes `json:"devices"`
 	Total      Bytes            `json:"total"`
 	Outbounds  map[string]Bytes `json:"outbounds"`
 	LastSample time.Time        `json:"last_sample"`
@@ -20,11 +22,16 @@ type Usage struct {
 	PID        int              `json:"pid"`
 	Previous   Bytes            `json:"previous"`
 }
+type connectionMetadata struct {
+	SourceIP string `json:"sourceIP"`
+	Type     string `json:"type"`
+}
 type connectionSample struct {
-	ID       string   `json:"id"`
-	Upload   uint64   `json:"upload"`
-	Download uint64   `json:"download"`
-	Chains   []string `json:"chains"`
+	Metadata connectionMetadata `json:"metadata"`
+	ID       string             `json:"id"`
+	Upload   uint64             `json:"upload"`
+	Download uint64             `json:"download"`
+	Chains   []string           `json:"chains"`
 }
 type trafficSnapshot struct {
 	Upload      uint64             `json:"uploadTotal"`
@@ -75,6 +82,9 @@ func (s *Service) sampleUsage(ctx context.Context) {
 	if u.Outbounds == nil {
 		u.Outbounds = map[string]Bytes{}
 	}
+	if u.Devices == nil {
+		u.Devices = map[string]Bytes{}
+	}
 	u.Total.Upload += delta(snap.Upload, u.Previous.Upload)
 	u.Total.Download += delta(snap.Download, u.Previous.Download)
 	u.Previous = Bytes{snap.Upload, snap.Download}
@@ -84,6 +94,14 @@ func (s *Service) sampleUsage(ctx context.Context) {
 	for _, c := range snap.Connections {
 		old := s.usageSeen[c.ID]
 		next[c.ID] = Bytes{c.Upload, c.Download}
+		// Only original LAN sources on the transparent inbound are devices.
+		// Count independently of outbound attribution (including direct traffic).
+		if ip, err := deviceIP(c.Metadata.SourceIP); err == nil && strings.HasPrefix(c.Metadata.Type, "tproxy/") {
+			v := u.Devices[ip]
+			v.Upload += delta(c.Upload, old.Upload)
+			v.Download += delta(c.Download, old.Download)
+			u.Devices[ip] = v
+		}
 		// Attribute once to the selected leaf, not to selector/auto or each hop.
 		tag := ""
 		for i := len(c.Chains) - 1; i >= 0; i-- {
@@ -163,7 +181,7 @@ func (h *handlers) usage(w http.ResponseWriter, r *http.Request) {
 	s := h.svc
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	writeJSON(w, 200, map[string]any{"usage": s.state.Usage, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
+	writeJSON(w, 200, map[string]any{"usage": s.state.Usage, "device_aliases": s.state.DeviceAliases, "device_routes": s.state.DeviceRoutes, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
 }
 
 func supportsTraffic(v any) bool {

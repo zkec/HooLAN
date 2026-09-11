@@ -37,6 +37,7 @@
     </section>
     <div class="tabs" role="tablist" aria-label="Dashboard sections">
       <button id="tab-configurations" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panel-configurations" data-tab="configurations">Configurations</button>
+      <button id="tab-usage" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-usage" tabindex="-1" data-tab="usage">Usage</button>
       <button id="tab-settings" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1" data-tab="settings">Settings</button>
       <button id="tab-logs" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-logs" tabindex="-1" data-tab="logs">Live logs <span id="log-dot" class="dot" aria-hidden="true"></span></button>
     </div>
@@ -48,6 +49,14 @@
 
       <div class="card form-card"><h2>Add a configuration</h2><p class="muted small">Paste a single node link, such as vless://, vmess://, trojan:// or ss://.</p><form id="node-form" class="node-form"><div class="field field-grow"><label for="node-link">Node link</label><input id="node-link" name="link" type="text" required spellcheck="false" autocomplete="off" placeholder="vless://…" /></div><button class="button primary" type="submit" data-mutation>Add config</button></form></div>
 
+      <section class="card form-card" aria-labelledby="builder-heading">
+        <h2 id="builder-heading">Chain Builder</h2><p class="muted small">Choose 2–8 single-hop nodes in traversal order: first hop → intermediate hops → exit. Saved chains are independent copies; source configurations stay unchanged.</p>
+        <form id="chain-builder-form"><div class="field"><label for="chain-builder-name">Chain name</label><input id="chain-builder-name" required maxlength="100" placeholder="My multi-hop connection" /></div>
+        <div class="field"><label for="chain-builder-node">Add a hop</label><select id="chain-builder-node"></select></div><button id="chain-add-hop" type="button" class="button" data-mutation>Add hop</button>
+        <ol id="chain-hops" class="chain-hops" aria-label="Hop order"></ol><p id="chain-preview" role="status"></p>
+        <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button></form>
+      </section>
+
       <div class="card form-card">
         <h2>Add a subscription</h2><p class="muted small">Each successful refresh replaces that source’s node list. Removed provider nodes are pruned.</p>
         <form id="subscription-form" class="subscription-form">
@@ -56,26 +65,17 @@
           <button class="button primary" type="submit" data-mutation>Add subscription</button>
         </form>
       </div>
-      <div class="section-heading"><div><h2>Your subscriptions <span id="subscription-count" class="count">0</span></h2><p class="muted small">Nodes from all sources appear once in the list below.</p></div><button id="refresh-all-btn" class="button" type="button" data-mutation data-job>Refresh all &amp; test</button></div>
+      <div id="manual-group" class="stack"></div>
+      <div class="section-heading"><div><h2>Your subscriptions <span id="subscription-count" class="count">0</span></h2><p class="muted small">Select and manage configurations within each source group.</p></div><button id="refresh-all-btn" class="button" type="button" data-mutation data-job>Refresh all &amp; test</button></div>
       <div id="subscriptions-list" class="stack"></div>
       <div id="subscriptions-empty" class="empty card" hidden><span class="empty-symbol" aria-hidden="true">↗</span><h3>No subscriptions yet</h3><p class="muted">Add a subscription URL above to bring your provider’s nodes into the gateway.</p></div>
-      <div class="card bulk-bar" role="group" aria-label="Selected configuration actions">
-        <label><input id="select-all-nodes" type="checkbox" /> Select all</label><span id="selected-count" role="status">0 selected</span>
-        <button id="bulk-ping" class="button" type="button" data-mutation data-job>Bulk Ping</button>
-        <button id="bulk-delete" class="button" type="button" data-mutation data-job>Bulk Delete</button>
-      </div>
-      <div id="config-nodes" class="card"></div>
-      <div id="configs-empty" class="empty card" hidden>No configurations yet. Add a link or refresh a subscription above.</div>
-      <section class="card form-card" aria-labelledby="builder-heading">
-        <h2 id="builder-heading">Chain Builder</h2><p class="muted small">Choose 2–8 single-hop nodes in traversal order: first hop → intermediate hops → exit. Saved chains are independent copies; source configurations stay unchanged.</p>
-        <form id="chain-builder-form"><div class="field"><label for="chain-builder-name">Chain name</label><input id="chain-builder-name" required maxlength="100" placeholder="My multi-hop connection" /></div>
-        <div class="field"><label for="chain-builder-node">Add a hop</label><select id="chain-builder-node"></select></div><button id="chain-add-hop" type="button" class="button" data-mutation>Add hop</button>
-        <ol id="chain-hops" class="chain-hops" aria-label="Hop order"></ol><p id="chain-preview" role="status"></p>
-        <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button></form>
-      </section>
-      <details class="usage-details"><summary>Internet usage</summary>
-      <div class="card form-card"><h2>Internet usage through sing-box</h2><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-node and direct attribution is estimated from one-second connection samples; short flows can be missed. Local AdGuard/Docker traffic and raw forwarding while OFF are excluded. A chain is attributed to its selected exit node, not counted again for each hop.</p><div id="usage-nodes"></div></div>
-</details>
+
+    </section>
+    <section id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" tabindex="0" hidden>
+
+      <div class="card form-card"><h2>Internet usage through sing-box</h2><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-device, per-node and direct attribution is estimated from one-second connection samples; short flows can be missed. Local AdGuard/Docker traffic and raw forwarding while OFF are excluded. A chain is attributed to its selected exit node, not counted again for each hop.</p><div id="usage-nodes"></div></div>
+
+      <div class="card form-card"><h2>LAN devices</h2><p class="muted small">Estimated usage by original client IP, including traffic sing-box routes directly. Only private IPv4 clients intercepted by TPROXY appear. Names and assignments persist by IP.</p><p class="muted small">Device routes apply after DNS, private-network, custom and Iran rules. Global Default follows the gateway’s selection. Changing an assignment applies immediately and briefly restarts an active proxy.</p><div id="usage-devices" class="table-wrap"></div></div>
     </section>
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
 

@@ -98,6 +98,8 @@ func (s *Service) DeleteNodes(ctx context.Context, ids []string) (int, error) {
 		remaining = append(remaining, r)
 	}
 	s.mu.Lock()
+	oldRoutes := s.state.DeviceRoutes
+	s.state.DeviceRoutes = withoutRoutes(oldRoutes, remove)
 	oldSubs, oldManual, oldAuto, oldSelected := s.state.Subscriptions, s.state.ManualNodeIDs, s.state.AutoSelect, s.state.SelectedNodeID
 	s.state.Subscriptions = append([]Subscription(nil), oldSubs...)
 	for i, sub := range oldSubs {
@@ -125,6 +127,7 @@ func (s *Service) DeleteNodes(ctx context.Context, ids []string) (int, error) {
 	}
 	if err != nil {
 		s.state.Subscriptions = oldSubs
+		s.state.DeviceRoutes = oldRoutes
 		s.state.ManualNodeIDs = oldManual
 		s.state.AutoSelect = oldAuto
 		s.state.SelectedNodeID = oldSelected

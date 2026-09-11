@@ -160,6 +160,7 @@ type ClashAPIOptions struct {
 // RouteRule covers the subset of matchers and actions this package emits.
 // `Action` is required by 1.11+; a rule with no action is a legacy route rule.
 type RouteRule struct {
+	SourceIPCIDR []string `json:"source_ip_cidr,omitempty"`
 	Domain       []string `json:"domain,omitempty"`
 	DomainSuffix []string `json:"domain_suffix,omitempty"`
 	IPCIDR       []string `json:"ip_cidr,omitempty"`
