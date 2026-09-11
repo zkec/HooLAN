@@ -56,10 +56,13 @@ var ErrUnsupportedScheme = errors.New("subscription: unsupported scheme")
 // link" — renderers must omit rather than guess, so a node that carried no SNI
 // does not silently acquire one.
 type Node struct {
-	Protocol Protocol
-	Tag      string // display name from the link fragment; may be empty or duplicated
-	Server   string
-	Port     int
+	// LocalVariant separates saved chain snapshots from provider node identity.
+	LocalVariant  string `json:",omitempty"`
+	ChainInternal bool   `json:",omitempty"`
+	Protocol      Protocol
+	Tag           string // display name from the link fragment; may be empty or duplicated
+	Server        string
+	Port          int
 
 	// Credentials. Exactly one is meaningful per protocol:
 	// VLESS/VMess use UUID, Trojan/Hysteria2 use Password,

@@ -327,7 +327,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		if !renderedTags[n.Tag] {
 			continue
 		}
-		if n.Detour == "" {
+		if n.Detour == "" && !n.ChainInternal {
 			autoMembers = append(autoMembers, n.Tag)
 		}
 	}
@@ -356,7 +356,14 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	} else {
 		m.opts.Logger.Warn("auto-switch omitted: no unchained nodes to test")
 	}
-	selectorMembers = append(selectorMembers, tags...)
+	for _, n := range nodes {
+		if renderedTags[n.Tag] && !n.ChainInternal {
+			selectorMembers = append(selectorMembers, n.Tag)
+		}
+	}
+	if len(selectorMembers) == 0 {
+		return nil, errors.New("engine: no selectable configurations")
+	}
 
 	outbounds = append(outbounds, &SelectorOutbound{
 		Type:      "selector",

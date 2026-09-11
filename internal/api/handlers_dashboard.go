@@ -8,6 +8,7 @@ import (
 )
 
 func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {
+	mux.Handle("/api/chains", only(http.MethodPost, h.createChain))
 	mux.Handle("/api/nodes/delete", only(http.MethodPost, h.deleteNode))
 	mux.Handle("/api/nodes/detour", only(http.MethodPut, h.detourNode))
 	mux.Handle("/api/usage", only(http.MethodGet, h.usage))
@@ -96,13 +97,21 @@ func (h *handlers) testSubscription(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) testNode(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID string `json:"node_id"`
+		IDs []string `json:"node_ids"`
+		ID  string   `json:"node_id"`
 	}
 	if err := decodeBody(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, 400, err.Error())
 		return
 	}
-	job, err := h.svc.StartLatencyTest(req.ID, "")
+	if req.ID != "" {
+		if len(req.IDs) > 0 {
+			writeError(w, 400, "use node_ids or node_id, not both")
+			return
+		}
+		req.IDs = []string{req.ID}
+	}
+	job, err := h.svc.StartBulkLatency(req.IDs)
 	h.writeJob(w, job, err)
 }
 

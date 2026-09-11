@@ -9,11 +9,11 @@ step and no additional Go module dependency.
 | --- | --- |
 | `internal/api/static.go`, `auth.go`, `web/login.html`, `web/login.js` | `/login` and `/login/` serve the login page. Protected dashboard documents redirect to `/login.html` before JavaScript executes. Session cookies cover `/`; login clears the obsolete `/api/` cookie. Token validation, HttpOnly, SameSite and CSRF protection remain. |
 | `scripts/tproxy/install-router.sh` | One-time persistent UFW forwarding, marked INPUT exceptions, scoped MASQUERADE and IPv4 sysctls for this single-interface gateway. `remove.sh` continues to remove only interception. |
-| `internal/api/node_edit.go`, `handlers_dashboard.go`, `internal/store/db.go` | `POST /api/nodes/delete {node_id}` and `PUT /api/nodes/detour {node_id,detour_id}`. Empty detour clears a chain. Stable IDs survive renames/duplicate tags; cycles and unavailable hops are rejected. Delete requires a manual node, no chain dependents and no active manual selection. |
+| `internal/api/node_edit.go`, `handlers_dashboard.go`, `internal/store/db.go` | `POST /api/nodes/delete {node_id}` and `PUT /api/nodes/detour {node_id,detour_id}`. Empty detour clears a chain. Stable IDs survive renames/duplicate tags; cycles and unavailable hops are rejected. The current bulk API and Chain Builder supersede row actions; see `configuration-workflow.md`. |
 | `internal/engine/rule_policy.go`, `config.go`, `singbox.go` | Validated domain, suffix and CIDR rules; editable Iran source URLs/action; additional HTTPS binary SRS sources. All downloads stage and validate through `sing-box rule-set decompile` before a generation becomes active. |
 | `internal/api/rules.go`, `service.go`, `service_dashboard.go` | `GET/PUT /api/rules`, `POST /api/rules/update`; persisted scheduling, asynchronous jobs, file paths, last attempt/success/error, next due time. The service scheduler runs with the engine OFF. |
 | `internal/api/usage.go`, `clash.go`, `service.go` | `GET /api/usage`; background one-second Clash `/connections` polling, cumulative upload/download, sampled attribution to node IDs and direct, counters persisted with state at most once per minute and on graceful shutdown. |
-| `internal/api/web/index.html`, `app.js`, `style.css` | Login, manual Delete, chain editor, Routing rules and Usage tabs, update button, intervals/daily/weekly wall-clock scheduling, source paths and timestamps. |
+| `internal/api/web/index.html`, `app.js`, `style.css` | Configurations (bulk actions, Chain Builder, usage), Settings (DNS/rules/schedules), and Live logs. |
 
 ## Deploy on this Pi
 
@@ -95,9 +95,9 @@ interception off and reports an error; inspect logs before enabling again.
 
 Deleting a manual config removes its record from `nodes.json`. If it also came
 from a subscription, a future explicit subscription refresh may import it again.
-Chain dependencies are retained during pruning. A chain's selected config is
+New saved chains keep independent snapshots through pruning; broken legacy detours are disabled. A chain's selected config is
 its exit node; its detour is the upstream hop. Manual node selection still omits
-URLTest, and explicit ping buttons remain available.
+URLTest, and Bulk Ping remains available.
 
 ## Usage accuracy
 

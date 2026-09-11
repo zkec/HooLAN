@@ -45,6 +45,9 @@ func NodeID(n subscription.Node) string {
 	write(n.SNI)
 	write(n.Path)
 	write(n.ServiceName)
+	if n.LocalVariant != "" {
+		write(n.LocalVariant)
+	}
 
 	sum := sha256.Sum256([]byte(b.String()))
 	// 128 bits is ample for hundreds of rows and keeps the file readable.

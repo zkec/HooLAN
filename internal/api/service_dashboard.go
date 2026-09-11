@@ -361,13 +361,13 @@ func (s *Service) startJob(initial JobStatus, work func(context.Context) error) 
 func (s *Service) StartSubscriptionRefresh(id string) (JobStatus, error) {
 	for _, sub := range s.subscriptionSnapshot() {
 		if sub.ID == id {
-			return s.startJob(JobStatus{Kind: "refresh", SubscriptionID: id, SourcesTotal: 1}, func(ctx context.Context) error { return s.refreshSources(ctx, []Subscription{sub}, false) })
+			return s.startJob(JobStatus{Kind: "refresh", SubscriptionID: id, SourcesTotal: 1}, func(ctx context.Context) error { return s.refreshSources(ctx, []Subscription{sub}, true) })
 		}
 	}
 	return JobStatus{}, store.ErrNotFound
 }
 
-func (s *Service) refreshSources(ctx context.Context, sources []Subscription, prune bool) error {
+func (s *Service) refreshSources(ctx context.Context, sources []Subscription, _ bool) error {
 	var all []subscription.Node
 	var failures []error
 	members := make(map[string][]string)
@@ -380,10 +380,8 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, pr
 		}
 		nodes, parseErrs := subscription.ParseSubscription(raw)
 		if len(parseErrs) > 0 {
-			s.warn(fmt.Sprintf("%s: skipped %d invalid links", src.Name, len(parseErrs)))
-		}
-		if len(nodes) == 0 {
-			failures = append(failures, fmt.Errorf("%s: no usable nodes", src.Name))
+			failures = append(failures, fmt.Errorf("%s: malformed subscription; previous membership retained", src.Name))
+			s.warn(fmt.Sprintf("%s: invalid feed; sync skipped", src.Name))
 			continue
 		}
 		all = append(all, nodes...)
@@ -401,84 +399,142 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, pr
 	s.mu.Lock()
 	s.job.SourcesOK, s.job.NodesParsed = len(members), len(all)
 	s.mu.Unlock()
-	if len(all) == 0 {
-		return fmt.Errorf("api: no nodes from any source: %w", errors.Join(failures...))
+	if len(members) == 0 {
+		return fmt.Errorf("api: no valid subscription responses: %w", errors.Join(failures...))
 	}
-	// Serialize only state/store reconciliation, not slow fetches or probes.
+	// Each successful feed is authoritative, even if another source failed.
 	s.opMu.Lock()
-	added, updated, err := s.cfg.Store.UpsertNodes(all)
-	if err != nil {
-		s.opMu.Unlock()
-		return err
+	before := s.cfg.Store.All()
+	// Build the replacement in memory; publish nodes.json only once.
+	recordMap := map[string]store.Record{}
+	for _, r := range before {
+		recordMap[r.ID] = r
 	}
+	added, updated := 0, 0
+	now := time.Now().UTC()
+	for _, n := range all {
+		id := store.NodeID(n)
+		if r, ok := recordMap[id]; ok {
+			r.Node = n
+			r.UpdatedAt = now
+			recordMap[id] = r
+			updated++
+		} else {
+			recordMap[id] = store.Record{ID: id, Node: n, Enabled: true, CreatedAt: now, UpdatedAt: now, LastLatencyMS: store.LatencyUnmeasured}
+			added++
+		}
+	}
+	records := make([]store.Record, 0, len(recordMap))
+	for _, r := range recordMap {
+		records = append(records, r)
+	}
+	var err error
 	s.mu.Lock()
 	s.job.NodesAdded, s.job.NodesUpdated = added, updated
 	previous := s.state.Subscriptions
 	s.state.Subscriptions = append([]Subscription(nil), previous...)
-	keep := store.KeepSet(all)
-	for id := range s.state.ManualNodeIDs {
-		keep[id] = true
-	}
+	candidates := map[string]bool{}
 	for i, sub := range s.state.Subscriptions {
 		if ids, ok := members[sub.ID]; ok {
-			if !prune || len(failures) > 0 {
-				ids = unionIDs(ids, sub.NodeIDs)
+			for _, id := range sub.NodeIDs {
+				candidates[id] = true
 			}
 			s.state.Subscriptions[i].NodeIDs = ids
 		}
-		for _, id := range s.state.Subscriptions[i].NodeIDs {
+	}
+	keep := map[string]bool{}
+	for id, v := range s.state.ManualNodeIDs {
+		if v {
 			keep[id] = true
 		}
 	}
-	if err := s.saveState(); err != nil {
-		s.state.Subscriptions = previous
-		s.mu.Unlock()
-		s.opMu.Unlock()
-		return err
+	for _, sub := range s.state.Subscriptions {
+		for _, id := range sub.NodeIDs {
+			keep[id] = true
+		}
 	}
-	s.mu.Unlock()
-	// Keep ID-addressed chain dependencies even if a provider drops a hop.
-	records := s.cfg.Store.All()
+	remove := map[string]bool{}
+	for id := range candidates {
+		if !keep[id] {
+			remove[id] = true
+		}
+	}
+	invalid := map[string]bool{}
+	for id := range remove {
+		invalid[id] = true
+	}
 	changed := true
 	for changed {
 		changed = false
 		for _, r := range records {
-			if keep[r.ID] && r.DetourID != "" && !keep[r.DetourID] {
-				keep[r.DetourID] = true
+			if !invalid[r.ID] && invalid[r.DetourID] {
+				invalid[r.ID] = true
 				changed = true
 			}
 		}
 	}
-	if prune && len(failures) == 0 {
-		removed, pruneErr := s.cfg.Store.Prune(keep)
-		if pruneErr != nil {
-			s.opMu.Unlock()
-			return pruneErr
+	oldAuto, oldSelected := s.state.AutoSelect, s.state.SelectedNodeID
+	if invalid[s.state.SelectedNodeID] {
+		s.state.AutoSelect = true
+		s.state.SelectedNodeID = ""
+	}
+	remaining := make([]store.Record, 0, len(records))
+	removed := 0
+	for _, r := range records {
+		if remove[r.ID] {
+			removed++
+			continue
 		}
-		s.mu.Lock()
-		s.job.NodesPruned = removed
+		// Legacy mutable chains lose their hop: disable rather than silently bypass it.
+		if invalid[r.ID] {
+			r.Enabled = false
+			r.DetourID = ""
+			r.Node.Detour = ""
+			r.LastError = "Chain hop removed by subscription sync; rebuild the chain"
+		}
+		remaining = append(remaining, r)
+	}
+	err = s.cfg.Store.ReplaceRecords(remaining)
+	if err == nil {
+		err = s.saveState()
+	}
+	if err != nil {
+		s.state.Subscriptions = previous
+		s.state.AutoSelect = oldAuto
+		s.state.SelectedNodeID = oldSelected
+		err = errors.Join(err, s.cfg.Store.ReplaceRecords(before))
 		s.mu.Unlock()
-	} else if prune {
-		s.warn("skipping prune: at least one source failed")
-	}
-	s.opMu.Unlock()
-	s.mu.RLock()
-	auto := s.state.AutoSelect
-	s.mu.RUnlock()
-	if auto {
-		if err := s.sweepLatency(ctx); err != nil {
-			return err
-		}
-	}
-	s.opMu.Lock()
-	defer s.opMu.Unlock()
-	running := s.cfg.Engine.Running()
-	if err := s.reloadRunningLocked(ctx); err != nil {
+		s.opMu.Unlock()
 		return err
 	}
-	s.mu.Lock()
-	s.job.EngineReloaded = running
+	s.job.NodesPruned = removed
 	s.mu.Unlock()
+	// An empty successful feed may remove the last usable configuration.
+	if len(s.cfg.Store.EnabledNodes()) == 0 && s.cfg.Engine.Running() {
+		err = s.disable(ctx)
+		if err == nil {
+			s.mu.Lock()
+			s.state.ProxyEnabled = false
+			err = s.saveState()
+			s.mu.Unlock()
+		}
+		s.opMu.Unlock()
+		return err
+	}
+	// Apply removals immediately, before potentially slow latency probes.
+	running := s.cfg.Engine.Running()
+	err = s.reloadRunningLocked(ctx)
+	s.mu.Lock()
+	s.job.EngineReloaded = running && err == nil
+	auto := s.state.AutoSelect
+	s.mu.Unlock()
+	s.opMu.Unlock()
+	if err != nil {
+		return err
+	}
+	if auto {
+		return s.sweepLatency(ctx)
+	}
 	return nil
 }
 
@@ -538,6 +594,15 @@ func (s *Service) testSelectedNodes(ctx context.Context, wanted map[string]bool)
 		all[i] = rec.Node
 	}
 	subscription.DedupeTags(all)
+	tags := map[string]string{}
+	for i, r := range records {
+		tags[r.ID] = all[i].Tag
+	}
+	for i, r := range records {
+		if r.DetourID != "" {
+			all[i].Detour = tags[r.DetourID]
+		}
+	}
 	var nodes []subscription.Node
 	var ids []string
 	for i, rec := range records {

@@ -694,8 +694,12 @@ func (s *Service) Select(ctx context.Context, auto bool, nodeID string) (applied
 		return false, errors.New("api: node id required when auto is false")
 	}
 	if !auto {
-		if _, err := s.cfg.Store.Get(nodeID); err != nil {
-			return false, err // store.ErrNotFound, mapped to 404 by the handler
+		record, err := s.cfg.Store.Get(nodeID)
+		if err != nil {
+			return false, err
+		}
+		if record.Node.ChainInternal {
+			return false, fmt.Errorf("%w: select the chain configuration, not an internal hop", ErrInvalidInput)
 		}
 	}
 
@@ -806,6 +810,9 @@ func (s *Service) Status(ctx context.Context) Status {
 	}
 
 	for _, r := range s.cfg.Store.All() {
+		if r.Node.ChainInternal {
+			continue
+		}
 		st.NodesTotal++
 		if r.Enabled {
 			st.NodesEnabled++
@@ -889,21 +896,26 @@ func (s *Service) sweepLatency(ctx context.Context) error {
 		s.warn("no latency tester configured; skipping probe")
 		return nil
 	}
-	nodes := s.cfg.Store.EnabledNodes()
+	all := s.cfg.Store.EnabledNodes()
+	var nodes []subscription.Node
+	var ids []string
+	for _, n := range all {
+		if !n.ChainInternal {
+			nodes = append(nodes, n)
+			ids = append(ids, store.NodeID(n))
+		}
+	}
 	if len(nodes) == 0 {
 		return nil
 	}
-	// Dedupe before probing, for the same reason BuildConfig does: chained nodes
-	// are resolved by tag, and duplicate tags would make a chain hop ambiguous.
-	// IDs are captured first because DedupeTags rewrites the tags in place and
-	// the store is keyed by ID.
-	ids := make([]string, len(nodes))
-	for i, n := range nodes {
-		ids[i] = store.NodeID(n)
+	var results []tester.Result
+	if selected, ok := s.cfg.Tester.(interface {
+		TestSelectedNodes(context.Context, []subscription.Node, []subscription.Node) []tester.Result
+	}); ok {
+		results = selected.TestSelectedNodes(ctx, nodes, all)
+	} else {
+		results = s.cfg.Tester.TestNodes(ctx, nodes)
 	}
-	subscription.DedupeTags(nodes)
-
-	results := s.cfg.Tester.TestNodes(ctx, nodes)
 	reachable := 0
 	for i, res := range results {
 		if i >= len(ids) {

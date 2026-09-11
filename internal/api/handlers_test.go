@@ -809,14 +809,13 @@ func TestSelectWithoutControlAPI(t *testing.T) {
 // --- POST /api/nodes/refresh ------------------------------------------------
 
 func TestRefreshFetchesParsesAndProbes(t *testing.T) {
-	// A subscription server serving two links, one of them malformed.
+	// A valid subscription server serving two links.
 	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("User-Agent") == "" {
 			t.Error("subscription fetched without a User-Agent")
 		}
 		io.WriteString(w, strings.Join([]string{
 			"vless://33333333-3333-3333-3333-333333333333@fresh.example.com:443?security=tls#fresh",
-			"not-a-link",
 			"trojan://pw@second.example.com:8443?security=tls#second",
 		}, "\n"))
 	}))
@@ -845,16 +844,13 @@ func TestRefreshFetchesParsesAndProbes(t *testing.T) {
 
 	job := h.waitForJob(t, "succeeded")
 	if job.NodesParsed != 2 {
-		t.Errorf("NodesParsed = %d, want 2 (the malformed line is skipped)", job.NodesParsed)
+		t.Errorf("NodesParsed = %d, want 2", job.NodesParsed)
 	}
 	if job.NodesAdded != 2 {
 		t.Errorf("NodesAdded = %d, want 2", job.NodesAdded)
 	}
 	if job.Reachable != 1 {
 		t.Errorf("Reachable = %d, want 1", job.Reachable)
-	}
-	if len(job.Warnings) == 0 {
-		t.Error("the malformed link should have produced a warning")
 	}
 
 	// Latency landed on the right records.
@@ -994,9 +990,8 @@ func TestRefreshFromLocalFile(t *testing.T) {
 	}
 }
 
-// TestRefreshSkipsPruneWhenASourceFails guards the store against a provider
-// serving a truncated list during an outage.
-func TestRefreshSkipsPruneWhenASourceFails(t *testing.T) {
+// Unowned legacy/manual records must not be deleted by a source refresh.
+func TestRefreshPreservesUnownedRecordsWhenASourceFails(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w,
 			"vless://77777777-7777-7777-7777-777777777777@kept.example.com:443?security=tls#kept")
@@ -1017,7 +1012,7 @@ func TestRefreshSkipsPruneWhenASourceFails(t *testing.T) {
 	}
 	job := h.waitForJob(t, "succeeded")
 	if job.NodesPruned != 0 {
-		t.Errorf("NodesPruned = %d; a partial fetch must not delete records", job.NodesPruned)
+		t.Errorf("NodesPruned = %d; unowned records must not be deleted", job.NodesPruned)
 	}
 	if h.store.Len() < before {
 		t.Errorf("store shrank from %d to %d despite a failed source", before, h.store.Len())

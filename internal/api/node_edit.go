@@ -73,6 +73,18 @@ func (s *Service) SetNodeDetour(ctx context.Context, id, target string) error {
 	if err != nil {
 		return err
 	}
+	if old.ChainID != "" {
+		return fmt.Errorf("%w: rebuild saved chains with the Chain Builder", ErrInvalidInput)
+	}
+	if target != "" {
+		hop, err := s.cfg.Store.Get(target)
+		if err != nil {
+			return err
+		}
+		if hop.Node.ChainInternal {
+			return fmt.Errorf("%w: internal chain hops cannot be targeted", ErrInvalidInput)
+		}
+	}
 	if err := s.cfg.Store.SetDetour(id, target); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
@@ -89,17 +101,26 @@ func (s *Service) SetNodeDetour(ctx context.Context, id, target string) error {
 }
 func (h *handlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID string `json:"node_id"`
+		IDs []string `json:"node_ids"`
+		ID  string   `json:"node_id"`
 	}
 	if err := decodeBody(r, &req); err != nil {
 		writeError(w, 400, err.Error())
 		return
 	}
-	if err := h.svc.DeleteManual(r.Context(), req.ID); err != nil {
+	if req.ID != "" {
+		if len(req.IDs) > 0 {
+			writeError(w, 400, "use node_ids or node_id, not both")
+			return
+		}
+		req.IDs = []string{req.ID}
+	}
+	count, err := h.svc.DeleteNodes(r.Context(), req.IDs)
+	if err != nil {
 		h.dashboardError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]string{"message": "Manual config deleted"})
+	writeJSON(w, 200, map[string]any{"deleted": count, "message": "Selected configurations deleted"})
 }
 func (h *handlers) detourNode(w http.ResponseWriter, r *http.Request) {
 	var req struct {

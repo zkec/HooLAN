@@ -28,15 +28,15 @@ trusted. With no configured token, the existing unauthenticated mode remains.
 
 ## Controls
 
-- **Subscriptions:** save a name and HTTP(S) URL, refresh one source or all
-  sources, and ping all configurations belonging to one source. Browser-added
-  sources coexist with `-sub`/`PROXY_MANAGER_SUBS` sources. File sources remain
-  available only through administrator configuration, not the browser API.
-- **Manual Configs:** add one supported node URI, test its latency, and activate
-  it. A node can also belong to subscriptions without being duplicated.
+- **Configurations:** add subscriptions and manual links, then use one combined
+  node list with checkboxes, Bulk Ping and Bulk Delete. Every successful source
+  refresh replaces its membership and prunes stale nodes; shared/manual nodes
+  remain. The Chain Builder saves independent ordered multi-hop copies. Usage
+  statistics are expandable in this tab. See [configuration workflow](configuration-workflow.md)
+  for batch API payloads, pruning details and chain semantics.
 - **Latency:** “Ping” measures an HTTP request through the actual proxy node,
   not ICMP. Jobs are asynchronous and bounded by the existing probe concurrency
-  and refresh timeout. Single-node tests retain detour dependencies without
+  and refresh timeout. Selected-node tests retain detour dependencies without
   testing unrelated nodes. One refresh or latency job runs at a time.
 - **Settings:** choose an engine DNS resolver (IP or IP:port; IPv6 ports use
   `[address]:port`), or leave it blank for the system resolver. Toggle Iran

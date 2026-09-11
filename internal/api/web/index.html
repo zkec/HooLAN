@@ -36,10 +36,7 @@
       <label class="switch" for="auto-toggle"><input id="auto-toggle" type="checkbox" role="switch" disabled aria-label="Automatic node selection" /><span class="switch-track" aria-hidden="true"></span><span id="auto-toggle-label" class="switch-label">Manual</span></label>
     </section>
     <div class="tabs" role="tablist" aria-label="Dashboard sections">
-      <button id="tab-subscriptions" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panel-subscriptions" data-tab="subscriptions">Subscriptions <span id="subscription-count" class="count">0</span></button>
-      <button id="tab-manual" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-manual" tabindex="-1" data-tab="manual">Manual Configs <span id="manual-count" class="count">0</span></button>
-      <button id="tab-usage" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-usage" tabindex="-1" data-tab="usage">Usage</button>
-      <button id="tab-rules" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-rules" tabindex="-1" data-tab="rules">Routing rules</button>
+      <button id="tab-configurations" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panel-configurations" data-tab="configurations">Configurations</button>
       <button id="tab-settings" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1" data-tab="settings">Settings</button>
       <button id="tab-logs" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-logs" tabindex="-1" data-tab="logs">Live logs <span id="log-dot" class="dot" aria-hidden="true"></span></button>
     </div>
@@ -47,38 +44,48 @@
       <p id="job" role="status"></p>
       <details id="job-warnings" hidden><summary>Task warnings</summary><ul id="job-warnings-list"></ul></details>
     </section>
-    <section id="panel-subscriptions" role="tabpanel" aria-labelledby="tab-subscriptions" tabindex="0">
+    <section id="panel-configurations" role="tabpanel" aria-labelledby="tab-configurations" tabindex="0">
+
+      <div class="card form-card"><h2>Add a configuration</h2><p class="muted small">Paste a single node link, such as vless://, vmess://, trojan:// or ss://.</p><form id="node-form" class="node-form"><div class="field field-grow"><label for="node-link">Node link</label><input id="node-link" name="link" type="text" required spellcheck="false" autocomplete="off" placeholder="vless://…" /></div><button class="button primary" type="submit" data-mutation>Add config</button></form></div>
+
       <div class="card form-card">
-        <h2>Add a subscription</h2><p class="muted small">Save a source URL, then refresh it to import and test its nodes.</p>
+        <h2>Add a subscription</h2><p class="muted small">Each successful refresh replaces that source’s node list. Removed provider nodes are pruned.</p>
         <form id="subscription-form" class="subscription-form">
           <div class="field"><label for="sub-name">Name <span class="muted">(optional)</span></label><input id="sub-name" name="name" type="text" maxlength="120" placeholder="My provider" autocomplete="off" /></div>
           <div class="field field-grow"><label for="sub-url">Subscription URL</label><input id="sub-url" name="url" type="url" inputmode="url" required spellcheck="false" autocomplete="off" placeholder="https://provider.example/subscription" /></div>
           <button class="button primary" type="submit" data-mutation>Add subscription</button>
         </form>
       </div>
-      <div class="section-heading"><div><h2>Your subscriptions</h2><p class="muted small">Each source keeps its own node list. Latencies are shown fastest first.</p></div><button id="refresh-all-btn" class="button" type="button" data-mutation data-job>Refresh all &amp; test</button></div>
+      <div class="section-heading"><div><h2>Your subscriptions <span id="subscription-count" class="count">0</span></h2><p class="muted small">Nodes from all sources appear once in the list below.</p></div><button id="refresh-all-btn" class="button" type="button" data-mutation data-job>Refresh all &amp; test</button></div>
       <div id="subscriptions-list" class="stack"></div>
       <div id="subscriptions-empty" class="empty card" hidden><span class="empty-symbol" aria-hidden="true">↗</span><h3>No subscriptions yet</h3><p class="muted">Add a subscription URL above to bring your provider’s nodes into the gateway.</p></div>
-    </section>
-    <section id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" tabindex="0" hidden>
-      <div class="card form-card"><h2>Add a configuration</h2><p class="muted small">Paste a single node link, such as vless://, vmess://, trojan:// or ss://.</p><form id="node-form" class="node-form"><div class="field field-grow"><label for="node-link">Node link</label><input id="node-link" name="link" type="text" required spellcheck="false" autocomplete="off" placeholder="vless://…" /></div><button class="button primary" type="submit" data-mutation>Add config</button></form></div>
-      <div class="section-heading"><div><h2>Manual configurations</h2><p class="muted small">Test latency individually, then activate a node to use it.</p></div></div>
-      <div id="manual-nodes" class="card"></div>
-      <div id="manual-empty" class="empty card" hidden><span class="empty-symbol" aria-hidden="true">+</span><h3>No manual configs yet</h3><p class="muted">Add a node link above. Your configuration is saved on this gateway.</p></div>
+      <div class="card bulk-bar" role="group" aria-label="Selected configuration actions">
+        <label><input id="select-all-nodes" type="checkbox" /> Select all</label><span id="selected-count" role="status">0 selected</span>
+        <button id="bulk-ping" class="button" type="button" data-mutation data-job>Bulk Ping</button>
+        <button id="bulk-delete" class="button" type="button" data-mutation data-job>Bulk Delete</button>
+      </div>
+      <div id="config-nodes" class="card"></div>
+      <div id="configs-empty" class="empty card" hidden>No configurations yet. Add a link or refresh a subscription above.</div>
+      <section class="card form-card" aria-labelledby="builder-heading">
+        <h2 id="builder-heading">Chain Builder</h2><p class="muted small">Choose 2–8 single-hop nodes in traversal order: first hop → intermediate hops → exit. Saved chains are independent copies; source configurations stay unchanged.</p>
+        <form id="chain-builder-form"><div class="field"><label for="chain-builder-name">Chain name</label><input id="chain-builder-name" required maxlength="100" placeholder="My multi-hop connection" /></div>
+        <div class="field"><label for="chain-builder-node">Add a hop</label><select id="chain-builder-node"></select></div><button id="chain-add-hop" type="button" class="button" data-mutation>Add hop</button>
+        <ol id="chain-hops" class="chain-hops" aria-label="Hop order"></ol><p id="chain-preview" role="status"></p>
+        <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button></form>
+      </section>
+      <details class="usage-details"><summary>Internet usage</summary>
+      <div class="card form-card"><h2>Internet usage through sing-box</h2><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-node and direct attribution is estimated from one-second connection samples; short flows can be missed. Local AdGuard/Docker traffic and raw forwarding while OFF are excluded. A chain is attributed to its selected exit node, not counted again for each hop.</p><div id="usage-nodes"></div></div>
+</details>
     </section>
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+
       <form id="settings-form" class="card settings-card">
         <h2>Routing &amp; DNS</h2><p class="muted small">Changes are saved on the gateway and applied to the running engine.</p>
         <div class="setting"><div class="field"><label for="dns-server">DNS server</label><p id="dns-help" class="muted small">Resolver used by the proxy engine. Leave blank for the system resolver, or enter an IP address with an optional port, for example 1.1.1.1 or [2606:4700:4700::1111]:53. Local AdGuard DNS traffic still bypasses interception.</p><input id="dns-server" name="dns_server" type="text" spellcheck="false" autocomplete="off" aria-describedby="dns-help" placeholder="System resolver" /></div></div>
         <div class="setting setting-row"><div><label for="iran-bypass">Iran bypass</label><p id="iran-help" class="muted small">Route Iranian destinations directly, outside the selected proxy.</p></div><label class="switch" for="iran-bypass"><input id="iran-bypass" type="checkbox" role="switch" aria-describedby="iran-help" /><span class="switch-track" aria-hidden="true"></span><span id="iran-label" class="switch-label">Off</span></label></div>
         <div class="form-footer"><span id="settings-note" class="muted small" role="status"></span><button class="button primary" type="submit" data-mutation>Save settings</button></div>
       </form>
-    </section>
-    <section id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" tabindex="0" hidden>
-      <div class="card form-card"><h2>Internet usage through sing-box</h2><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-node and direct attribution is estimated from one-second connection samples; short flows can be missed. Local AdGuard/Docker traffic and raw forwarding while OFF are excluded. A chain is attributed to its selected exit node, not counted again for each hop.</p><div id="usage-nodes"></div></div>
-    </section>
-    <dialog id="chain-dialog"><form id="chain-form" class="form-card"><h2>Proxy chain</h2><p id="chain-name"></p><p class="muted small">The selected configuration reaches its server through the detour node. Traffic exits through the selected configuration. Saving restarts an active proxy.</p><div class="field"><label for="chain-target">Detour through</label><select id="chain-target"></select></div><div class="form-footer"><button id="chain-cancel" type="button" class="button">Cancel</button><button type="submit" class="button primary" data-mutation>Save chain</button></div></form></dialog>
-    <section id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" tabindex="0" hidden>
+
       <form id="rules-form" class="card form-card">
         <h2>GeoIP, geosite and routing</h2>
         <p class="muted small">Updates download and validate both rule sets. Applying changes briefly restarts an active proxy. The update schedule runs even when the proxy is off.</p>

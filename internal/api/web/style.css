@@ -1203,3 +1203,8 @@ dialog { background: #17232e; color: #edf5f6; border: 1px solid #354552; border-
 dialog::backdrop { background: #0009; }
 #rules-status { overflow-wrap: anywhere; }
 #usage-nodes { overflow-x: auto; }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1rem; margin: 1rem 0; position: sticky; top: 0; z-index: 2; background: #17232e; }
+.chain-hops { padding-left: 1.5rem; }
+.chain-hops li { margin: .75rem 0; }
+#chain-preview { overflow-wrap: anywhere; }
+.usage-details { margin: 1rem 0; }

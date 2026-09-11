@@ -632,3 +632,6 @@ pins the self-connection fix; the `/proc/net/tcp` parser tests bind a real socke
 rather than trusting a fixture. If you touch route rule ordering or the readiness
 probe, run the engine and api suites and read the comments before assuming a
 failure is the test's fault.
+
+Dashboard bulk operations, strict subscription sync and the ordered Chain Builder
+are documented in [Configuration workflow](docs/configuration-workflow.md).

@@ -8,7 +8,7 @@
   var POLL_BACKOFF = 15000;
   var MAX_LOG_LINES = 500;
   var state = {
-    csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
+    selectedNodes: new Set(), chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
     inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
@@ -53,10 +53,11 @@
     state.settings = null;
     state.selection = {};
     state.csrf = '';
-    ['subscriptions-list', 'manual-nodes', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes'].forEach(function (id) { text($(id), ''); });
+    ['subscriptions-list', 'config-nodes', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes'].forEach(function (id) { text($(id), ''); });
     ['stat-engine', 'stat-rules', 'stat-nodes', 'stat-active'].forEach(function (id) { text($(id), '—'); });
     ['stat-pid', 'stat-rules-err', 'stat-nodes-sub', 'stat-active-sub'].forEach(function (id) { text($(id), ''); });
-    ['subscription-form', 'node-form', 'settings-form', 'rules-form'].forEach(function (id) { $(id).reset(); });
+    state.selectedNodes.clear(); state.chainHops = [];
+    ['subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
   }
   function signInRequired() {
     if (state.exiting) return;
@@ -110,6 +111,7 @@
     $('proxy-toggle').disabled = !state.status || state.busy;
     $('auto-toggle').disabled = !state.status || state.busy;
     $('logout-btn').disabled = state.busy;
+    updateBulkControls();
     $('refresh-all-btn').disabled = !state.authenticated || state.busy || state.jobRunning || !state.subscriptions.length;
   }
 
@@ -191,7 +193,7 @@
     var table = element('table', 'node-table');
     var header = element('thead');
     var headingRow = element('tr');
-    [ ['Configuration', ''], ['Protocol', 'protocol-column'], ['Server', 'server-column'], ['Latency', ''], ['Checked', 'checked-column'], ['Actions', 'action-heading'] ].forEach(function (column) {
+    [ ['Select', ''], ['Configuration', ''], ['Protocol', 'protocol-column'], ['Server', 'server-column'], ['Latency', ''], ['Checked', 'checked-column'], ['Actions', 'action-heading'] ].forEach(function (column) {
       var th = element('th', column[1], column[0]);
       th.scope = 'col';
       headingRow.appendChild(th);
@@ -204,6 +206,7 @@
       var pinned = !state.selection.auto && (node.selected || state.selection.node_id === node.id);
       var active = !!activeTag && (node.tag === activeTag || node.effective_tag === activeTag);
       var row = element('tr', pinned || active ? 'selected' : '');
+      var checkCell = element('td'); var check = document.createElement('input'); check.type = 'checkbox'; check.dataset.selectNode = node.id; check.checked = state.selectedNodes.has(node.id); check.disabled = state.busy; check.setAttribute('aria-label', 'Select ' + (node.tag || node.server)); checkCell.appendChild(check); row.appendChild(checkCell);
       var name = element('td', 'node-name', node.tag || node.server);
       if (pinned || active) name.appendChild(element('span', 'pill good', pinned ? 'Pinned' : 'Active'));
       if (state.status && state.status.engine_running && !node.in_config) name.appendChild(element('span', 'pill', 'Not loaded'));
@@ -219,15 +222,10 @@
       row.appendChild(element('td', 'muted small checked-column', ago(node.last_checked_at)));
       var actions = element('td');
       var buttons = element('div', 'node-actions');
-      var ping = actionButton('Ping', 'test-node', node.id, false, true);
-      ping.setAttribute('aria-label', 'Test latency for ' + (node.tag || node.server));
-      buttons.appendChild(ping);
       var select = actionButton(pinned ? 'Pinned' : 'Activate', 'select-node', node.id, pinned || !node.enabled, false);
       select.setAttribute('aria-label', (pinned ? 'Pinned configuration: ' : 'Activate ') + (node.tag || node.server));
       if (pinned) select.classList.add('active-button');
       buttons.appendChild(select);
-      buttons.appendChild(actionButton('Chain', 'chain-node', node.id, false, false));
-      if (isManual(node)) buttons.appendChild(actionButton('Delete', 'delete-node', node.id, false, false));
       actions.appendChild(buttons);
       row.appendChild(actions);
       body.appendChild(row);
@@ -264,18 +262,15 @@
       heading.appendChild(details);
       var actions = element('div', 'subscription-buttons');
       actions.appendChild(actionButton('Refresh', 'refresh-subscription', subscription.id, false, true));
-      actions.appendChild(actionButton('Ping all', 'test-subscription', subscription.id, !nodes.length, true));
       heading.appendChild(actions);
       card.appendChild(heading);
-      card.appendChild(makeNodeTable(nodes, 'No nodes imported yet. Refresh this subscription to load its configurations.'));
       $('subscriptions-list').appendChild(card);
     });
-    var manual = state.nodes.filter(isManual);
-    text($('manual-count'), String(manual.length));
-    text($('manual-nodes'), '');
-    $('manual-nodes').hidden = !manual.length;
-    $('manual-empty').hidden = !!manual.length;
-    if (manual.length) $('manual-nodes').appendChild(makeNodeTable(manual, 'No manual configurations.'));
+    var validIDs = new Set(state.nodes.map(function(n){return n.id;}));
+    state.selectedNodes.forEach(function(id){if(!validIDs.has(id))state.selectedNodes.delete(id);});
+    text($('config-nodes'), ''); $('configs-empty').hidden = !!state.nodes.length;
+    $('config-nodes').appendChild(makeNodeTable(state.nodes, 'No configurations yet.'));
+    renderChainBuilder();
     updateControls();
     if (focusAction && focusID) {
       var replacement = Array.from(document.querySelectorAll('[data-action]')).find(function (button) { return button.dataset.action === focusAction && button.dataset.id === focusID; });
@@ -331,8 +326,8 @@
       await fetchStatus();
       if (Date.now() - state.inventoryAt > 15000) await fetchInventory();
       if (!state.settings) renderSettings(await call('GET', '/api/settings'));
-      if (window.location.hash === '#usage') renderUsage(await call('GET', '/api/usage'));
-      if (state.rulesLoaded || window.location.hash === '#rules') renderRules(await call('GET', '/api/rules'));
+      if (window.location.hash === '#configurations') renderUsage(await call('GET', '/api/usage'));
+      if (state.rulesLoaded || window.location.hash === '#settings') renderRules(await call('GET', '/api/rules'));
     } catch (error) {
       if (!state.exiting) {
         state.offline = true;
@@ -379,7 +374,9 @@
 
   function activateTab(name, focus) {
     var tabs = Array.from(document.querySelectorAll('[data-tab]'));
-    if (!tabs.some(function (tab) { return tab.dataset.tab === name; })) name = 'subscriptions';
+    if (['subscriptions','manual','usage'].includes(name)) name = 'configurations';
+    if (name === 'rules') name = 'settings';
+    if (!tabs.some(function (tab) { return tab.dataset.tab === name; })) name = 'configurations';
     tabs.forEach(function (tab) {
       var active = tab.dataset.tab === name;
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -488,10 +485,7 @@
       var button = event.target.closest('[data-action]');
       if (!button || button.disabled) return;
       var id = button.dataset.id;
-      if (button.dataset.action === 'chain-node') openChain(id);
-      if (button.dataset.action === 'delete-node' && window.confirm('Delete this manual config? If it also belongs to a subscription, refreshing that subscription can import it again.')) mutate('Delete config', async function () { await call('POST', '/api/nodes/delete', { node_id: id }); toast('Config deleted.', 'ok'); });
       if (button.dataset.action === 'select-node') selectNode(id);
-      if (button.dataset.action === 'test-node') startJob('/api/nodes/test', { node_id: id }, 'Latency test started.');
       if (button.dataset.action === 'test-subscription') startJob('/api/subscriptions/test', { subscription_id: id }, 'Subscription latency test started.');
       if (button.dataset.action === 'refresh-subscription') startJob('/api/subscriptions/refresh', { subscription_id: id }, 'Subscription refresh started.');
     });
@@ -563,12 +557,38 @@
     window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
   }
 
-  function openChain(id) {
-    var node = state.nodes.find(function(n){return n.id === id;}); if (!node) return;
-    $('chain-dialog').dataset.node = id; text($('chain-name'), node.tag);
-    var select = $('chain-target'); text(select, ''); var empty = element('option', '', 'No detour'); empty.value = ''; select.appendChild(empty);
-    state.nodes.filter(function(n){return n.id !== id && n.enabled;}).forEach(function(n){var option=element('option','',n.tag+' · '+n.server);option.value=n.id;select.appendChild(option);}); select.value=node.detour_id || ''; $('chain-dialog').showModal();
+  function updateBulkControls() {
+    var count=state.selectedNodes.size;
+    text($('selected-count'), count+' selected');
+    $('bulk-ping').disabled=$('bulk-delete').disabled=!count || state.busy || state.jobRunning || !state.authenticated;
+    $('select-all-nodes').disabled=state.busy || !state.nodes.length;
+    $('select-all-nodes').checked=!!state.nodes.length && count===state.nodes.length;
+    $('select-all-nodes').indeterminate=count>0 && count<state.nodes.length;
+    document.querySelectorAll('[data-select-node]').forEach(function(box){box.checked=state.selectedNodes.has(box.dataset.selectNode);box.disabled=state.busy;});
+    $('chain-save').disabled=state.busy || state.jobRunning || state.chainHops.length<2 || !state.authenticated;
+    $('chain-add-hop').disabled=state.busy || state.chainHops.length>=8 || !$('chain-builder-node').value || !state.authenticated;
   }
+  function renderChainBuilder() {
+    var select=$('chain-builder-node'),previous=select.value; text(select,'');
+    state.nodes.filter(function(n){return n.enabled && !n.detour_id && !n.detour && !state.chainHops.includes(n.id);}).forEach(function(n){var option=element('option','',n.tag+' · '+n.server);option.value=n.id;select.appendChild(option);});
+    if(Array.from(select.options).some(function(o){return o.value===previous;}))select.value=previous;
+    var label=function(id){var n=state.nodes.find(function(n){return n.id===id;});return n?n.tag:'Unavailable node';};
+    text($('chain-hops'),'');
+    state.chainHops.forEach(function(id,index){var row=element('li','',label(id)+' ');
+      [['↑',-1],['↓',1],['Remove',0]].forEach(function(action){var b=element('button','button subtle',action[0]);b.type='button';b.dataset.mutation='';b.setAttribute('aria-label',action[0]+' hop '+(index+1));b.addEventListener('click',function(){if(action[1]===0)state.chainHops.splice(index,1);else{var next=index+action[1];if(next<0||next>=state.chainHops.length)return;var tmp=state.chainHops[next];state.chainHops[next]=id;state.chainHops[index]=tmp;}renderChainBuilder();updateControls();});row.appendChild(b);});$('chain-hops').appendChild(row);
+    });
+    text($('chain-preview'),state.chainHops.map(label).join(' → '));
+  }
+  function wireBatchEvents() {
+    document.addEventListener('change',function(event){var id=event.target.dataset.selectNode;if(!id)return;if(event.target.checked)state.selectedNodes.add(id);else state.selectedNodes.delete(id);updateBulkControls();});
+    $('select-all-nodes').addEventListener('change',function(){state.selectedNodes=new Set(this.checked?state.nodes.map(function(n){return n.id;}):[]);updateBulkControls();});
+    $('bulk-ping').addEventListener('click',function(){startJob('/api/nodes/test',{node_ids:Array.from(state.selectedNodes)},'Selected latency tests started.');});
+    $('bulk-delete').addEventListener('click',function(){var ids=Array.from(state.selectedNodes);if(!window.confirm('Delete '+ids.length+' selected configurations? Deleting the active config switches to Auto; deleting all configs stops the proxy. Subscription refresh may reimport provider nodes.'))return;mutate('Bulk delete',async function(){await call('POST','/api/nodes/delete',{node_ids:ids});state.selectedNodes.clear();toast('Selected configurations deleted.','ok');});});
+    $('chain-builder-node').addEventListener('change',updateBulkControls);
+    $('chain-add-hop').addEventListener('click',function(){var id=$('chain-builder-node').value;if(id && !state.chainHops.includes(id) && state.chainHops.length<8)state.chainHops.push(id);renderChainBuilder();updateControls();});
+    $('chain-builder-form').addEventListener('submit',function(event){event.preventDefault();var payload={name:$('chain-builder-name').value.trim(),node_ids:state.chainHops.slice()};mutate('Save chain',async function(){await call('POST','/api/chains',payload);state.chainHops=[];$('chain-builder-name').value='';renderChainBuilder();toast('New chained configuration saved.','ok');});});
+  }
+
   function addRuleSource(source) {
     var row = element('article','card routing-rule');
     ruleField(row,'Unique tag (custom-...)','tag',source.tag); ruleField(row,'HTTPS .srs URL','url',source.url);
@@ -648,8 +668,6 @@
     $('calendar-mode').addEventListener('change',syncCalendarControls);
 
     $('source-add').addEventListener('click', function () { addRuleSource({tag:'custom-',url:'',enabled:true,action:'direct'}); state.rulesDirty = true; });
-    $('chain-cancel').addEventListener('click', function () { $('chain-dialog').close(); });
-    $('chain-form').addEventListener('submit', function (event) { event.preventDefault(); var id = $('chain-dialog').dataset.node; var target = $('chain-target').value; mutate('Save chain', async function () { await call('PUT','/api/nodes/detour',{node_id:id,detour_id:target}); $('chain-dialog').close(); toast('Chain saved.', 'ok'); }); });
 
     $('rules-form').addEventListener('input', function () { state.rulesDirty = true; text($('rules-note'), 'Unsaved changes'); });
     $('rules-schedule').addEventListener('change', function () { if (this.value !== 'custom') $('rules-days').value = this.value; });
@@ -670,6 +688,7 @@
     try { window.localStorage.removeItem('pm.token'); window.localStorage.removeItem('pm.subUrl'); } catch (ignored) {}
     wireEvents();
     wireRuleEvents();
+    wireBatchEvents();
     updateControls();
     activateTab(window.location.hash.slice(1), false);
     try {

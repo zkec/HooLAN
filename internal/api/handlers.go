@@ -221,7 +221,9 @@ func (h *handlers) listNodes(w http.ResponseWriter, r *http.Request) {
 
 	views := make([]NodeView, 0, len(records))
 	for _, rec := range records {
-		views = append(views, h.viewOf(rec, tagByID, selectedID))
+		if !rec.Node.ChainInternal {
+			views = append(views, h.viewOf(rec, tagByID, selectedID))
+		}
 	}
 	// Fastest first, unmeasured last -- the same order EnabledNodes uses, so the
 	// UI list matches the urltest group's preference.
@@ -291,11 +293,9 @@ func displayTag(n subscription.Node) string {
 // --- POST /api/nodes/refresh ------------------------------------------------
 
 func (h *handlers) refreshNodes(w http.ResponseWriter, r *http.Request) {
-	// Opt-in: pruning deletes records the current subscription no longer lists,
-	// along with their latency history, so it is never the default.
-	prune := isTruthyParam(r.URL.Query().Get("prune"))
-
-	job, err := h.svc.StartRefresh(prune)
+	// Every successful source refresh is authoritative; the legacy prune query
+	// parameter no longer changes synchronization semantics.
+	job, err := h.svc.StartRefresh(true)
 	switch {
 	case errors.Is(err, ErrRefreshInProgress):
 		writeJSON(w, http.StatusConflict, map[string]any{
