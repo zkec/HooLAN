@@ -1216,3 +1216,77 @@ dialog::backdrop { background: #0009; }
 .device-name-form input { min-width: 130px; max-width: 220px; }
 .device-table select { min-width: 180px; max-width: 320px; }
 .device-table th { text-align: left; }
+
+/* Shared controls and theme tokens, including controls created after page load. */
+:root { --field-bg: #0d1521; --field-border: #334258; --focus: #69dbbf; --button-bg: #19273a; --button-hover: #23364e; --success-bg: #123328; --error-bg: #361f29; }
+:root[data-theme="light"] {
+  color-scheme: light; --bg: #f1f5f9; --panel: #ffffff; --panel-raised: #e8eef5;
+  --line: #cbd5e1; --text: #182636; --muted: #506278; --accent: #08765f;
+  --accent-dark: #dcf7ed; --blue: #245fb2; --error: #af213c; --warn: #875600;
+  --field-bg: #ffffff; --field-border: #9aadc2; --focus: #08765f;
+  --button-bg: #e8eef5; --button-hover: #d7e3ee; --success-bg: #e1f4ea; --error-bg: #fbe6eb;
+}
+input:not([type=checkbox]):not([type=radio]), select, textarea {
+  font: inherit; color: var(--text); background-color: var(--field-bg);
+  border: 1px solid var(--field-border); border-radius: 8px;
+  padding: .65rem .8rem; min-height: 42px; max-width: 100%;
+}
+select {
+  appearance: none; padding-inline-end: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%239caec5' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right .8rem center;
+}
+select option, select optgroup { color: var(--text); background: var(--field-bg); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: .85; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, button:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 3px; border-color: var(--focus);
+}
+input[type=checkbox] { accent-color: var(--accent); }
+select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
+.button { background: var(--button-bg); color: var(--text); border-color: var(--field-border); }
+.button:hover:not(:disabled) { background: var(--button-hover); border-color: var(--focus); }
+.button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.button.subtle { background: transparent; }
+.bulk-bar, dialog { background: var(--panel); color: var(--text); border-color: var(--line); }
+.config-group > summary { cursor: pointer; list-style: none; }
+.config-group > summary::-webkit-details-marker { display: none; }
+.config-group > summary::after { content: '⌄'; font-size: 1.4rem; margin-inline-start: auto; transition: transform .15s ease; }
+.config-group[open] > summary::after { transform: rotate(180deg); }
+.group-source { margin: 0 1.2rem; }
+.config-group .bulk-bar { position: static; margin: 0; }
+.edit-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.edit-grid input, .edit-grid select { width: 100%; }
+.edit-grid input[type=checkbox] { width: auto; }
+#node-editor { width: min(95vw, 46rem); max-height: 90vh; overflow: auto; padding: 1.5rem; }
+#node-editor::backdrop { background: #0008; }
+.header-actions { flex-wrap: wrap; }
+:root[data-theme="light"] .header { background: #ffffffed; border-color: var(--line); }
+:root[data-theme="light"] .node-table thead, :root[data-theme="light"] .tab { background: var(--panel-raised); color: var(--text); }
+:root[data-theme="light"] .node-table tr.selected { background: var(--success-bg); }
+:root[data-theme="light"] .node-table td, :root[data-theme="light"] .node-table th { border-color: var(--line); }
+:root[data-theme="light"] .log-lines { background: var(--field-bg); color: var(--text); }
+:root[data-theme="light"] .notice, :root[data-theme="light"] .job-panel, :root[data-theme="light"] .toast { background: var(--panel-raised); color: var(--text); border-color: var(--line); }
+:root[data-theme="light"] .pill { background: var(--panel-raised); color: var(--text); border-color: var(--line); }
+:root[data-theme="light"] .pill.good, :root[data-theme="light"] .toast.ok { background: var(--success-bg); color: var(--accent); }
+:root[data-theme="light"] .pill.bad, :root[data-theme="light"] .toast.err { background: var(--error-bg); color: var(--error); }
+:root[data-theme="light"] .tab[aria-selected=true] { background: var(--accent-dark); color: var(--accent); border-color: var(--accent); }
+:root[data-theme="light"] .node-server, :root[data-theme="light"] .node-protocol, :root[data-theme="light"] .log-time { color: var(--muted); }
+:root[data-theme="light"] .latency.good { color: var(--accent); }
+:root[data-theme="light"] .latency.bad { color: var(--error); }
+[dir=rtl] select { background-position: left .8rem center; }
+[dir=rtl] .node-table th, [dir=rtl] .node-table td, [dir=rtl] .device-table th { text-align: right; }
+[dir=rtl] .header-inner, [dir=rtl] .page-heading, [dir=rtl] .subscription-heading { direction: rtl; }
+[dir=rtl] .brand-icon { margin-inline-end: .5rem; }
+[dir=rtl] .chain-hops { padding-right: 1.5rem; padding-left: 0; }
+[dir=rtl] .log-lines, [dir=rtl] .node-server, input[type=url], input[type=password], input[type=number], #node-link, #dns-server, #edit-server, #edit-sni, #edit-public_key, #edit-short_id { direction: ltr; unicode-bidi: isolate; }
+[dir=rtl] .log-lines { text-align: left; }
+@media (max-width: 640px) { .edit-grid { grid-template-columns: 1fr; } .header-actions { gap: .4rem; } #theme-toggle, #language-toggle { padding: .4rem .6rem; } }
+@media (prefers-reduced-motion: reduce) { .config-group > summary::after { transition: none; } }
+.header-actions { margin-left: 0; margin-inline-start: auto; }
+[dir=rtl] .switch-track:after { left: auto; right: 3px; }
+[dir=rtl] .switch input:checked+.switch-track:after { transform: translateX(-17px); }
+[dir=rtl] .toasts { right: auto; left: 1.2rem; }
+[dir=rtl] .job-panel ul { padding-left: 0; padding-right: 1.3rem; }
+:root[data-theme="light"] .switch input:checked+.switch-track:after { background: #ffffff; }
+.button.primary:hover:not(:disabled) { background: var(--accent); color: var(--bg); filter: brightness(.94); }
+.button.active-button { background: var(--accent-dark); color: var(--accent); border-color: var(--accent); }

@@ -15,7 +15,7 @@ func TestEmbeddedAssetsLoaded(t *testing.T) {
 	if initErr != nil {
 		t.Fatalf("loadAssets: %v", initErr)
 	}
-	for _, want := range []string{"/index.html", "/app.js", "/style.css", "/login.html", "/login.js"} {
+	for _, want := range []string{"/index.html", "/app.js", "/style.css", "/login.html", "/login.js", "/preferences.js", "/i18n.js"} {
 		a, ok := assets[want]
 		if !ok {
 			t.Errorf("asset %s not embedded", want)

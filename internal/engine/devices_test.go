@@ -57,3 +57,16 @@ func TestDeviceRoutesOrderStableIDsAndFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectDeviceRule(t *testing.T) {
+	m := NewManager(Options{Logger: quietLogger()})
+	m.ConfigureDeviceRoutes(map[string]string{"192.168.3.141": DefaultDirect})
+	cfg, err := m.BuildConfig(testNodes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := cfg.Route.Rules[len(cfg.Route.Rules)-1]
+	if rule.Outbound != DefaultDirect || rule.SourceIPCIDR[0] != "192.168.3.141/32" {
+		t.Fatalf("wrong direct rule: %+v", rule)
+	}
+}

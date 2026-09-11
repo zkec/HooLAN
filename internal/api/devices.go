@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"proxy-manager/internal/engine"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -67,7 +68,7 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 	if busy {
 		return ErrRefreshInProgress
 	}
-	if req.NodeID != nil && *req.NodeID != "" {
+	if req.NodeID != nil && *req.NodeID != "" && *req.NodeID != engine.DefaultDirect {
 		record, err := s.cfg.Store.Get(*req.NodeID)
 		if err != nil {
 			return err

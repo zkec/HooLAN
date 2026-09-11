@@ -8,7 +8,7 @@
   var POLL_BACKOFF = 15000;
   var MAX_LOG_LINES = 500;
   var state = {
-    groupSelections: new Map(), chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
+    groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
     inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
@@ -56,7 +56,8 @@
     ['subscriptions-list', 'manual-group', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes', 'usage-devices'].forEach(function (id) { text($(id), ''); });
     ['stat-engine', 'stat-rules', 'stat-nodes', 'stat-active'].forEach(function (id) { text($(id), '—'); });
     ['stat-pid', 'stat-rules-err', 'stat-nodes-sub', 'stat-active-sub'].forEach(function (id) { text($(id), ''); });
-    state.groupSelections.clear(); state.chainHops = [];
+    state.groupSelections.clear(); state.chainHops = []; state.chainExistingNodes = []; state.chainEditingID = null;
+    if ($('node-editor').open) $('node-editor').close();
     ['subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
   }
   function signInRequired() {
@@ -134,6 +135,7 @@
     text($('stat-nodes-sub'), (status.nodes_enabled || 0) + ' enabled · ' + (status.nodes_healthy || 0) + ' healthy');
     var selection = state.selection;
     var active = selection.auto ? selection.auto_pick || 'Finding a node…' : selection.tag || selection.active || 'No node selected';
+    $('stat-active').toggleAttribute('data-no-i18n', !!(selection.auto ? selection.auto_pick : selection.tag || selection.active));
     text($('stat-active'), active);
     $('stat-active').title = active;
     text($('stat-active-sub'), selection.auto ? 'Automatically selected' : 'Manually selected');
@@ -207,7 +209,7 @@
       var active = !!activeTag && (node.tag === activeTag || node.effective_tag === activeTag);
       var row = element('tr', pinned || active ? 'selected' : '');
       var checkCell = element('td'); var check = document.createElement('input'); check.type = 'checkbox'; check.dataset.selectNode = node.id; check.dataset.group = group; check.checked = groupSelection(group).has(node.id); check.disabled = state.busy; check.setAttribute('aria-label', 'Select ' + (node.tag || node.server)); checkCell.appendChild(check); row.appendChild(checkCell);
-      var name = element('td', 'node-name', node.tag || node.server);
+      var name = element('td', 'node-name'); var nodeName = element('span', '', node.tag || node.server); nodeName.dataset.noI18n = ''; name.appendChild(nodeName);
       if (pinned || active) name.appendChild(element('span', 'pill good', pinned ? 'Pinned' : 'Active'));
       if (state.status && state.status.engine_running && !node.in_config) name.appendChild(element('span', 'pill', 'Not loaded'));
       row.appendChild(name);
@@ -226,6 +228,7 @@
       select.setAttribute('aria-label', (pinned ? 'Pinned configuration: ' : 'Activate ') + (node.tag || node.server));
       if (pinned) select.classList.add('active-button');
       buttons.appendChild(select);
+      if (node.chain_id || isManual(node)) buttons.appendChild(actionButton('Edit', node.chain_id ? 'edit-chain' : 'edit-node', node.id, false, true));
       actions.appendChild(buttons);
       row.appendChild(actions);
       body.appendChild(row);
@@ -248,16 +251,16 @@
   function makeConfigGroup(group, name, subscription) {
     var nodes = groupNodes(group), selected = groupSelection(group);
     selected.forEach(function (id) { if (!nodes.some(function (n) { return n.id === id; })) selected.delete(id); });
-    var card = element('article', 'card config-group'); card.dataset.configGroup = group;
-    var heading = element('div', 'subscription-heading'), details = element('div'), title = element('div', 'subscription-name');
-    title.appendChild(element('h3', '', name)); title.appendChild(element('span', 'count', String(nodes.length))); details.appendChild(title);
+    var card = element(subscription ? 'details' : 'article', 'card config-group'); card.dataset.configGroup = group;
+    if (subscription) { card.open = state.groupOpen.has(group) ? state.groupOpen.get(group) : false; card.addEventListener('toggle', function () { if (card.isConnected) state.groupOpen.set(group, card.open); }); }
+    var heading = element(subscription ? 'summary' : 'div', 'subscription-heading'), details = element('div'), title = element('div', 'subscription-name');
+    var groupTitle = element('h3', '', name); if (subscription) groupTitle.dataset.noI18n = ''; title.appendChild(groupTitle); title.appendChild(element('span', 'count', String(nodes.length))); details.appendChild(title);
+    if (!subscription) details.appendChild(element('p', 'muted small', 'Manually added configurations and saved chains'));
+    heading.appendChild(details); card.appendChild(heading);
     if (subscription) {
-      var source = element('details', 'subscription-source'); source.appendChild(element('summary', '', 'Show source URL'));
-      source.appendChild(element('p', 'muted', subscription.url)); details.appendChild(source);
-    } else details.appendChild(element('p', 'muted small', 'Manually added configurations and saved chains'));
-    heading.appendChild(details);
-    if (subscription) heading.appendChild(actionButton('Refresh', 'refresh-subscription', subscription.id, false, true));
-    card.appendChild(heading);
+      var source = element('details', 'subscription-source group-source'); source.appendChild(element('summary', '', 'Show source URL'));
+      var url = element('p', 'muted', subscription.url); url.dataset.noI18n = ''; source.appendChild(url); card.appendChild(source);
+    }
     var bar = element('div', 'bulk-bar'); bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', name + ' actions');
     var label = element('label'), all = document.createElement('input'); all.type = 'checkbox'; all.dataset.selectGroup = group;
     label.appendChild(all); label.appendChild(document.createTextNode(' Select all')); bar.appendChild(label);
@@ -266,6 +269,7 @@
       var button = element('button', 'button', action === 'ping' ? 'Bulk Ping' : 'Bulk Delete'); button.type = 'button';
       button.dataset.bulkAction = action; button.dataset.group = group; button.dataset.mutation = ''; button.dataset.job = ''; bar.appendChild(button);
     });
+    if (subscription) bar.appendChild(actionButton('Refresh', 'refresh-subscription', subscription.id, false, true));
     card.appendChild(bar); card.appendChild(makeNodeTable(nodes, 'No configurations in this group yet.', group)); return card;
   }
   function renderInventory() {
@@ -421,7 +425,7 @@
     var placeholder = $('logs-empty');
     if (placeholder) placeholder.remove();
     var level = String(entry.level || 'INFO').toUpperCase();
-    var row = element('div', 'log-line');
+    var row = element('div', 'log-line'); row.dataset.noI18n = '';
     if (level === 'ERROR' || level === 'FATAL') row.classList.add('error');
     if (level === 'WARN' || level === 'WARNING') row.classList.add('warn');
     var timestamp = new Date(entry.time);
@@ -484,6 +488,7 @@
       tab.addEventListener('keydown', function (event) {
         var tabs = Array.from(document.querySelectorAll('[data-tab]'));
         var index = tabs.indexOf(tab);
+        if (document.documentElement.dir === 'rtl') { if (event.key === 'ArrowRight') index = (index + tabs.length - 2) % tabs.length; else if (event.key === 'ArrowLeft') index = (index + 2) % tabs.length; }
         if (event.key === 'ArrowRight') index = (index + 1) % tabs.length;
         else if (event.key === 'ArrowLeft') index = (index + tabs.length - 1) % tabs.length;
         else if (event.key === 'Home') index = 0;
@@ -497,6 +502,8 @@
       var button = event.target.closest('[data-action]');
       if (!button || button.disabled) return;
       var id = button.dataset.id;
+      if (button.dataset.action === 'edit-node') openNodeEditor(id);
+      if (button.dataset.action === 'edit-chain') openChainEditor(id);
       if (button.dataset.action === 'select-node') selectNode(id);
       if (button.dataset.action === 'test-subscription') startJob('/api/subscriptions/test', { subscription_id: id }, 'Subscription latency test started.');
       if (button.dataset.action === 'refresh-subscription') startJob('/api/subscriptions/refresh', { subscription_id: id }, 'Subscription refresh started.');
@@ -583,15 +590,17 @@
     $('chain-add-hop').disabled=state.busy || state.chainHops.length>=8 || !$('chain-builder-node').value || !state.authenticated;
   }
   function renderChainBuilder() {
+    text($('chain-save'), state.chainEditingID ? 'Save chain changes' : 'Save as new configuration');
+    $('chain-cancel-edit').hidden = $('chain-editing-note').hidden = !state.chainEditingID;
     var select=$('chain-builder-node'),previous=select.value; text(select,'');
-    state.nodes.filter(function(n){return n.enabled && !n.detour_id && !n.detour && !state.chainHops.includes(n.id);}).forEach(function(n){var option=element('option','',n.tag+' · '+n.server);option.value=n.id;select.appendChild(option);});
+    chainOptions().filter(function(n){return !state.chainHops.includes(n.id);}).forEach(function(n){var option=element('option','',n.tag+' · '+n.server);option.value=n.id;option.dataset.noI18n='';select.appendChild(option);});
     if(Array.from(select.options).some(function(o){return o.value===previous;}))select.value=previous;
-    var label=function(id){var n=state.nodes.find(function(n){return n.id===id;});return n?n.tag:'Unavailable node';};
+    var label=function(id){var n=chainOptions().find(function(n){return n.id===id;});return n?n.tag:'Unavailable node';};
     text($('chain-hops'),'');
-    state.chainHops.forEach(function(id,index){var row=element('li','',label(id)+' ');
+    state.chainHops.forEach(function(id,index){var row=element('li');var hopName=element('span','',label(id)+' ');hopName.dataset.noI18n='';row.appendChild(hopName);
       [['↑',-1],['↓',1],['Remove',0]].forEach(function(action){var b=element('button','button subtle',action[0]);b.type='button';b.dataset.mutation='';b.setAttribute('aria-label',action[0]+' hop '+(index+1));b.addEventListener('click',function(){if(action[1]===0)state.chainHops.splice(index,1);else{var next=index+action[1];if(next<0||next>=state.chainHops.length)return;var tmp=state.chainHops[next];state.chainHops[next]=id;state.chainHops[index]=tmp;}renderChainBuilder();updateControls();});row.appendChild(b);});$('chain-hops').appendChild(row);
     });
-    text($('chain-preview'),state.chainHops.map(label).join(' → '));
+    $('chain-preview').dataset.noI18n = ''; text($('chain-preview'),state.chainHops.map(label).join(' → '));
   }
   function wireBatchEvents() {
     document.addEventListener('change', function (event) {
@@ -605,7 +614,7 @@
       var button = event.target.closest('[data-bulk-action]'); if (!button || button.disabled) return;
       var group = button.dataset.group, ids = Array.from(groupSelection(group)); if (!ids.length) return;
       if (button.dataset.bulkAction === 'ping') { startJob('/api/nodes/test', {node_ids: ids}, 'Selected latency tests started.'); return; }
-      if (!window.confirm('Delete ' + ids.length + ' selected configurations? Shared configurations are removed from every group. Deleting the active config switches to Auto; deleting all configs stops the proxy. Subscription refresh may reimport provider nodes.')) return;
+      if (!window.confirm(window.I18n.t('Delete ' + ids.length + ' selected configurations? Shared configurations are removed from every group. Deleting the active config switches to Auto; deleting all configs stops the proxy. Subscription refresh may reimport provider nodes.'))) return;
       mutate('Bulk delete', async function () {
         await call('POST', '/api/nodes/delete', {node_ids: ids});
         state.groupSelections.forEach(function (selected) { ids.forEach(function (id) { selected.delete(id); }); });
@@ -614,7 +623,72 @@
     });
     $('chain-builder-node').addEventListener('change',updateBulkControls);
     $('chain-add-hop').addEventListener('click',function(){var id=$('chain-builder-node').value;if(id && !state.chainHops.includes(id) && state.chainHops.length<8)state.chainHops.push(id);renderChainBuilder();updateControls();});
-    $('chain-builder-form').addEventListener('submit',function(event){event.preventDefault();var payload={name:$('chain-builder-name').value.trim(),node_ids:state.chainHops.slice()};mutate('Save chain',async function(){await call('POST','/api/chains',payload);state.chainHops=[];$('chain-builder-name').value='';renderChainBuilder();toast('New chained configuration saved.','ok');});});
+    $('chain-cancel-edit').addEventListener('click', resetChainEditor);
+    $('chain-builder-form').addEventListener('submit', function (event) {
+      event.preventDefault(); var editing = state.chainEditingID;
+      var payload = {name: $('chain-builder-name').value.trim(), node_ids: state.chainHops.slice()};
+      if (editing) payload.node_id = editing;
+      mutate('Save chain', async function () { await call(editing ? 'PUT' : 'POST', '/api/chains', payload); resetChainEditor(); toast(editing ? 'Chain updated.' : 'New chained configuration saved.', 'ok'); });
+    });
+    $('node-edit-cancel').addEventListener('click', function () { $('node-editor').close(); });
+    $('node-editor').addEventListener('close', function () { state.editingNode = null; text($('node-edit-fields'), ''); });
+    $('node-edit-form').addEventListener('submit', function (event) {
+      event.preventDefault(); if (!state.editingNode) return;
+      var payload = {node_id: state.editingNode};
+      $('node-edit-fields').querySelectorAll('[data-edit-field]').forEach(function (input) {
+        if (input.dataset.secret && input.value === '') return;
+        payload[input.dataset.editField] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
+      });
+      mutate('Edit configuration', async function () { await call('PUT', '/api/nodes/edit', payload); $('node-editor').close(); toast('Configuration updated.', 'ok'); });
+    });
+  }
+
+  function chainOptions() {
+    var originals = state.nodes.filter(function (n) { return n.enabled && !n.detour_id && !n.detour && !n.chain_id; });
+    var ids = new Set(originals.map(function (n) { return n.id; }));
+    return originals.concat(state.chainExistingNodes.filter(function (n) { return !ids.has(n.id); }));
+  }
+  function resetChainEditor() {
+    state.chainEditingID = null; state.chainExistingNodes = []; state.chainHops = []; $('chain-builder-name').value = '';
+    renderChainBuilder(); updateControls();
+  }
+  function openChainEditor(id) {
+    mutate('Edit chain', async function () {
+      var response = await call('GET', '/api/chains?node_id=' + encodeURIComponent(id));
+      state.chainEditingID = id; state.chainExistingNodes = response.hops; state.chainHops = response.hops.map(function (hop) { return hop.id; });
+      $('chain-builder-name').value = response.name; renderChainBuilder(); activateTab('configurations', false);
+      $('chain-builder-form').scrollIntoView({behavior: 'smooth', block: 'center'});
+    });
+  }
+  function openNodeEditor(id) {
+    mutate('Edit configuration', async function () {
+      var node = await call('GET', '/api/nodes/edit?node_id=' + encodeURIComponent(id));
+      state.editingNode = id; var fields = $('node-edit-fields'); text(fields, '');
+      var schema = [
+        ['name', 'Name'], ['server', 'Server IP / hostname'], ['port', 'Port', 'number'],
+        ['sni', 'TLS server name'], ['security', 'Security', ['', 'tls', 'reality']],
+        ['transport', 'Transport', ['tcp', 'ws', 'grpc', 'http']], ['path', 'Path'], ['host', 'Host header'],
+        ['service_name', 'gRPC service name'], ['fingerprint', 'TLS fingerprint'], ['insecure', 'Allow insecure TLS', 'checkbox']
+      ];
+      if (['vless', 'vmess'].includes(node.protocol)) schema.splice(3, 0, ['uuid', 'UUID', 'password']);
+      else schema.splice(3, 0, ['password', 'Password', 'password']);
+      if (node.protocol === 'shadowsocks') schema.push(['method', 'Cipher']);
+      if (node.protocol === 'vless') schema.push(['flow', 'Flow'], ['public_key', 'Reality public key'], ['short_id', 'Reality short ID']);
+      schema.forEach(function (field) {
+        var wrap = element('div', 'field'), label = element('label', '', field[1]); var choices = Array.isArray(field[2]) ? field[2] : null;
+        var input = document.createElement(choices ? 'select' : 'input'); input.dataset.editField = field[0]; input.id = 'edit-' + field[0]; label.htmlFor = input.id;
+        if (choices) choices.forEach(function (value) { var option = element('option', '', value || 'None'); option.value = value; input.appendChild(option); });
+        else input.type = field[2] || 'text';
+        if (input.type === 'password') { input.dataset.secret = 'true'; input.placeholder = 'Leave blank to keep current'; input.autocomplete = 'new-password'; }
+        else if (input.type === 'checkbox') input.checked = !!node[field[0]];
+        else input.value = node[field[0]] === undefined ? '' : node[field[0]];
+        if (field[0] === 'transport' && !input.value) input.value = 'tcp';
+        if (field[0] === 'port') { input.min = 1; input.max = 65535; }
+        if (['name', 'server', 'port'].includes(field[0])) input.required = true;
+        input.dataset.mutation = ''; wrap.appendChild(label); wrap.appendChild(input); fields.appendChild(wrap);
+      });
+      $('node-editor').showModal();
+    });
   }
 
   function addRuleSource(source) {
@@ -631,7 +705,7 @@
     text($('usage-status'),'Last sample: '+ago(u.last_sample)+(u.error?' · '+u.error:'')+(!response.supported?' · Clash statistics unavailable':''));
     var list=$('usage-nodes');text(list,'');var table=element('table','node-table');var head=element('tr');['Configuration / route (estimated)','Upload','Download'].forEach(function(label){head.appendChild(element('th','',label));});table.appendChild(head);
     var values=u.outbounds||{};var keys=Array.from(new Set(['direct'].concat(state.nodes.map(function(n){return n.id;}),Object.keys(values))));
-    keys.filter(function(key){var v=values[key]||{};return (v.upload||0)>0 || (v.download||0)>0;}).forEach(function(key){var n=state.nodes.find(function(n){return n.id===key;});var value=values[key]||{};var row=element('tr');row.appendChild(element('td','',key==='direct'?'Direct / bypass':n?n.tag:key));row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
+    keys.filter(function(key){var v=values[key]||{};return (v.upload||0)>0 || (v.download||0)>0;}).forEach(function(key){var n=state.nodes.find(function(n){return n.id===key;});var value=values[key]||{};var row=element('tr');var caption=element('td','',key==='direct'?'Direct / bypass':n?n.tag:key);if(key!=='direct')caption.dataset.noI18n='';row.appendChild(caption);row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
     if (table.rows.length === 1) list.appendChild(element('p', 'muted', 'No configuration has recorded traffic yet.'));
     renderDevices(response, false);
   }
@@ -659,20 +733,21 @@
       row.appendChild(element('td', '', byteCount(value.upload || 0))); row.appendChild(element('td', '', byteCount(value.download || 0)));
       var routeCell = element('td'), select = document.createElement('select'); select.setAttribute('aria-label', 'Route for ' + ip); select.dataset.mutation = ''; select.dataset.job = '';
       var fallback = element('option', '', 'Global Default'); fallback.value = ''; select.appendChild(fallback);
+      var direct = element('option', '', 'Direct'); direct.value = 'direct'; select.appendChild(direct);
       var included = new Set();
-      function addOptions(name, nodes) {
-        var group = document.createElement('optgroup'); group.label = name;
+      function addOptions(name, nodes, userLabel) {
+        var group = document.createElement('optgroup'); group.label = name; if (userLabel) group.dataset.noI18n = '';
         nodes.forEach(function (node) {
           if (included.has(node.id)) return; included.add(node.id);
-          var option = element('option', '', (node.tag || node.server) + (!node.enabled ? ' (disabled; Global Default)' : '')); option.value = node.id; option.disabled = !node.enabled; group.appendChild(option);
+          var option = element('option', '', (node.tag || node.server) + (!node.enabled ? ' (disabled; Global Default)' : '')); option.value = node.id; option.dataset.noI18n = ''; option.disabled = !node.enabled; group.appendChild(option);
         });
         if (group.children.length) select.appendChild(group);
       }
       addOptions('Manual configurations', groupNodes('manual'));
-      state.subscriptions.forEach(function (sub) { addOptions(sub.name || 'Subscription', groupNodes(sub.id)); });
+      state.subscriptions.forEach(function (sub) { addOptions(sub.name || 'Subscription', groupNodes(sub.id), !!sub.name); });
       addOptions('Other configurations', state.nodes);
       var assigned = routes[ip] || '';
-      if (assigned && !included.has(assigned)) { var unavailable = element('option', '', 'Unavailable node (using Global Default)'); unavailable.value = assigned; unavailable.disabled = true; select.appendChild(unavailable); }
+      if (assigned && assigned !== 'direct' && !included.has(assigned)) { var unavailable = element('option', '', 'Unavailable node (using Global Default)'); unavailable.value = assigned; unavailable.disabled = true; select.appendChild(unavailable); }
       select.value = assigned;
       select.addEventListener('change', function () {
         var nodeID = select.value;

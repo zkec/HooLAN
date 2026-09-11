@@ -8,7 +8,8 @@ import (
 )
 
 func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {
-	mux.Handle("/api/chains", only(http.MethodPost, h.createChain))
+	mux.HandleFunc("/api/chains", h.chains)
+	mux.HandleFunc("/api/nodes/edit", h.editNode)
 	mux.Handle("/api/nodes/delete", only(http.MethodPost, h.deleteNode))
 	mux.Handle("/api/nodes/detour", only(http.MethodPut, h.detourNode))
 	mux.Handle("/api/devices", only(http.MethodPut, h.updateDevice))

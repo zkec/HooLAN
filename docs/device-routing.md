@@ -41,7 +41,8 @@ Add a configuration and Add a subscription.
 ```
 
 The response also contains total/outbound counters, sample timestamp, errors,
-support status and accounting scope. Only configurations with nonzero upload or
+support status and accounting scope. The routing dropdown also offers Direct (`node_id: "direct"`); see
+[Dashboard editing and localization](dashboard-editing.md). Only configurations with nonzero upload or
 download appear in the Usage table. Historical usage for deleted configurations
 remains visible under its stable ID. Device rows include observed IPs and any
 saved aliases or assignments, even when their counters are zero.
@@ -88,7 +89,7 @@ name changes use Save name. No page reload is needed.
 
 Only private IPv4 host addresses are accepted because this gateway's nftables
 and policy-routing configuration intercept IPv4. Names allow up to 80 Unicode
-characters with no control characters. Targets must be existing, enabled,
+characters with no control characters. Targets may be `direct` or existing, enabled,
 visible configurations; saved chain exits are allowed, internal hops are not.
 Unknown IDs return 404, invalid fields 400, and an active refresh conflicts with
 the update. Alias changes do not restart the engine.

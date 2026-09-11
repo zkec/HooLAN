@@ -3,9 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="dark light" />
   <meta name="referrer" content="no-referrer" />
   <title>Proxy Manager</title>
+  <script src="/preferences.js"></script>
+  <script src="/i18n.js" defer></script>
   <link rel="stylesheet" href="/style.css" />
   <script src="/app.js" defer></script>
 </head>
@@ -16,6 +18,8 @@
       <a class="brand" href="/" aria-label="Proxy Manager home"><span class="brand-icon" aria-hidden="true">P</span><span>Proxy Manager<small>SMART GATEWAY</small></span></a>
       <span id="engine-status" class="pill">Connecting…</span>
       <div class="header-actions">
+        <button id="theme-toggle" type="button" class="button subtle" aria-label="Switch theme">Light mode</button>
+        <button id="language-toggle" type="button" class="button subtle" aria-label="Switch language">فارسی</button>
         <label class="switch" for="proxy-toggle"><span>Proxy</span><input id="proxy-toggle" type="checkbox" role="switch" disabled /><span class="switch-track" aria-hidden="true"></span><span id="proxy-toggle-label" class="switch-label">Off</span></label>
         <button id="logout-btn" type="button" class="button subtle" hidden>Sign out</button>
       </div>
@@ -50,11 +54,11 @@
       <div class="card form-card"><h2>Add a configuration</h2><p class="muted small">Paste a single node link, such as vless://, vmess://, trojan:// or ss://.</p><form id="node-form" class="node-form"><div class="field field-grow"><label for="node-link">Node link</label><input id="node-link" name="link" type="text" required spellcheck="false" autocomplete="off" placeholder="vless://…" /></div><button class="button primary" type="submit" data-mutation>Add config</button></form></div>
 
       <section class="card form-card" aria-labelledby="builder-heading">
-        <h2 id="builder-heading">Chain Builder</h2><p class="muted small">Choose 2–8 single-hop nodes in traversal order: first hop → intermediate hops → exit. Saved chains are independent copies; source configurations stay unchanged.</p>
+        <h2 id="builder-heading">Chain Builder</h2><p id="chain-editing-note" role="status" hidden>Editing an existing chain</p><p class="muted small">Choose 2–8 single-hop nodes in traversal order: first hop → intermediate hops → exit. Saved chains are independent copies; source configurations stay unchanged.</p>
         <form id="chain-builder-form"><div class="field"><label for="chain-builder-name">Chain name</label><input id="chain-builder-name" required maxlength="100" placeholder="My multi-hop connection" /></div>
         <div class="field"><label for="chain-builder-node">Add a hop</label><select id="chain-builder-node"></select></div><button id="chain-add-hop" type="button" class="button" data-mutation>Add hop</button>
         <ol id="chain-hops" class="chain-hops" aria-label="Hop order"></ol><p id="chain-preview" role="status"></p>
-        <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button></form>
+        <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button><button id="chain-cancel-edit" type="button" class="button subtle" hidden>Cancel editing</button></form>
       </section>
 
       <div class="card form-card">
@@ -120,6 +124,12 @@
     </section>
     <footer class="footer"><span>Proxy Manager · Raspberry Pi gateway</span><span id="foot-poll">Connecting to API…</span></footer>
   </main>
+  <dialog id="node-editor" aria-labelledby="editor-heading">
+    <form id="node-edit-form"><h2 id="editor-heading">Edit configuration</h2><p class="muted small">Leave credential fields blank to keep the stored values. Changes apply to the running engine.</p>
+      <div id="node-edit-fields" class="edit-grid"></div>
+      <div class="form-footer"><button id="node-edit-cancel" type="button" class="button subtle">Cancel</button><button type="submit" class="button primary" data-mutation data-job>Save changes</button></div>
+    </form>
+  </dialog>
   <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
 </body>
 </html>

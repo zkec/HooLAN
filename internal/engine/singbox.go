@@ -464,6 +464,9 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	for _, ip := range ips {
 		addr, err := netip.ParseAddr(ip)
 		tag := tagsByID[m.deviceRoutes[ip]]
+		if m.deviceRoutes[ip] == DefaultDirect {
+			tag = DefaultDirect
+		}
 		if err != nil || tag == "" {
 			continue
 		} // missing/disabled nodes use global default
