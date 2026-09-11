@@ -160,10 +160,13 @@ type ClashAPIOptions struct {
 // RouteRule covers the subset of matchers and actions this package emits.
 // `Action` is required by 1.11+; a rule with no action is a legacy route rule.
 type RouteRule struct {
-	Inbound     []string `json:"inbound,omitempty"`
-	Protocol    []string `json:"protocol,omitempty"`
-	IPIsPrivate bool     `json:"ip_is_private,omitempty"`
-	Port        []int    `json:"port,omitempty"`
+	Domain       []string `json:"domain,omitempty"`
+	DomainSuffix []string `json:"domain_suffix,omitempty"`
+	IPCIDR       []string `json:"ip_cidr,omitempty"`
+	Inbound      []string `json:"inbound,omitempty"`
+	Protocol     []string `json:"protocol,omitempty"`
+	IPIsPrivate  bool     `json:"ip_is_private,omitempty"`
+	Port         []int    `json:"port,omitempty"`
 	// RuleSet references RuleSet.Tag values. Replaces the removed geoip/geosite
 	// matchers.
 	RuleSet []string `json:"rule_set,omitempty"`

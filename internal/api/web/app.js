@@ -10,7 +10,7 @@
   var state = {
     csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
-    settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
+    rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
     inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
     lastLogID: 0, lastLogTime: 0, logAuthCheck: false
   };
@@ -53,10 +53,10 @@
     state.settings = null;
     state.selection = {};
     state.csrf = '';
-    ['subscriptions-list', 'manual-nodes', 'log-lines', 'toasts', 'job', 'job-warnings-list'].forEach(function (id) { text($(id), ''); });
+    ['subscriptions-list', 'manual-nodes', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes'].forEach(function (id) { text($(id), ''); });
     ['stat-engine', 'stat-rules', 'stat-nodes', 'stat-active'].forEach(function (id) { text($(id), '—'); });
     ['stat-pid', 'stat-rules-err', 'stat-nodes-sub', 'stat-active-sub'].forEach(function (id) { text($(id), ''); });
-    ['subscription-form', 'node-form', 'settings-form'].forEach(function (id) { $(id).reset(); });
+    ['subscription-form', 'node-form', 'settings-form', 'rules-form'].forEach(function (id) { $(id).reset(); });
   }
   function signInRequired() {
     if (state.exiting) return;
@@ -226,6 +226,8 @@
       select.setAttribute('aria-label', (pinned ? 'Pinned configuration: ' : 'Activate ') + (node.tag || node.server));
       if (pinned) select.classList.add('active-button');
       buttons.appendChild(select);
+      buttons.appendChild(actionButton('Chain', 'chain-node', node.id, false, false));
+      if (isManual(node)) buttons.appendChild(actionButton('Delete', 'delete-node', node.id, false, false));
       actions.appendChild(buttons);
       row.appendChild(actions);
       body.appendChild(row);
@@ -329,6 +331,8 @@
       await fetchStatus();
       if (Date.now() - state.inventoryAt > 15000) await fetchInventory();
       if (!state.settings) renderSettings(await call('GET', '/api/settings'));
+      if (window.location.hash === '#usage') renderUsage(await call('GET', '/api/usage'));
+      if (state.rulesLoaded || window.location.hash === '#rules') renderRules(await call('GET', '/api/rules'));
     } catch (error) {
       if (!state.exiting) {
         state.offline = true;
@@ -484,6 +488,8 @@
       var button = event.target.closest('[data-action]');
       if (!button || button.disabled) return;
       var id = button.dataset.id;
+      if (button.dataset.action === 'chain-node') openChain(id);
+      if (button.dataset.action === 'delete-node' && window.confirm('Delete this manual config? If it also belongs to a subscription, refreshing that subscription can import it again.')) mutate('Delete config', async function () { await call('POST', '/api/nodes/delete', { node_id: id }); toast('Config deleted.', 'ok'); });
       if (button.dataset.action === 'select-node') selectNode(id);
       if (button.dataset.action === 'test-node') startJob('/api/nodes/test', { node_id: id }, 'Latency test started.');
       if (button.dataset.action === 'test-subscription') startJob('/api/subscriptions/test', { subscription_id: id }, 'Subscription latency test started.');
@@ -557,11 +563,113 @@
     window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
   }
 
+  function openChain(id) {
+    var node = state.nodes.find(function(n){return n.id === id;}); if (!node) return;
+    $('chain-dialog').dataset.node = id; text($('chain-name'), node.tag);
+    var select = $('chain-target'); text(select, ''); var empty = element('option', '', 'No detour'); empty.value = ''; select.appendChild(empty);
+    state.nodes.filter(function(n){return n.id !== id && n.enabled;}).forEach(function(n){var option=element('option','',n.tag+' · '+n.server);option.value=n.id;select.appendChild(option);}); select.value=node.detour_id || ''; $('chain-dialog').showModal();
+  }
+  function addRuleSource(source) {
+    var row = element('article','card routing-rule');
+    ruleField(row,'Unique tag (custom-...)','tag',source.tag); ruleField(row,'HTTPS .srs URL','url',source.url);
+    ruleField(row,'Enabled','enabled',source.enabled); ruleField(row,'Action','action',source.action,['direct','proxy','reject']);
+    [['Move up',function(){if(row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);}],['Move down',function(){if(row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row);}],['Delete',function(){row.remove();}]].forEach(function(item){var b=element('button','button subtle',item[0]);b.type='button';b.dataset.mutation='';b.addEventListener('click',function(){item[1]();state.rulesDirty=true;text($('rules-note'),'Unsaved changes');});row.appendChild(b);});
+    $('rule-source-list').appendChild(row); updateControls();
+  }
+  function byteCount(n) { var units=['B','KiB','MiB','GiB','TiB'];var i=0;while(n>=1024&&i<4){n/=1024;i++;}return n.toFixed(i?2:0)+' '+units[i]; }
+  function renderUsage(response) {
+    var u=response.usage; var total=u.total || {};
+    text($('usage-total'),'Upload '+byteCount(total.upload||0)+' · Download '+byteCount(total.download||0)+' · Total '+byteCount((total.upload||0)+(total.download||0)));
+    text($('usage-status'),'Last sample: '+ago(u.last_sample)+(u.error?' · '+u.error:'')+(!response.supported?' · Clash statistics unavailable':''));
+    var list=$('usage-nodes');text(list,'');var table=element('table','node-table');var head=element('tr');['Configuration / route (estimated)','Upload','Download'].forEach(function(label){head.appendChild(element('th','',label));});table.appendChild(head);
+    var values=u.outbounds||{};var keys=Array.from(new Set(['direct'].concat(state.nodes.map(function(n){return n.id;}),Object.keys(values))));
+    keys.forEach(function(key){var n=state.nodes.find(function(n){return n.id===key;});var value=values[key]||{};var row=element('tr');row.appendChild(element('td','',key==='direct'?'Direct / bypass':n?n.tag:key));row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
+  }
+
+  function ruleField(row, label, name, value, choices) {
+    var wrap = element('div', 'field');
+    var caption = element('label', '', label);
+    var input = document.createElement(choices ? 'select' : name === 'values' ? 'textarea' : 'input');
+    input.dataset.field = name;
+    input.setAttribute('aria-label', label);
+    if (choices) choices.forEach(function (choice) { var option = element('option', '', choice); option.value = choice; input.appendChild(option); });
+    if (name === 'enabled') { input.type = 'checkbox'; input.checked = value; }
+    else { input.value = Array.isArray(value) ? value.join('\n') : value; input.required = true; }
+    if (name === 'name') input.maxLength = 100;
+    caption.appendChild(input); wrap.appendChild(caption); row.appendChild(wrap);
+    return input;
+  }
+  function addRoutingRule(rule) {
+    var row = element('article', 'card routing-rule');
+    ruleField(row, 'Name', 'name', rule.name);
+    ruleField(row, 'Enabled', 'enabled', rule.enabled);
+    ruleField(row, 'Match type', 'match', rule.match, ['domain', 'domain_suffix', 'ip_cidr']);
+    ruleField(row, 'Match values (one per line)', 'values', rule.values);
+    ruleField(row, 'Action', 'action', rule.action, ['direct', 'proxy', 'reject']);
+    var controls = element('div', 'form-footer');
+    [['Move up', function () { if (row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling); }],
+      ['Move down', function () { if (row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row); }],
+      ['Delete', function () { row.remove(); }]].forEach(function (item) {
+        var button = element('button', 'button subtle', item[0]); button.type = 'button'; button.dataset.mutation = '';
+        button.addEventListener('click', function () { item[1](); state.rulesDirty = true; text($('rules-note'), 'Unsaved changes'); }); controls.appendChild(button);
+      });
+    row.appendChild(controls); $('routing-rule-list').appendChild(row);
+  }
+  function renderRules(status) {
+    state.rulesLoaded = true;
+    text($('rules-status'), 'Last successful update: ' + ago(status.last_update) +
+      (!String(status.next_update).startsWith('0001') ? ' · Next due: ' + (Date.parse(status.next_update) > Date.now() ? new Date(status.next_update).toLocaleString() : 'within a minute when no other task is running') : ' · Automatic updates off') +
+      (status.error ? ' · Last error: ' + status.error : '') + ' · Files: ' + (Object.values(status.files || {}).join(', ') || 'Not downloaded by manager yet'));
+    if (state.rulesDirty) return;
+    var p = status.policy;
+    $('calendar-mode').value = p.schedule || 'interval'; $('calendar-time').value = p.time_of_day || '03:00'; $('calendar-day').value = String(p.weekday || 0); $('calendar-zone').value = p.timezone || 'Asia/Tehran';
+    text($('rule-source-list'), ''); (p.sources || []).forEach(addRuleSource);
+    syncCalendarControls();
+    $('rules-days').value = p.update_days;
+    $('rules-schedule').value = [0, 1, 7, 30].includes(p.update_days) ? String(p.update_days) : 'custom';
+    $('rules-geoip').value = p.geoip_url; $('rules-geosite').value = p.geosite_url; $('rules-iran-action').value = p.iran_action;
+    text($('routing-rule-list'), ''); (p.rules || []).forEach(addRoutingRule);
+    updateControls();
+  }
+  function readRulePolicy() {
+    return { schedule: $('calendar-mode').value, time_of_day: $('calendar-time').value, weekday: Number($('calendar-day').value), timezone: $('calendar-zone').value.trim(), sources: Array.from($('rule-source-list').children).map(function(row) { var get = function(name) { return row.querySelector('[data-field="' + name + '"]'); }; return {tag:get('tag').value.trim(), url:get('url').value.trim(), action:get('action').value, enabled:get('enabled').checked}; }), update_days: Number($('rules-days').value), geoip_url: $('rules-geoip').value.trim(), geosite_url: $('rules-geosite').value.trim(), iran_action: $('rules-iran-action').value,
+      rules: Array.from($('routing-rule-list').children).map(function (row) {
+        var get = function (name) { return row.querySelector('[data-field="' + name + '"]'); };
+        return { name: get('name').value.trim(), enabled: get('enabled').checked, match: get('match').value, action: get('action').value, values: get('values').value.split(/\r?\n/).map(function (v) { return v.trim(); }).filter(Boolean) };
+      }) };
+  }
+  function syncCalendarControls() {
+    var mode = $('calendar-mode').value;
+    ['rules-schedule','rules-days'].forEach(function(id){$(id).disabled = mode !== 'interval';});
+    ['calendar-time','calendar-zone'].forEach(function(id){$(id).disabled = mode === 'interval';});
+    $('calendar-day').disabled = mode !== 'weekly';
+  }
+  function wireRuleEvents() {
+    $('calendar-mode').addEventListener('change',syncCalendarControls);
+
+    $('source-add').addEventListener('click', function () { addRuleSource({tag:'custom-',url:'',enabled:true,action:'direct'}); state.rulesDirty = true; });
+    $('chain-cancel').addEventListener('click', function () { $('chain-dialog').close(); });
+    $('chain-form').addEventListener('submit', function (event) { event.preventDefault(); var id = $('chain-dialog').dataset.node; var target = $('chain-target').value; mutate('Save chain', async function () { await call('PUT','/api/nodes/detour',{node_id:id,detour_id:target}); $('chain-dialog').close(); toast('Chain saved.', 'ok'); }); });
+
+    $('rules-form').addEventListener('input', function () { state.rulesDirty = true; text($('rules-note'), 'Unsaved changes'); });
+    $('rules-schedule').addEventListener('change', function () { if (this.value !== 'custom') $('rules-days').value = this.value; });
+    $('rules-add').addEventListener('click', function () { addRoutingRule({ name: '', enabled: true, match: 'domain_suffix', values: [], action: 'direct' }); state.rulesDirty = true; text($('rules-note'), 'Unsaved changes'); updateControls(); });
+    $('rules-form').addEventListener('submit', function (event) {
+      event.preventDefault(); var policy = readRulePolicy();
+      mutate('Save routing rules', async function () { var result = await call('PUT', '/api/rules', policy); state.rulesDirty = false; renderRules(result); text($('rules-note'), 'Rules saved'); toast('Routing rules saved.', 'ok'); });
+    });
+    $('rules-update').addEventListener('click', function () {
+      if (state.rulesDirty) { toast('Save your routing changes before updating rule sets.', 'err'); return; }
+      mutate('Update rule sets', async function () { await call('POST', '/api/rules/update', {}); toast('GeoIP/geosite update started.', 'ok'); });
+    });
+  }
+
   async function init() {
     // Remove the previous dashboard's persisted bearer token during migration.
     // Never read or reuse it; this dashboard authenticates with a session cookie.
     try { window.localStorage.removeItem('pm.token'); window.localStorage.removeItem('pm.subUrl'); } catch (ignored) {}
     wireEvents();
+    wireRuleEvents();
     updateControls();
     activateTab(window.location.hash.slice(1), false);
     try {
@@ -572,6 +680,8 @@
       $('logout-btn').hidden = !session.auth_required;
       await reconcile();
       renderSettings(await call('GET', '/api/settings'));
+      renderRules(await call('GET', '/api/rules'));
+      renderUsage(await call('GET', '/api/usage'));
     } catch (error) {
       handleError(error, 'Load dashboard');
       // A session check must succeed before enabling any controls. Reloading

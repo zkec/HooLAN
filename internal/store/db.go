@@ -39,6 +39,7 @@ var ErrNotFound = errors.New("store: node not found")
 // assigned locally and must survive a subscription refresh that re-delivers
 // the same node.
 type Record struct {
+	DetourID string `json:"detour_id,omitempty"`
 	// ID is a stable content-derived identity, NOT the tag. Providers rename
 	// nodes freely ("US-1" becoming "🇺🇸 US-1" between refreshes), which would
 	// otherwise orphan the latency history. See NodeID.
@@ -320,21 +321,38 @@ func (s *Store) SetDetour(id, detourID string) error {
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if detourID == "" {
+	old := *r
+	if detourID != "" {
+		target, ok := s.records[detourID]
+		if !ok {
+			return fmt.Errorf("%w: detour target", ErrNotFound)
+		}
+		if !target.Enabled {
+			return errors.New("store: detour target is disabled")
+		}
+		seen := map[string]bool{id: true}
+		for next := detourID; next != ""; {
+			if seen[next] {
+				return errors.New("store: chain cycle")
+			}
+			seen[next] = true
+			hop, ok := s.records[next]
+			if !ok {
+				return errors.New("store: missing chain hop")
+			}
+			next = hop.DetourID
+		}
+		r.Node.Detour = target.Node.Tag
+	} else {
 		r.Node.Detour = ""
-		r.UpdatedAt = s.now()
-		return s.persist()
 	}
-	target, ok := s.records[detourID]
-	if !ok {
-		return fmt.Errorf("%w: detour target %s", ErrNotFound, detourID)
-	}
-	if detourID == id {
-		return errors.New("store: node cannot detour through itself")
-	}
-	r.Node.Detour = target.Node.Tag
+	r.DetourID = detourID
 	r.UpdatedAt = s.now()
-	return s.persist()
+	if err := s.persist(); err != nil {
+		*r = old
+		return err
+	}
+	return nil
 }
 
 // Update applies fn to the record under lock, then persists. Use for edits the
@@ -418,6 +436,20 @@ func (s *Store) EnabledNodes() []subscription.Node {
 	for _, r := range filtered {
 		out = append(out, r.Node)
 	}
+	subscription.DedupeTags(out)
+	tags := map[string]string{}
+	for _, n := range out {
+		tags[NodeID(n)] = n.Tag
+	}
+	for i, r := range filtered {
+		if r.DetourID != "" {
+			tag, ok := tags[r.DetourID]
+			if !ok {
+				tag = "missing-detour-" + r.DetourID
+			}
+			out[i].Detour = tag
+		}
+	}
 	return out
 }
 
@@ -446,6 +478,11 @@ func (s *Store) Delete(id string) error {
 	if _, ok := s.records[id]; !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	old := s.records[id]
 	delete(s.records, id)
-	return s.persist()
+	if err := s.persist(); err != nil {
+		s.records[id] = old
+		return err
+	}
+	return nil
 }

@@ -176,6 +176,7 @@ type NodeView struct {
 	Transport string `json:"transport,omitempty"`
 	Security  string `json:"security,omitempty"`
 	SNI       string `json:"sni,omitempty"`
+	DetourID  string `json:"detour_id,omitempty"`
 	Detour    string `json:"detour,omitempty"`
 
 	Enabled bool `json:"enabled"`
@@ -260,6 +261,7 @@ func (h *handlers) viewOf(rec store.Record, tagByID map[string]string, selectedI
 		Security:      string(n.Security),
 		SNI:           n.SNI,
 		Detour:        n.Detour,
+		DetourID:      rec.DetourID,
 		Enabled:       rec.Enabled,
 		LatencyMS:     rec.LastLatencyMS,
 		Healthy:       rec.Healthy(),

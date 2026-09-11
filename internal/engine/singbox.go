@@ -198,6 +198,8 @@ type Manager struct {
 	opts            Options
 	settingsMu      sync.RWMutex
 	manualSelection bool
+	rulePolicy      *RulePolicy
+	ruleFiles       map[string]string
 
 	mu     sync.Mutex
 	cmd    *exec.Cmd
@@ -435,6 +437,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		rules = append(rules, iranRules(m.opts.BlockIranAds)...)
 	}
 	route.Rules = rules
+	m.applyRulePolicy(route)
 
 	cfg := &Config{
 		Log:       &LogOptions{Level: m.opts.LogLevel, Timestamp: true},

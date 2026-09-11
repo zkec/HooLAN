@@ -134,6 +134,14 @@ func (h *handlers) staticHandler() http.Handler {
 		}
 
 		name := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
+		if name == "/login" || name == "/login/" {
+			name = "/login.html"
+		}
+		if (name == "/" || name == "/index.html") && h.opts.Token != "" && h.requestSession(r) == nil {
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, "/login.html", http.StatusSeeOther)
+			return
+		}
 		if name == "/" {
 			name = "/index.html"
 		}

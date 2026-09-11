@@ -8,6 +8,14 @@ import (
 )
 
 func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {
+	mux.Handle("/api/nodes/delete", only(http.MethodPost, h.deleteNode))
+	mux.Handle("/api/nodes/detour", only(http.MethodPut, h.detourNode))
+	mux.Handle("/api/usage", only(http.MethodGet, h.usage))
+	mux.HandleFunc("/api/rules", h.rules)
+	mux.Handle("/api/rules/update", only(http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
+		job, err := h.svc.StartRuleUpdate()
+		h.writeJob(w, job, err)
+	}))
 	mux.HandleFunc("/api/subscriptions", h.subscriptions)
 	mux.Handle("/api/subscriptions/refresh", only(http.MethodPost, h.refreshSubscription))
 	mux.Handle("/api/subscriptions/test", only(http.MethodPost, h.testSubscription))

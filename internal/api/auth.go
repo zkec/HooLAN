@@ -264,9 +264,12 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		h.auth.remove(cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: id, Path: "/api/", HttpOnly: true,
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: id, Path: "/", HttpOnly: true,
 		Secure: r.TLS != nil || h.opts.SecureCookies, SameSite: http.SameSiteStrictMode,
 		MaxAge: int(sessionLifetime.Seconds()), Expires: session.expires})
+	// Remove the legacy API-only cookie before issuing the root-scoped cookie.
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Path: "/api/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil || h.opts.SecureCookies})
+
 	writeJSON(w, http.StatusOK, sessionResponse{Authenticated: true, AuthRequired: true, CSRFToken: session.csrf})
 }
 
@@ -274,7 +277,7 @@ func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		h.auth.remove(cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Path: "/api/", HttpOnly: true,
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Path: "/", HttpOnly: true,
 		Secure: r.TLS != nil || h.opts.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: -1,
 		Expires: time.Unix(1, 0)})
 	writeJSON(w, http.StatusOK, sessionResponse{Authenticated: h.opts.Token == "", AuthRequired: h.opts.Token != ""})

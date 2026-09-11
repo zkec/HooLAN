@@ -1194,3 +1194,12 @@ input:focus {
   }
 
 }
+
+.routing-rule { margin: 1rem 0; padding: 1rem; }
+.routing-rule textarea { display: block; width: 100%; min-height: 6rem; resize: vertical; background: var(--bg, #111b25); color: inherit; border: 1px solid #354552; border-radius: .5rem; padding: .6rem; font: inherit; }
+#rules-form > .field { margin: 1rem 0; }
+#rules-form h3 { margin-top: 1.5rem; }
+dialog { background: #17232e; color: #edf5f6; border: 1px solid #354552; border-radius: 1rem; max-width: min(95vw, 38rem); }
+dialog::backdrop { background: #0009; }
+#rules-status { overflow-wrap: anywhere; }
+#usage-nodes { overflow-x: auto; }

@@ -95,8 +95,11 @@ type Config struct {
 
 // Service holds runtime state for the API.
 type Service struct {
-	cfg Config
-	log *slog.Logger
+	usageSeen    map[string]Bytes
+	usageSaved   time.Time
+	usageStarted bool
+	cfg          Config
+	log          *slog.Logger
 
 	// jobCtx bounds background work. Cancelled by Shutdown so an in-flight
 	// latency sweep does not outlive the process; deliberately NOT derived from
@@ -127,17 +130,25 @@ type Service struct {
 	job JobStatus
 	// refreshing guards against concurrent refreshes; a second request gets 409
 	// rather than a second latency sweep competing for the same CPU and ports.
-	refreshing bool
-	closing    bool
+	refreshing           bool
+	closing              bool
+	ruleSchedulerStarted bool
 }
 
 // State is the persisted operator intent.
 type State struct {
-	Subscriptions []Subscription  `json:"subscriptions,omitempty"`
-	ManualNodeIDs map[string]bool `json:"manual_node_ids,omitempty"`
-	DNSServer     string          `json:"dns_server,omitempty"`
-	IranBypass    *bool           `json:"iran_bypass,omitempty"`
-	ProxyEnabled  bool            `json:"proxy_enabled"`
+	Usage              Usage              `json:"usage"`
+	RuleScheduleAnchor time.Time          `json:"rule_schedule_anchor,omitempty"`
+	RulePolicy         *engine.RulePolicy `json:"rule_policy,omitempty"`
+	RuleFiles          map[string]string  `json:"rule_files,omitempty"`
+	RuleLastUpdate     time.Time          `json:"rule_last_update,omitempty"`
+	RuleLastAttempt    time.Time          `json:"rule_last_attempt,omitempty"`
+	RuleError          string             `json:"rule_error,omitempty"`
+	Subscriptions      []Subscription     `json:"subscriptions,omitempty"`
+	ManualNodeIDs      map[string]bool    `json:"manual_node_ids,omitempty"`
+	DNSServer          string             `json:"dns_server,omitempty"`
+	IranBypass         *bool              `json:"iran_bypass,omitempty"`
+	ProxyEnabled       bool               `json:"proxy_enabled"`
 	// AutoSelect true means the urltest group drives the choice.
 	AutoSelect bool `json:"auto_select"`
 	// SelectedNodeID is a store record ID, not a tag: tags are
@@ -293,7 +304,15 @@ func (s *Service) saveState() error {
 //
 // Errors are returned for logging but must not be fatal: if restoring the proxy
 // fails, the API still needs to come up so an operator can diagnose it.
+// StartBackground starts control-plane tasks independently of engine restore.
+// It is idempotent and Shutdown cancels both tasks.
+func (s *Service) StartBackground() {
+	s.startRuleScheduler()
+	s.startUsageSampler()
+}
+
 func (s *Service) Restore(ctx context.Context) error {
+	s.StartBackground()
 	s.mu.RLock()
 	want := s.state.ProxyEnabled
 	s.mu.RUnlock()
@@ -350,6 +369,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	// actually live -- on a never-enabled server (or a box without nft) this is a
 	// no-op sweep, and returning an error there trains operators to ignore the
 	// one message that means the LAN is still intercepted.
+	s.sampleUsage(ctx)
 	var errs []error
 	if err := s.cfg.Firewall.Remove(ctx); err != nil {
 		if wasEnabled {
@@ -366,6 +386,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 
 	s.mu.Lock()
 	s.proxyEnabled = false
+	errs = append(errs, s.saveState())
 	s.mu.Unlock()
 	return errors.Join(errs...)
 }
@@ -507,6 +528,7 @@ func (s *Service) enable(ctx context.Context) error {
 
 // disable removes the ruleset, then stops the engine. Caller must hold opMu.
 func (s *Service) disable(ctx context.Context) error {
+	s.sampleUsage(ctx)
 	// Rules first. Stopping the engine while they are loaded blackholes the LAN
 	// for as long as it takes to unload them.
 	if err := s.cfg.Firewall.Remove(ctx); err != nil {
@@ -527,6 +549,7 @@ func (s *Service) disable(ctx context.Context) error {
 // applyEngine renders and (re)starts the engine, recording the tags each node
 // was rendered under. Caller must hold opMu.
 func (s *Service) applyEngine(ctx context.Context, nodes []subscription.Node) error {
+	s.sampleUsage(ctx)
 	// Apply stops a running engine as part of its reconciliation, which would
 	// otherwise trip the crash handler.
 	s.setIntentionalStop(true)

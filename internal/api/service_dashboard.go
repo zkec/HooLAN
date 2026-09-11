@@ -191,6 +191,9 @@ func (s *Service) Settings() Settings {
 }
 
 func (s *Service) configureEngineRouting() error {
+	if err := s.configureRulePolicy(); err != nil {
+		return err
+	}
 	if configurable, ok := s.cfg.Engine.(interface{ ConfigureAutoSelection(bool) }); ok {
 		s.mu.RLock()
 		auto := s.state.AutoSelect
@@ -434,6 +437,18 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, pr
 		return err
 	}
 	s.mu.Unlock()
+	// Keep ID-addressed chain dependencies even if a provider drops a hop.
+	records := s.cfg.Store.All()
+	changed := true
+	for changed {
+		changed = false
+		for _, r := range records {
+			if keep[r.ID] && r.DetourID != "" && !keep[r.DetourID] {
+				keep[r.DetourID] = true
+				changed = true
+			}
+		}
+	}
 	if prune && len(failures) == 0 {
 		removed, pruneErr := s.cfg.Store.Prune(keep)
 		if pruneErr != nil {

@@ -38,6 +38,8 @@
     <div class="tabs" role="tablist" aria-label="Dashboard sections">
       <button id="tab-subscriptions" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panel-subscriptions" data-tab="subscriptions">Subscriptions <span id="subscription-count" class="count">0</span></button>
       <button id="tab-manual" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-manual" tabindex="-1" data-tab="manual">Manual Configs <span id="manual-count" class="count">0</span></button>
+      <button id="tab-usage" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-usage" tabindex="-1" data-tab="usage">Usage</button>
+      <button id="tab-rules" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-rules" tabindex="-1" data-tab="rules">Routing rules</button>
       <button id="tab-settings" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1" data-tab="settings">Settings</button>
       <button id="tab-logs" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-logs" tabindex="-1" data-tab="logs">Live logs <span id="log-dot" class="dot" aria-hidden="true"></span></button>
     </div>
@@ -70,6 +72,36 @@
         <div class="setting"><div class="field"><label for="dns-server">DNS server</label><p id="dns-help" class="muted small">Resolver used by the proxy engine. Leave blank for the system resolver, or enter an IP address with an optional port, for example 1.1.1.1 or [2606:4700:4700::1111]:53. Local AdGuard DNS traffic still bypasses interception.</p><input id="dns-server" name="dns_server" type="text" spellcheck="false" autocomplete="off" aria-describedby="dns-help" placeholder="System resolver" /></div></div>
         <div class="setting setting-row"><div><label for="iran-bypass">Iran bypass</label><p id="iran-help" class="muted small">Route Iranian destinations directly, outside the selected proxy.</p></div><label class="switch" for="iran-bypass"><input id="iran-bypass" type="checkbox" role="switch" aria-describedby="iran-help" /><span class="switch-track" aria-hidden="true"></span><span id="iran-label" class="switch-label">Off</span></label></div>
         <div class="form-footer"><span id="settings-note" class="muted small" role="status"></span><button class="button primary" type="submit" data-mutation>Save settings</button></div>
+      </form>
+    </section>
+    <section id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" tabindex="0" hidden>
+      <div class="card form-card"><h2>Internet usage through sing-box</h2><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-node and direct attribution is estimated from one-second connection samples; short flows can be missed. Local AdGuard/Docker traffic and raw forwarding while OFF are excluded. A chain is attributed to its selected exit node, not counted again for each hop.</p><div id="usage-nodes"></div></div>
+    </section>
+    <dialog id="chain-dialog"><form id="chain-form" class="form-card"><h2>Proxy chain</h2><p id="chain-name"></p><p class="muted small">The selected configuration reaches its server through the detour node. Traffic exits through the selected configuration. Saving restarts an active proxy.</p><div class="field"><label for="chain-target">Detour through</label><select id="chain-target"></select></div><div class="form-footer"><button id="chain-cancel" type="button" class="button">Cancel</button><button type="submit" class="button primary" data-mutation>Save chain</button></div></form></dialog>
+    <section id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" tabindex="0" hidden>
+      <form id="rules-form" class="card form-card">
+        <h2>GeoIP, geosite and routing</h2>
+        <p class="muted small">Updates download and validate both rule sets. Applying changes briefly restarts an active proxy. The update schedule runs even when the proxy is off.</p>
+        <div class="subscription-form">
+          <div class="field"><label for="calendar-mode">Schedule type</label><select id="calendar-mode"><option value="interval">Interval / manual</option><option value="daily">Daily at a set time</option><option value="weekly">Weekly at a set time</option></select></div>
+          <div class="field"><label for="calendar-time">Time</label><input id="calendar-time" type="time" value="03:00" required /></div>
+          <div class="field"><label for="calendar-day">Day of week</label><select id="calendar-day"><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></div>
+          <div class="field"><label for="calendar-zone">Timezone</label><input id="calendar-zone" value="Asia/Tehran" required placeholder="Asia/Tehran" /></div>
+          <div class="field"><label for="rules-schedule">Automatic updates</label><select id="rules-schedule"><option value="0">Manual only</option><option value="1">Daily</option><option value="7">Weekly</option><option value="30">Every 30 days</option><option value="custom">Custom interval</option></select></div>
+          <div class="field"><label for="rules-days">Interval in days (0 = manual)</label><input id="rules-days" type="number" min="0" max="365" required value="7" /></div>
+          <button id="rules-update" type="button" class="button" data-mutation data-job>Update now</button>
+        </div>
+        <p id="rules-status" class="muted small" role="status"></p>
+        <h3>Iran rule</h3>
+        <p class="muted small">Enable or disable Iran matching with the Iran bypass switch in Settings. These sources must be compiled sing-box .srs files.</p>
+        <div class="field"><label for="rules-geoip">GeoIP source URL</label><input id="rules-geoip" type="url" required maxlength="4096" /></div>
+        <div class="field"><label for="rules-geosite">Geosite source URL</label><input id="rules-geosite" type="url" required maxlength="4096" /></div>
+        <div class="field"><label for="rules-iran-action">When an Iran rule matches</label><select id="rules-iran-action"><option value="direct">Connect directly</option><option value="proxy">Use selected proxy</option><option value="reject">Reject</option></select></div>
+        <h3>Additional rule sets</h3><p class="muted small">Compiled sing-box .srs sources, evaluated in this order before Iran rules.</p><div id="rule-source-list"></div><button id="source-add" type="button" class="button" data-mutation>Add rule set</button><h3>Custom routing rules</h3>
+        <p class="muted small">First matching rule wins. Custom rules run before Iran rules, after the gateway’s safety, DNS and private-network rules. Private/local traffic bypassed by nftables is unaffected. Enter one match value per line; use CIDR notation for IPs.</p>
+        <div id="routing-rule-list"></div>
+        <button id="rules-add" type="button" class="button" data-mutation>Add rule</button>
+        <div class="form-footer"><span id="rules-note" class="muted small" role="status"></span><button type="submit" class="button primary" data-mutation>Save routing rules</button></div>
       </form>
     </section>
     <section id="panel-logs" role="tabpanel" aria-labelledby="tab-logs" tabindex="0" hidden>

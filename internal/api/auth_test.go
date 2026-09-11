@@ -45,11 +45,11 @@ func TestBrowserSessionCSRFAndLogout(t *testing.T) {
 		t.Fatal(err)
 	}
 	cookies := login.Result().Cookies()
-	if len(cookies) != 1 {
+	if len(cookies) != 2 || cookies[1].Path != "/api/" || cookies[1].MaxAge != -1 {
 		t.Fatalf("cookies=%v", cookies)
 	}
 	cookie := cookies[0]
-	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.MaxAge <= 0 || cookie.Secure || cookie.Value == "correct-token" {
+	if cookie.Path != "/" || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.MaxAge <= 0 || cookie.Secure || cookie.Value == "correct-token" {
 		t.Fatalf("unsafe cookie=%+v", cookie)
 	}
 	if !state.Authenticated || state.CSRFToken == "" || strings.Contains(login.Body.String(), "correct-token") {

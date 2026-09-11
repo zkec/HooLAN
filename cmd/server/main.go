@@ -243,6 +243,7 @@ func run(cfg config, log *slog.Logger) error {
 		return fmt.Errorf("listen %s: %w", cfg.listen, err)
 	}
 
+	svc.StartBackground()
 	if cfg.noRestore {
 		log.Info("skipping state restore (-no-restore)")
 	} else if err := svc.Restore(rootCtx); err != nil {
