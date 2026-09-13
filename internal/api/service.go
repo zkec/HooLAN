@@ -66,6 +66,8 @@ type Selector interface {
 
 // Config wires the service's dependencies.
 type Config struct {
+	NotificationClient *http.Client
+
 	Store    *store.Store
 	Engine   ProxyEngine
 	Firewall Firewall
@@ -95,6 +97,11 @@ type Config struct {
 
 // Service holds runtime state for the API.
 type Service struct {
+	notifications        chan string
+	notificationsStarted bool
+	telegramError        string
+	failedActive         string
+
 	usageSeen    map[string]Bytes
 	usageSaved   time.Time
 	usageStarted bool
@@ -137,6 +144,8 @@ type Service struct {
 
 // State is the persisted operator intent.
 type State struct {
+	Telegram TelegramSettings `json:"telegram"`
+
 	DeviceAliases      map[string]string  `json:"device_aliases,omitempty"`
 	DeviceRoutes       map[string]string  `json:"device_routes,omitempty"`
 	Usage              Usage              `json:"usage"`
@@ -162,6 +171,8 @@ type State struct {
 
 // JobStatus reports on a refresh job.
 type JobStatus struct {
+	Speed *tester.SpeedResult `json:"speed,omitempty"`
+
 	Kind           string `json:"kind,omitempty"`
 	SubscriptionID string `json:"subscription_id,omitempty"`
 	NodeID         string `json:"node_id,omitempty"`
@@ -217,12 +228,13 @@ func New(cfg Config) (*Service, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{
-		cfg:       cfg,
-		log:       cfg.Logger,
-		jobCtx:    ctx,
-		jobCancel: cancel,
-		tagByID:   make(map[string]string),
-		job:       JobStatus{State: "idle"},
+		cfg:           cfg,
+		notifications: make(chan string, 32),
+		log:           cfg.Logger,
+		jobCtx:        ctx,
+		jobCancel:     cancel,
+		tagByID:       make(map[string]string),
+		job:           JobStatus{State: "idle"},
 	}
 	st, err := s.loadState()
 	if err != nil {
@@ -309,6 +321,7 @@ func (s *Service) saveState() error {
 // StartBackground starts control-plane tasks independently of engine restore.
 // It is idempotent and Shutdown cancels both tasks.
 func (s *Service) StartBackground() {
+	s.startNotifications()
 	s.startRuleScheduler()
 	s.startUsageSampler()
 }
@@ -371,6 +384,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	// actually live -- on a never-enabled server (or a box without nft) this is a
 	// no-op sweep, and returning an error there trains operators to ignore the
 	// one message that means the LAN is still intercepted.
+	wasRunning := s.cfg.Engine.Running()
 	s.sampleUsage(ctx)
 	var errs []error
 	if err := s.cfg.Firewall.Remove(ctx); err != nil {
@@ -384,6 +398,8 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	defer s.setIntentionalStop(false)
 	if err := s.cfg.Engine.Stop(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("stop engine: %w", err))
+	} else if wasRunning {
+		s.notifyShutdown(ctx)
 	}
 
 	s.mu.Lock()
@@ -406,6 +422,7 @@ func (s *Service) HandleEngineExit(exitErr error) {
 	if planned || !enabled {
 		return
 	}
+	s.notify("Proxy engine stopped unexpectedly. Removing LAN interception.")
 	s.log.Error("engine exited unexpectedly while proxy was enabled; "+
 		"removing tproxy rules to fail open", "err", exitErr)
 	go func() {
@@ -524,12 +541,14 @@ func (s *Service) enable(ctx context.Context) error {
 		s.cleanupFailedEnable()
 		return errors.New("sing-box exited while installing interception")
 	}
+	s.notify("Proxy engine started; LAN interception is enabled.")
 	s.log.Info("proxy enabled", "pid", s.cfg.Engine.Pid(), "nodes", len(nodes))
 	return nil
 }
 
 // disable removes the ruleset, then stops the engine. Caller must hold opMu.
 func (s *Service) disable(ctx context.Context) error {
+	wasRunning := s.cfg.Engine.Running()
 	s.sampleUsage(ctx)
 	// Rules first. Stopping the engine while they are loaded blackholes the LAN
 	// for as long as it takes to unload them.
@@ -544,6 +563,9 @@ func (s *Service) disable(ctx context.Context) error {
 	s.mu.Lock()
 	s.proxyEnabled = false
 	s.mu.Unlock()
+	if wasRunning {
+		s.notify("Proxy engine stopped; LAN interception is disabled.")
+	}
 	s.log.Info("proxy disabled")
 	return nil
 }

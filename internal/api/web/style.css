@@ -1290,3 +1290,12 @@ select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 :root[data-theme="light"] .switch input:checked+.switch-track:after { background: #ffffff; }
 .button.primary:hover:not(:disabled) { background: var(--accent); color: var(--bg); filter: brightness(.94); }
 .button.active-button { background: var(--accent-dark); color: var(--accent); border-color: var(--accent); }
+.testing::before { content: ''; width: .8em; height: .8em; display: inline-block; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; margin-inline-end: .5em; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.speed-result { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#qr-dialog { max-width: min(95vw, 36rem); padding: 1.5rem; }
+#qr-image { margin: 1rem auto; width: fit-content; background: white; padding: 20px; }
+#qr-image img, #qr-image canvas { max-width: 100%; height: auto; }
+#qr-link { display: block; width: 100%; min-height: 6rem; margin-bottom: 1rem; }
+#telegram-token, #telegram-chat { direction: ltr; }
+@media (prefers-reduced-motion: reduce) { .testing::before { animation: none; } }

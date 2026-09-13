@@ -291,7 +291,42 @@
   "Your session stays in an HttpOnly cookie. The access token is never saved in browser storage.": "نشست شما در کوکی HttpOnly نگهداری می‌شود. توکن دسترسی در حافظهٔ مرورگر ذخیره نمی‌شود.",
   "Your gateway. Your connections.": "دروازهٔ شما. اتصال‌های شما.",
   "Signing in…": "در حال ورود…",
-  "Checking session…": "بررسی نشست…"
+  "Checking session…": "بررسی نشست…",
+  "Telegram notifications": "اعلان‌های تلگرام",
+  "Receive engine and subscription alerts. When enabled, only the active node is checked every five minutes; repeated failure alerts are suppressed until recovery.": "اعلان‌های موتور و اشتراک را دریافت کنید. در صورت فعال بودن، فقط گرهٔ فعال هر پنج دقیقه بررسی می‌شود؛ تا بازیابی اتصال، هشدار خرابی تکرار نمی‌شود.",
+  "Enable notifications": "فعال‌سازی اعلان‌ها",
+  "Telegram Bot Token": "توکن ربات تلگرام",
+  "Chat ID": "شناسهٔ گفتگو",
+  "Remove stored token": "حذف توکن ذخیره‌شده",
+  "Save notifications": "ذخیرهٔ اعلان‌ها",
+  "Notification settings saved": "تنظیمات اعلان ذخیره شد",
+  "Token stored": "توکن ذخیره شده است",
+  "No token stored": "توکنی ذخیره نشده است",
+  "Backup & restore": "پشتیبان‌گیری و بازیابی",
+  "Backups contain node credentials, the Telegram token, routing settings and firewall configuration. Store them privately. Restore replaces these settings and restarts the managed engine according to the saved ON/OFF state.": "نسخهٔ پشتیبان شامل اطلاعات ورود گره‌ها، توکن تلگرام، تنظیمات مسیریابی و دیوارهٔ آتش است. آن را خصوصی نگه دارید. بازیابی این تنظیمات را جایگزین می‌کند و موتور را مطابق وضعیت روشن یا خاموش ذخیره‌شده راه‌اندازی می‌کند.",
+  "Download Backup": "دریافت نسخهٔ پشتیبان",
+  "Backup ZIP": "فایل ZIP پشتیبان",
+  "Restore Backup": "بازیابی نسخهٔ پشتیبان",
+  "Restore backup": "بازیابی پشتیبان",
+  "Select a backup ZIP first.": "ابتدا فایل ZIP پشتیبان را انتخاب کنید.",
+  "Backup must be at most 32 MiB.": "حجم پشتیبان باید حداکثر ۳۲ مگابایت باشد.",
+  "Replace all saved configurations, device mappings and firewall settings with this backup? The active proxy will restart.": "آیا همهٔ پیکربندی‌ها، مسیر دستگاه‌ها و تنظیمات دیوارهٔ آتش با این پشتیبان جایگزین شوند؟ پروکسی فعال دوباره راه‌اندازی خواهد شد.",
+  "Restore started.": "بازیابی آغاز شد.",
+  "Speed Test": "آزمایش سرعت",
+  "Speed test": "آزمایش سرعت",
+  "Speed test started (15 MB download).": "آزمایش سرعت آغاز شد (دریافت ۱۵ مگابایت).",
+  "Speed test failed": "آزمایش سرعت ناموفق بود",
+  "Testing…": "در حال آزمایش…",
+  "Active node health check": "بررسی سلامت گرهٔ فعال",
+  "QR Code": "کد QR",
+  "Scan to import this configuration. The QR code and link contain its credentials.": "برای وارد کردن پیکربندی اسکن کنید. کد QR و پیوند شامل اطلاعات ورود آن هستند.",
+  "Share link": "پیوند اشتراک‌گذاری",
+  "Close": "بستن",
+  "Loading QR renderer…": "بارگذاری نمایشگر QR…",
+  "QR renderer unavailable. Copy the share link instead.": "نمایشگر QR در دسترس نیست. پیوند اشتراک‌گذاری را کپی کنید.",
+  "Link is too large for this QR code. Copy the share link instead.": "پیوند برای این کد QR بسیار بلند است. پیوند اشتراک‌گذاری را کپی کنید.",
+  "Chains cannot be shared as one mobile link": "زنجیره را نمی‌توان با یک پیوند موبایل به اشتراک گذاشت",
+  "Request failed": "درخواست ناموفق بود"
 };
   var originals = new WeakMap(), attributes = new WeakMap();
   function translate(value) {
@@ -317,7 +352,7 @@
       if (patterns[i][0].test(trimmed)) return trimmed.replace(patterns[i][0], patterns[i][1]).replace(/(\d+)s ago/g, '$1 ثانیه پیش').replace(/(\d+)m ago/g, '$1 دقیقه پیش').replace(/(\d+)h ago/g, '$1 ساعت پیش').replace(/(\d+)d ago/g, '$1 روز پیش');
     }
     // Translate the fixed part of task/status messages; retain diagnostic text.
-    var messages = ['Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
+    var messages = ['Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
     for (var j = 0; j < messages.length; j++) {
       var key = messages[j];
       if (trimmed.startsWith(key + ': ')) return fa[key] + ': ' + trimmed.slice(key.length + 2);

@@ -90,6 +90,17 @@
         <div class="form-footer"><span id="settings-note" class="muted small" role="status"></span><button class="button primary" type="submit" data-mutation>Save settings</button></div>
       </form>
 
+      <form id="telegram-form" class="card form-card">
+        <h2>Telegram notifications</h2><p class="muted small">Receive engine and subscription alerts. When enabled, only the active node is checked every five minutes; repeated failure alerts are suppressed until recovery.</p>
+        <label><input id="telegram-enabled" type="checkbox" /> Enable notifications</label>
+        <div class="edit-grid"><div class="field"><label for="telegram-token">Telegram Bot Token</label><input id="telegram-token" type="password" autocomplete="new-password" placeholder="Leave blank to keep current" /></div><div class="field"><label for="telegram-chat">Chat ID</label><input id="telegram-chat" type="text" autocomplete="off" placeholder="-1001234567890" /></div></div>
+        <label><input id="telegram-clear" type="checkbox" /> Remove stored token</label><p id="telegram-status" class="muted small" role="status"></p>
+        <button type="submit" class="button primary" data-mutation>Save notifications</button>
+      </form>
+      <section class="card form-card"><h2>Backup &amp; restore</h2><p class="muted small">Backups contain node credentials, the Telegram token, routing settings and firewall configuration. Store them privately. Restore replaces these settings and restarts the managed engine according to the saved ON/OFF state.</p>
+        <div class="form-footer"><button id="download-backup" type="button" class="button" data-mutation data-job>Download Backup</button><label class="field" for="restore-file">Backup ZIP<input id="restore-file" type="file" accept=".zip,application/zip" /></label><button id="restore-backup" type="button" class="button" data-mutation data-job>Restore Backup</button></div>
+      </section>
+
       <form id="rules-form" class="card form-card">
         <h2>GeoIP, geosite and routing</h2>
         <p class="muted small">Updates download and validate both rule sets. Applying changes briefly restarts an active proxy. The update schedule runs even when the proxy is off.</p>
@@ -130,6 +141,7 @@
       <div class="form-footer"><button id="node-edit-cancel" type="button" class="button subtle">Cancel</button><button type="submit" class="button primary" data-mutation data-job>Save changes</button></div>
     </form>
   </dialog>
+  <dialog id="qr-dialog" aria-labelledby="qr-title"><h2 id="qr-title">QR Code</h2><p class="muted small">Scan to import this configuration. The QR code and link contain its credentials.</p><div id="qr-image" data-no-i18n></div><p id="qr-status" role="status"></p><label for="qr-link">Share link</label><textarea id="qr-link" readonly spellcheck="false" dir="ltr"></textarea><button id="qr-close" type="button" class="button">Close</button></dialog>
   <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
 </body>
 </html>

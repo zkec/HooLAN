@@ -8,7 +8,7 @@
   var POLL_BACKOFF = 15000;
   var MAX_LOG_LINES = 500;
   var state = {
-    groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
+    speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
     inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
@@ -57,8 +57,9 @@
     ['stat-engine', 'stat-rules', 'stat-nodes', 'stat-active'].forEach(function (id) { text($(id), '—'); });
     ['stat-pid', 'stat-rules-err', 'stat-nodes-sub', 'stat-active-sub'].forEach(function (id) { text($(id), ''); });
     state.groupSelections.clear(); state.chainHops = []; state.chainExistingNodes = []; state.chainEditingID = null;
+    if ($('qr-dialog').open) $('qr-dialog').close();
     if ($('node-editor').open) $('node-editor').close();
-    ['subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
+    ['telegram-form', 'subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
   }
   function signInRequired() {
     if (state.exiting) return;
@@ -150,7 +151,9 @@
     state.jobRunning = job.state === 'running';
     $('job-panel').hidden = !job.state || job.state === 'idle';
     $('job-panel').classList.toggle('failed', job.state === 'failed');
-    var name = job.kind === 'latency' ? 'Latency test' : job.kind === 'refresh' ? 'Subscription refresh' : 'Background task';
+    var name = ({speed:'Speed test',restore:'Restore backup',health:'Active node health check',latency:'Latency test',refresh:'Subscription refresh'})[job.kind] || 'Background task';
+    if (job.kind === 'speed' && job.node_id) state.speedResults.set(job.node_id, {state:job.state,mbps:job.speed && job.speed.mbps,error:job.error});
+    if (previous && previous.state === 'running' && job.kind === 'restore' && job.state === 'succeeded') { state.settings = null; state.settingsDirty = false; state.rulesDirty = false; state.telegramLoaded = false; state.speedResults.clear(); }
     var parts = [];
     if (state.jobRunning) parts.push(name + ' running. Testing nodes can take a few minutes on a Pi.');
     if (job.state === 'succeeded') parts.push(name + ' completed ' + ago(job.finished_at) + '.');
@@ -229,6 +232,15 @@
       if (pinned) select.classList.add('active-button');
       buttons.appendChild(select);
       if (node.chain_id || isManual(node)) buttons.appendChild(actionButton('Edit', node.chain_id ? 'edit-chain' : 'edit-node', node.id, false, true));
+      var speed = state.speedResults.get(node.id);
+      var speedButton = actionButton(speed && speed.state === 'running' ? 'Testing…' : 'Speed Test', 'speed-node', node.id, !node.enabled, true);
+      if (speed && speed.state === 'running') { speedButton.classList.add('testing'); speedButton.setAttribute('aria-busy','true'); }
+      buttons.appendChild(speedButton);
+      if (speed && speed.state === 'succeeded') buttons.appendChild(element('span','speed-result',Number(speed.mbps).toFixed(2)+' Mbps'));
+      if (speed && speed.state === 'failed') { var failed = element('span','muted small','Speed test failed'); failed.title = speed.error || ''; buttons.appendChild(failed); }
+      var qr = actionButton('QR Code','qr-node',node.id,!!(node.chain_id || node.detour_id || node.detour),false);
+      if (qr.dataset.unavailable === 'true') qr.title = 'Chains cannot be shared as one mobile link';
+      buttons.appendChild(qr);
       actions.appendChild(buttons);
       row.appendChild(actions);
       body.appendChild(row);
@@ -273,7 +285,7 @@
     card.appendChild(bar); card.appendChild(makeNodeTable(nodes, 'No configurations in this group yet.', group)); return card;
   }
   function renderInventory() {
-    var key = JSON.stringify([state.nodes, state.subscriptions, state.selection, state.status && state.status.engine_running]);
+    var key = JSON.stringify([state.nodes, state.subscriptions, state.selection, state.status && state.status.engine_running, Array.from(state.speedResults.entries())]);
     if (key === state.inventoryKey) { updateControls(); return; }
     state.inventoryKey = key;
     var focused = document.activeElement, focusAction = focused && focused.dataset.action, focusID = focused && focused.dataset.id;
@@ -340,6 +352,7 @@
     try {
       await fetchStatus();
       if (Date.now() - state.inventoryAt > 15000) await fetchInventory();
+      if (!state.telegramLoaded) await loadTelegram();
       if (!state.settings) renderSettings(await call('GET', '/api/settings'));
       if (window.location.hash === '#usage') renderUsage(await call('GET', '/api/usage'));
       if (state.rulesLoaded || window.location.hash === '#settings') renderRules(await call('GET', '/api/rules'));
@@ -502,6 +515,8 @@
       var button = event.target.closest('[data-action]');
       if (!button || button.disabled) return;
       var id = button.dataset.id;
+      if (button.dataset.action === 'speed-node') startJob('/api/nodes/speed', {node_id:id}, 'Speed test started (15 MB download).');
+      if (button.dataset.action === 'qr-node') showQR(id);
       if (button.dataset.action === 'edit-node') openNodeEditor(id);
       if (button.dataset.action === 'edit-chain') openChainEditor(id);
       if (button.dataset.action === 'select-node') selectNode(id);
@@ -640,6 +655,59 @@
         payload[input.dataset.editField] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
       });
       mutate('Edit configuration', async function () { await call('PUT', '/api/nodes/edit', payload); $('node-editor').close(); toast('Configuration updated.', 'ok'); });
+    });
+  }
+
+  async function loadTelegram() {
+    var settings = await call('GET','/api/telegram');
+    $('telegram-enabled').checked = settings.enabled; $('telegram-chat').value = settings.chat_id || '';
+    text($('telegram-status'), settings.last_error || (settings.token_set ? 'Token stored' : 'No token stored'));
+    state.telegramLoaded = true;
+  }
+  async function binaryRequest(method, path, body) {
+    var headers = {}; if (method !== 'GET') { headers['Content-Type'] = 'application/zip'; if (state.csrf) headers['X-CSRF-Token'] = state.csrf; }
+    var response = await fetch(path, {method:method, body:body, headers:headers, credentials:'same-origin', cache:'no-store'});
+    if (!response.ok) { var data = await response.json(); var error = new Error(data.error || 'Request failed'); error.status = response.status; if (error.status === 401) signInRequired(); throw error; }
+    return response;
+  }
+  function wireAdvancedEvents() {
+    $('telegram-form').addEventListener('submit',function(event){
+      event.preventDefault(); var payload = {enabled:$('telegram-enabled').checked,chat_id:$('telegram-chat').value.trim()};
+      if ($('telegram-clear').checked) payload.token = ''; else if ($('telegram-token').value) payload.token = $('telegram-token').value.trim();
+      mutate('Save notifications',async function(){await call('PUT','/api/telegram',payload);$('telegram-token').value='';$('telegram-clear').checked=false;await loadTelegram();toast('Notification settings saved','ok');});
+    });
+    $('download-backup').addEventListener('click',function(){mutate('Download Backup',async function(){
+      var response = await binaryRequest('GET','/api/backup'); var url = URL.createObjectURL(await response.blob());
+      var link = document.createElement('a');link.href=url;link.download='backup.zip';document.body.appendChild(link);link.click();link.remove();window.setTimeout(function(){URL.revokeObjectURL(url);},30000);
+    });});
+    $('restore-backup').addEventListener('click',function(){
+      var file=$('restore-file').files[0];if (!file) { toast('Select a backup ZIP first.','err');return; }
+      if (file.size>32*1024*1024) {toast('Backup must be at most 32 MiB.','err');return;}
+      if (!window.confirm(window.I18n.t('Replace all saved configurations, device mappings and firewall settings with this backup? The active proxy will restart.'))) return;
+      mutate('Restore backup',async function(){var response=await binaryRequest('POST','/api/restore',file);var result=await response.json();renderJob(result.refresh);$('restore-file').value='';toast('Restore started.','ok');});
+    });
+    $('qr-close').addEventListener('click',function(){$('qr-dialog').close();});
+    $('qr-dialog').addEventListener('close',function(){state.qrGeneration++;$('qr-link').value='';text($('qr-image'),'');$('qr-image').removeAttribute('title');});
+  }
+  function loadQRCode() {
+    if (window.QRCode) return Promise.resolve();
+    if (!state.qrLoad) state.qrLoad = new Promise(function(resolve,reject){
+      var script=document.createElement('script');script.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';script.referrerPolicy='no-referrer';script.async=true;
+      var timer=window.setTimeout(function(){script.remove();reject(new Error('QR renderer unavailable. Copy the share link instead.'));},15000);
+      script.onload=function(){window.clearTimeout(timer);if(window.QRCode)resolve();else reject(new Error('QR renderer unavailable. Copy the share link instead.'));};
+      script.onerror=function(){window.clearTimeout(timer);script.remove();reject(new Error('QR renderer unavailable. Copy the share link instead.'));};document.head.appendChild(script);
+    }).catch(function(error){state.qrLoad=null;throw error;});
+    return state.qrLoad;
+  }
+  function showQR(id) {
+    mutate('QR Code',async function(){
+      var response=await call('POST','/api/nodes/share',{node_id:id});var generation=++state.qrGeneration;
+      $('qr-link').value=response.link;text($('qr-image'),'');text($('qr-status'),'Loading QR renderer…');$('qr-dialog').showModal();
+      // Only the renderer is downloaded; the credential-bearing link stays in this browser.
+      loadQRCode().then(function(){if(generation!==state.qrGeneration||!$('qr-dialog').open)return;
+        try {new window.QRCode($('qr-image'),{text:response.link,width:280,height:280,correctLevel:window.QRCode.CorrectLevel.M});text($('qr-status'),'');}
+        catch (_) {text($('qr-status'),'Link is too large for this QR code. Copy the share link instead.');}
+      }).catch(function(error){if(generation===state.qrGeneration)text($('qr-status'),error.message);});
     });
   }
 
@@ -843,6 +911,7 @@
     try { window.localStorage.removeItem('pm.token'); window.localStorage.removeItem('pm.subUrl'); } catch (ignored) {}
     wireEvents();
     wireRuleEvents();
+    wireAdvancedEvents();
     wireBatchEvents();
     updateControls();
     activateTab(window.location.hash.slice(1), false);
@@ -853,6 +922,7 @@
       state.csrf = session.csrf_token || '';
       $('logout-btn').hidden = !session.auth_required;
       await reconcile();
+      await loadTelegram();
       renderSettings(await call('GET', '/api/settings'));
       renderRules(await call('GET', '/api/rules'));
       renderUsage(await call('GET', '/api/usage'));

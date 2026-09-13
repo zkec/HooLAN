@@ -165,7 +165,7 @@ func (h *handlers) staticHandler() http.Handler {
 			hdr.Set("Cache-Control", "no-cache")
 			// All dashboard/login scripts and styles are embedded locally.
 			hdr.Set("Content-Security-Policy",
-				"default-src 'self'; script-src 'self'; "+
+				"default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js; "+
 					"style-src 'self'; img-src 'self' data:; "+
 					"connect-src 'self'; font-src 'self' data:; "+
 					"object-src 'none'; frame-ancestors 'none'; base-uri 'none'; "+

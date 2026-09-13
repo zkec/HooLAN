@@ -362,21 +362,22 @@ func parseHysteria2(link string) (Node, error) {
 // Numeric fields arrive as either JSON numbers or strings depending on the
 // generating client, hence json.Number.
 type vmessLink struct {
-	V    json.Number `json:"v"`
-	PS   string      `json:"ps"`
-	Add  string      `json:"add"`
-	Port json.Number `json:"port"`
-	ID   string      `json:"id"`
-	Aid  json.Number `json:"aid"`
-	Scy  string      `json:"scy"`
-	Net  string      `json:"net"`
-	Type string      `json:"type"`
-	Host string      `json:"host"`
-	Path string      `json:"path"`
-	TLS  string      `json:"tls"`
-	SNI  string      `json:"sni"`
-	ALPN string      `json:"alpn"`
-	FP   string      `json:"fp"`
+	Insecure json.RawMessage `json:"allowInsecure"`
+	V        json.Number     `json:"v"`
+	PS       string          `json:"ps"`
+	Add      string          `json:"add"`
+	Port     json.Number     `json:"port"`
+	ID       string          `json:"id"`
+	Aid      json.Number     `json:"aid"`
+	Scy      string          `json:"scy"`
+	Net      string          `json:"net"`
+	Type     string          `json:"type"`
+	Host     string          `json:"host"`
+	Path     string          `json:"path"`
+	TLS      string          `json:"tls"`
+	SNI      string          `json:"sni"`
+	ALPN     string          `json:"alpn"`
+	FP       string          `json:"fp"`
 }
 
 func parseVMess(link string) (Node, error) {
@@ -399,6 +400,7 @@ func parseVMess(link string) (Node, error) {
 	}
 	n := Node{
 		Protocol:    ProtoVMess,
+		Insecure:    isTruthy(strings.Trim(string(v.Insecure), `"`)),
 		Tag:         v.PS,
 		Server:      v.Add,
 		Port:        port,
@@ -496,9 +498,7 @@ func parseShadowsocks(link string) (Node, error) {
 }
 
 func tagOf(u *url.URL) string {
-	if f, err := url.QueryUnescape(u.Fragment); err == nil {
-		return f
-	}
+	// net/url already percent-decodes fragments. A literal plus is not a space.
 	return u.Fragment
 }
 

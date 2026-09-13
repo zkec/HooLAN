@@ -307,6 +307,7 @@ func (s *Service) reloadRunningLocked(ctx context.Context) error {
 			return errors.New("sing-box exited while installing interception")
 		}
 	}
+	s.notify("Proxy engine stopped and restarted to apply configuration changes.")
 	return nil
 }
 
@@ -518,6 +519,11 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, _ 
 	}
 	s.job.NodesPruned = removed
 	s.mu.Unlock()
+	for _, source := range sources {
+		if ids, ok := members[source.ID]; ok {
+			s.notify(fmt.Sprintf("Subscription refreshed: %s (%d nodes)", source.Name, len(ids)))
+		}
+	}
 	// An empty successful feed may remove the last usable configuration.
 	if len(s.cfg.Store.EnabledNodes()) == 0 && s.cfg.Engine.Running() {
 		err = s.disable(ctx)
