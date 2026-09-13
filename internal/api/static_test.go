@@ -51,7 +51,7 @@ func TestRootServesDashboard(t *testing.T) {
 		if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
 			t.Errorf("GET %s content type = %q, want text/html", path, ct)
 		}
-		if !strings.Contains(string(buf), "<title>Proxy Manager</title>") {
+		if !strings.Contains(string(buf), "<title>HooLAN</title>") {
 			t.Errorf("GET %s did not return the dashboard", path)
 		}
 		if resp.Header.Get("ETag") == "" {

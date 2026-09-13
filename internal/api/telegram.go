@@ -353,7 +353,7 @@ func (h *handlers) testTelegram(w http.ResponseWriter, r *http.Request) {
 		if cfg.UseProxy {
 			route = "proxy"
 		}
-		err := h.svc.deliverTelegram(ctx, cfg, "Proxy Manager test message: Telegram delivery is working via "+route+".")
+		err := h.svc.deliverTelegram(ctx, cfg, "HooLAN test message: Telegram delivery is working via "+route+".")
 		h.svc.recordTelegramResult(err)
 		return err
 	})

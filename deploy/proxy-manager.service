@@ -1,5 +1,5 @@
 [Unit]
-Description=Proxy Manager transparent LAN gateway
+Description=HooLAN transparent LAN gateway
 After=network-online.target docker.service
 Wants=network-online.target
 

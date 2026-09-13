@@ -1,4 +1,15 @@
-# Proxy Manager · Smart LAN Gateway
+# HooLAN
+
+HooLAN keeps the existing `proxy-manager` binary, systemd service, file paths and
+`PROXY_MANAGER_*` environment variables for installation compatibility.
+
+The dashboard groups all creation forms in **Configurations**, with a searchable
+node picker inside the load balancer form. **Usage** sorts nodes and devices by
+most downloaded or uploaded and shows saved speed limits beside each device's
+**Settings** button. Zero-usage nodes remain hidden. **Settings** groups automatic
+selection, DNS and routing rules under **Routing & DNS**, followed by Telegram
+notifications and Backup & restore.
+
 
 [فارسی](README-fa.md) · [Review and cleanup notes](docs/consolidation-review.md)
 
@@ -364,6 +375,7 @@ go test -race ./...
 go vet ./...
 gofmt -l ./cmd ./internal
 node scripts/test-web.cjs
+node scripts/test-dashboard.cjs
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/proxy-manager-new ./cmd/server
 ```
 

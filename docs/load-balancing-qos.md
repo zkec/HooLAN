@@ -26,14 +26,15 @@ node outbounds. No external Go requirements or frontend libraries were added.
 | `internal/api/handlers_dashboard.go`, `handlers.go` | Group creation route and member count in node rows |
 | `internal/api/backup.go` | Restore group references and QoS, validate before applying; treat absent/empty alias maps equivalently |
 | `internal/api/batch.go`, `edit.go`, `node_edit.go`, `speed.go`, `telegram.go` | Guard unsupported nested/edited/exported groups and isolated tests; exclude groups from automatic latency selection |
-| `internal/api/web/index.html`, `app.js`, `i18n.js` | Create Load Balancer form, checkbox selection across cards, group rows, per-device rate form, English/Persian copy |
+| `internal/api/web/index.html`, `app.js`, `i18n.js` | Create Load Balancer form, searchable member picker, group rows, per-device rate form, English/Persian copy |
 
 The new forms reuse existing theme-aware CSS classes (`form-card`, `form-footer`,
 `device-qos-card`, inputs/buttons); no separate styling framework is needed.
 
 ## Create and select a group
 
-Select 2–32 enabled configurations across the existing cards, enter a name, and
+In **Configurations → Add & create → Load balancing**, select 2–32 enabled
+configurations from the searchable member picker, enter a name, and
 click **Create Load Balancer**. Existing chains can be members; groups cannot be
 nested. At most 16 saved groups are supported. Group creation snapshots each
 member and its complete detour path. Editing, deleting or refreshing the source
@@ -91,7 +92,7 @@ bytes to the visible group, and bypassed bytes remain Direct.
 
 ## Four-way device limits
 
-In **Usage → LAN devices → Manage Limits**, a dialog edits the alias, outbound
+In **Usage → LAN devices → Settings**, a dialog edits the alias, outbound
 assignment (Global Default, Direct, node, chain or load balancer), and a 2×2 grid
 of Proxy Upload/Download and Direct Upload/Download limits. It uses the existing
 dark/light theme and English/Persian RTL preferences. Polling does not replace an
@@ -209,7 +210,7 @@ References: [nftables limits, hooks, sets and verdict maps](https://netfilter.or
 | `internal/api/devices.go` | Extend existing authenticated PUT handler; combined validation, persistence, apply and rollback |
 | `internal/api/usage.go` | Read full Clash tuple metadata, classify actual outbounds, synchronize sets, expose QoS errors |
 | `internal/api/web/index.html` | Accessible device dialog, 2×2 limits grid and status/error elements |
-| `internal/api/web/app.js` | Manage Limits buttons, grouped route choices, one-request save and draft preservation |
+| `internal/api/web/app.js` | Settings buttons, grouped route choices, one-request save and draft preservation |
 | `internal/api/web/style.css` | Responsive dialog/grid using existing theme tokens and RTL logical spacing |
 | `internal/api/web/i18n.js` | Persian translations for new labels and explanations |
 

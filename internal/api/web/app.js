@@ -8,7 +8,7 @@
   var POLL_BACKOFF = 15000;
   var MAX_LOG_LINES = 500;
   var state = {
-    speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
+    balanceMembers: new Set(), usageSnapshot: null, speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
     deviceSnapshot: null, inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
@@ -47,14 +47,14 @@
 
   function clearPrivateView() {
     stopLogs();
-    state.deviceSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
+    state.balanceMembers.clear(); state.usageSnapshot = null; state.deviceSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
     state.nodes = [];
     state.subscriptions = [];
     state.status = null;
     state.settings = null;
     state.selection = {};
     state.csrf = '';
-    ['subscriptions-list', 'manual-group', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes', 'usage-devices'].forEach(function (id) { text($(id), ''); });
+    ['subscriptions-list', 'manual-group', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes', 'usage-devices', 'balance-members'].forEach(function (id) { text($(id), ''); });
     ['stat-engine', 'stat-rules', 'stat-nodes', 'stat-active'].forEach(function (id) { text($(id), '—'); });
     ['stat-pid', 'stat-rules-err', 'stat-nodes-sub', 'stat-active-sub'].forEach(function (id) { text($(id), ''); });
     state.groupSelections.clear(); state.chainHops = []; state.chainExistingNodes = []; state.chainEditingID = null;
@@ -302,7 +302,7 @@
     state.groupSelections.forEach(function (_, group) {
       if (group !== 'manual' && !state.subscriptions.some(function (s) { return s.id === group; })) state.groupSelections.delete(group);
     });
-    renderChainBuilder(); updateControls();
+    renderChainBuilder(); renderBalancePicker(); updateControls();
     if (focusAction && focusID) {
       var replacement = Array.from(document.querySelectorAll('[data-action]')).find(function (button) { return button.dataset.action === focusAction && button.dataset.id === focusID; });
       if (replacement && !replacement.disabled) replacement.focus({ preventScroll: true });
@@ -600,8 +600,50 @@
   }
 
   function balanceSelection() {
-    var ids = new Set(); state.groupSelections.forEach(function(selected) { selected.forEach(function(id) { ids.add(id); }); });
-    return Array.from(ids).filter(function(id) { return state.nodes.some(function(n) { return n.id === id && n.enabled && n.protocol !== 'loadbalance'; }); });
+    return state.nodes.filter(function (node) {
+      return state.balanceMembers.has(node.id) && node.enabled && node.protocol !== 'loadbalance';
+    }).map(function (node) { return node.id; });
+  }
+  function renderBalancePicker() {
+    state.balanceMembers = new Set(balanceSelection());
+    var list = $('balance-members'), scroll = list.scrollTop;
+    var focused = document.activeElement, focusedID = focused && focused.dataset.balanceNode;
+    text(list, ''); var included = new Set();
+    function addGroup(name, nodes, userLabel) {
+      var group = element('fieldset', 'balance-group'), legend = element('legend', '', name);
+      if (userLabel) legend.dataset.noI18n = '';
+      group.appendChild(legend);
+      nodes.forEach(function (node) {
+        if (!node.enabled || node.protocol === 'loadbalance' || included.has(node.id)) return;
+        included.add(node.id);
+        var label = element('label', 'balance-option'), box = document.createElement('input');
+        box.type = 'checkbox'; box.dataset.balanceNode = node.id; box.dataset.mutation = ''; box.dataset.job = '';
+        box.checked = state.balanceMembers.has(node.id);
+        label.dataset.search = [node.tag, node.server, name].join(' ').toLocaleLowerCase();
+        var caption = element('span', '', node.tag || node.server || node.id); caption.dataset.noI18n = '';
+        label.appendChild(box); label.appendChild(caption); group.appendChild(label);
+      });
+      if (group.children.length > 1) list.appendChild(group);
+    }
+    addGroup('Manual configurations', groupNodes('manual'));
+    state.subscriptions.forEach(function (sub) { addGroup(sub.name || 'Subscription', groupNodes(sub.id), !!sub.name); });
+    addGroup('Other configurations', state.nodes);
+    if (!included.size) list.appendChild(element('p', 'muted small', 'Add enabled nodes or chains to create a load balancer.'));
+    filterBalancePicker(); list.scrollTop = scroll;
+    if (focusedID) {
+      var replacement = Array.from(list.querySelectorAll('[data-balance-node]')).find(function (box) { return box.dataset.balanceNode === focusedID; });
+      if (replacement) replacement.focus({preventScroll: true});
+    }
+  }
+  function filterBalancePicker() {
+    var query = $('balance-search').value.trim().toLocaleLowerCase();
+    $('balance-members').querySelectorAll('.balance-group').forEach(function (group) {
+      var visible = 0;
+      group.querySelectorAll('.balance-option').forEach(function (label) {
+        label.hidden = !label.dataset.search.includes(query); if (!label.hidden) visible++;
+      });
+      group.hidden = !visible;
+    });
   }
   function updateBulkControls() {
     var count = balanceSelection().length;
@@ -652,11 +694,20 @@
         toast('Selected configurations deleted.', 'ok');
       });
     });
+    $('balance-search').addEventListener('input', filterBalancePicker);
+    $('balance-members').addEventListener('change', function (event) {
+      var box = event.target, id = box.dataset.balanceNode;
+      if (!id || box.disabled) return;
+      if (box.checked) state.balanceMembers.add(id); else state.balanceMembers.delete(id);
+      updateBulkControls();
+    });
     $('balance-form').addEventListener('submit',function(event) {
       event.preventDefault(); var ids=balanceSelection(), name=$('balance-name').value.trim();
+      if (state.busy || state.jobRunning || !state.authenticated) return;
+      if (!name || ids.length < 2 || ids.length > 32) { toast('Enter a name and select 2–32 nodes or chains.', 'err'); return; }
       mutate('Create Load Balancer',async function() {
         await call('POST','/api/load-balancers',{name:name,node_ids:ids});
-        state.groupSelections.clear();$('balance-form').reset();toast('Load balancer saved','ok');
+        state.balanceMembers.clear();$('balance-form').reset();renderBalancePicker();toast('Load balancer saved','ok');
       });
     });
     $('chain-builder-node').addEventListener('change',updateBulkControls);
@@ -808,14 +859,22 @@
     $('rule-source-list').appendChild(row); updateControls();
   }
   function byteCount(n) { var units=['B','KiB','MiB','GiB','TiB'];var i=0;while(n>=1024&&i<4){n/=1024;i++;}return n.toFixed(i?2:0)+' '+units[i]; }
+  // Sort raw byte counters, never formatted strings; ties stay stable across polls.
+  function sortUsageKeys(keys, values, direction) {
+    var field = direction === 'upload' ? 'upload' : 'download';
+    return keys.sort(function (a, b) {
+      return (Number((values[b] || {})[field]) || 0) - (Number((values[a] || {})[field]) || 0) || a.localeCompare(b, undefined, {numeric: true});
+    });
+  }
   function renderUsage(response) {
+    state.usageSnapshot = response;
     var u=response.usage; var total=u.total || {};
     var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
     text($('usage-total'),'Upload '+byteCount(total.upload||0)+' · Download '+byteCount(total.download||0)+' · Total '+byteCount((total.upload||0)+(total.download||0)));
     text($('usage-status'),'Last sample: '+ago(u.last_sample)+(u.error?' · '+u.error:'')+(!response.supported?' · Clash statistics unavailable':''));
     var list=$('usage-nodes');text(list,'');var table=element('table','node-table');var head=element('tr');['Configuration / route (estimated)','Upload','Download'].forEach(function(label){head.appendChild(element('th','',label));});table.appendChild(head);
     var values=u.outbounds||{};var keys=Array.from(new Set(['direct'].concat(state.nodes.map(function(n){return n.id;}),Object.keys(values))));
-    keys.filter(function(key){var v=values[key]||{};return (v.upload||0)>0 || (v.download||0)>0;}).forEach(function(key){var n=nodesByID.get(key);var value=values[key]||{};var row=element('tr');var caption=element('td','',key==='direct'?'Direct / bypass':n?n.tag:key);if(key!=='direct')caption.dataset.noI18n='';row.appendChild(caption);row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
+    sortUsageKeys(keys, values, $('usage-sort').value).filter(function(key){var v=values[key]||{};return (v.upload||0)>0 || (v.download||0)>0;}).forEach(function(key){var n=nodesByID.get(key);var value=values[key]||{};var row=element('tr');var caption=element('td','',key==='direct'?'Direct / bypass':n?n.tag:key);if(key!=='direct')caption.dataset.noI18n='';row.appendChild(caption);row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
     if (table.rows.length === 1) list.appendChild(element('p', 'muted', 'No configuration has recorded traffic yet.'));
     renderDevices(response, false);
   }
@@ -856,6 +915,8 @@
     dialog.showModal(); updateControls();
   }
   function wireDeviceSettings() {
+    $('usage-sort').addEventListener('change', function () { if (state.usageSnapshot) renderUsage(state.usageSnapshot); });
+    $('devices-sort').addEventListener('change', function () { if (state.deviceSnapshot) renderDevices(state.deviceSnapshot, true); });
     $('usage-devices').addEventListener('click', function (event) {
       var button = event.target.closest('[data-device-settings]');
       if (button && !button.disabled && state.deviceSnapshot) openDeviceSettings(button.dataset.deviceSettings, state.deviceSnapshot);
@@ -885,17 +946,33 @@
       });
     });
   }
+  function deviceLimitSummary(limits) {
+    var summary = element('div', 'device-limit-summary');
+    if (!qosFields.some(function (field) { return Number(limits[field]) > 0; })) {
+      summary.appendChild(element('span', 'muted small', 'Unlimited')); return summary;
+    }
+    qosFields.forEach(function (field, index) {
+      var line = element('div', 'small');
+      line.appendChild(element('span', 'muted', ['Proxy Upload', 'Proxy Download', 'Direct Upload', 'Direct Download'][index]));
+      var value = element('span', '', Number(limits[field]) > 0 ? Number(limits[field]) + ' Mbps' : 'Unlimited');
+      if (Number(limits[field]) > 0) { value.dir = 'ltr'; value.dataset.noI18n = ''; }
+      line.appendChild(value); summary.appendChild(line);
+    });
+    return summary;
+  }
   function renderDevices(response, force) {
+    state.usageSnapshot = response;
     state.deviceSnapshot = response;
     var list = $('usage-devices');
     if (!force && list.contains(document.activeElement)) return;
     text(list, '');
     text($('device-qos-status'), response.usage.qos_error ? 'QoS classification unavailable; unclassified connections use the stricter limit.' : '');
     var values = response.usage.devices || {}, aliases = response.device_aliases || {}, routes = response.device_routes || {}, limits = response.device_limits || {};
-    var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits)))).sort(function (a, b) { return a.localeCompare(b, undefined, {numeric: true}); });
+    var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits))));
+    sortUsageKeys(ips, values, $('devices-sort').value);
     if (!ips.length) { list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
     var table = element('table', 'node-table device-table'), header = element('tr'), head = element('thead'), body = element('tbody');
-    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'QoS'].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
+    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
     head.appendChild(header); table.appendChild(head); table.appendChild(body);
     var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
     ips.forEach(function (ip) {
@@ -906,9 +983,9 @@
       var id = routes[ip] || '', node = nodesByID.get(id);
       var route = element('td', 'device-route-label', id === 'direct' ? 'Direct' : !id ? 'Global Default' : node && node.enabled ? node.tag || node.server : 'Unavailable node (using Global Default)');
       if (node && node.enabled) route.dataset.noI18n = ''; row.appendChild(route);
-      var actions = element('td'), button = element('button', 'button subtle', 'Manage Limits');
+      var actions = element('td', 'device-actions'), button = element('button', 'button subtle', 'Settings');
       button.type = 'button'; button.dataset.mutation = ''; button.dataset.job = ''; button.dataset.deviceSettings = ip;
-      actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
+      actions.appendChild(deviceLimitSummary(limits[ip] || {})); actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
     });
     list.appendChild(table); updateControls();
   }

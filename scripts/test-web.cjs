@@ -34,18 +34,18 @@ function checkWeb(sources) {
   root.lang='en'; window.I18n.refresh();
   assert(title.textContent==='Device settings','English round trip lost source');
   root.lang='fa'; window.I18n.refresh();
-  const added=root.appendChild(element('div')); added.textContent='Manage Limits';
+  const added=root.appendChild(element('div')); added.textContent='Settings';
   observers[0].callback([{type:'childList',addedNodes:[added]},{type:'childList',addedNodes:added.childNodes}]);
-  assert(added.textContent==='مدیریت محدودیت‌ها','overlapping mutations lost translation');
+  assert(added.textContent==='تنظیمات','overlapping mutations lost translation');
   // Attribute updates must not traverse an existing subtree.
   Object.defineProperty(added,'childNodes',{get(){throw new Error('attribute mutation walked descendants');},configurable:true});
   added.setAttribute('title','Device settings');
   observers[0].callback([{type:'attributes',target:added}]);
   assert(added.getAttribute('title')==='تنظیمات دستگاه','attribute update not translated');
   Object.defineProperty(added,'childNodes',{value:[],writable:true});
-  const detached=element('div'); detached.textContent='Manage Limits';
+  const detached=element('div'); detached.textContent='Settings';
   observers[0].callback([{type:'childList',addedNodes:[detached]}]);
-  assert(detached.textContent==='Manage Limits','detached tree retained/worked');
+  assert(detached.textContent==='Settings','detached tree retained/worked');
   eval(sources.preferences);
   document.events.DOMContentLoaded();
   let refreshes=0; const refresh=window.I18n.refresh; window.I18n.refresh=function(){refreshes++;refresh();};
