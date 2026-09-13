@@ -65,7 +65,7 @@ func RenderDistribution(groups []engine.DistributionGroup, selected string, rout
 	}
 	sort.Strings(ips)
 	for _, ip := range ips {
-		if err := ValidateDeviceLimits(map[string]float64{ip: 0}); err != nil {
+		if err := ValidateDeviceLimits(map[string]DeviceLimits{ip: {}}); err != nil {
 			return nil, err
 		}
 		if routes[ip] == "" {

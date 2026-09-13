@@ -29,14 +29,15 @@ const (
 // tproxy.nft.template. Resolve them at construction so a bad install fails
 // fast instead of at first Apply().
 type Manager struct {
-	qosMu        sync.Mutex
-	deviceLimits map[string]float64
-	distribution []engine.DistributionGroup
-	defaultGroup string
-	deviceRoutes map[string]string
-	applyScript  string
-	removeScript string
-	confFile     string
+	qosMu           sync.Mutex
+	qosFlowsPresent bool
+	deviceLimits    map[string]DeviceLimits
+	distribution    []engine.DistributionGroup
+	defaultGroup    string
+	deviceRoutes    map[string]string
+	applyScript     string
+	removeScript    string
+	confFile        string
 }
 
 // New resolves script locations relative to repo root or explicit dir.
@@ -113,7 +114,11 @@ func (m *Manager) Apply(ctx context.Context) error {
 		return err
 	}
 	defer balanceCleanup()
-	return m.run(ctx, m.applyScript, "PROXY_QOS_FILE="+path, "PROXY_BALANCE_FILE="+balancePath)
+	err = m.run(ctx, m.applyScript, "PROXY_QOS_FILE="+path, "PROXY_BALANCE_FILE="+balancePath)
+	if err == nil {
+		m.qosFlowsPresent = false
+	}
+	return err
 }
 
 // Remove tears down the TPROXY table and policy-routing rule installed by Apply.

@@ -2,6 +2,22 @@
 (function () {
   "use strict";
   var fa = {
+  "QoS": "کیفیت سرویس",
+  "Manage Limits": "مدیریت محدودیت‌ها",
+  "Device settings": "تنظیمات دستگاه",
+  "Assigned outbound routing": "مسیر خروجی دستگاه",
+  "QoS limits": "محدودیت‌های سرعت",
+  "Proxy Upload": "ارسال پروکسی",
+  "Proxy Download": "دریافت پروکسی",
+  "Direct Upload": "ارسال مستقیم",
+  "Direct Download": "دریافت مستقیم",
+  "Save device settings": "ذخیرهٔ تنظیمات دستگاه",
+  "Device settings saved and applied.": "تنظیمات دستگاه ذخیره و اعمال شد.",
+  "Blank or 0 means unlimited. Limits apply separately to proxy and direct traffic in each direction.": "خالی یا صفر یعنی نامحدود. محدودیت‌ها برای ترافیک مستقیم و پروکسی در هر جهت جداگانه اعمال می‌شوند.",
+  "Before sing-box reports a connection's route, the stricter nonzero limit applies. Short connections may keep that limit. Forwarded traffic uses Direct immediately, including when the engine is off.": "تا زمانی که sing-box مسیر اتصال را گزارش کند، محدودیت غیرصفر سخت‌گیرانه‌تر اعمال می‌شود. اتصال‌های کوتاه ممکن است با همان محدودیت باقی بمانند. ترافیک عبوری از مسیریاب، حتی هنگام خاموش بودن موتور، بلافاصله از محدودیت مستقیم استفاده می‌کند.",
+  "Limits cover IPv4 traffic crossing this Pi. Same-subnet traffic that bypasses the Pi and access to the Pi's own services are excluded. Keep device IPs stable with DHCP reservations.": "محدودیت‌ها شامل ترافیک IPv4 عبوری از این پای هستند. ترافیک داخلی که از پای عبور نمی‌کند و دسترسی به سرویس‌های خود پای مستثنی هستند. با رزرو DHCP نشانی دستگاه‌ها را ثابت نگه دارید.",
+  "QoS classification unavailable; unclassified connections use the stricter limit.": "تشخیص مسیر برای کیفیت سرویس در دسترس نیست؛ اتصال‌های تشخیص‌داده‌نشده از محدودیت سخت‌گیرانه‌تر استفاده می‌کنند.",
+
   "Load balancing": "توزیع بار",
   "Load Balanced": "توزیع بار",
   "Create Load Balancer": "ایجاد گروه توزیع بار",

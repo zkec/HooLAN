@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
+	"proxy-manager/internal/netfilter"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,13 +21,18 @@ type Usage struct {
 	Total      Bytes            `json:"total"`
 	Outbounds  map[string]Bytes `json:"outbounds"`
 	LastSample time.Time        `json:"last_sample"`
+	QoSError   string           `json:"qos_error,omitempty"`
 	Error      string           `json:"error,omitempty"`
 	PID        int              `json:"pid"`
 	Previous   Bytes            `json:"previous"`
 }
 type connectionMetadata struct {
-	SourceIP string `json:"sourceIP"`
-	Type     string `json:"type"`
+	SourceIP        string `json:"sourceIP"`
+	DestinationIP   string `json:"destinationIP"`
+	SourcePort      string `json:"sourcePort"`
+	DestinationPort string `json:"destinationPort"`
+	Network         string `json:"network"`
+	Type            string `json:"type"`
 }
 type connectionSample struct {
 	Metadata connectionMetadata `json:"metadata"`
@@ -66,7 +74,22 @@ func (s *Service) sampleUsage(ctx context.Context) {
 		return
 	}
 	snap, err := source.Traffic(ctx)
+	qosErr := err
+	if err == nil {
+		if firewall, ok := s.cfg.Firewall.(interface {
+			SyncQoSFlows(context.Context, []netfilter.QoSFlow) error
+		}); ok {
+			s.mu.RLock()
+			flows := classifyQoSFlows(snap.Connections, s.state.DeviceLimits, s.tagByID)
+			s.mu.RUnlock()
+			qosErr = firewall.SyncQoSFlows(ctx, flows)
+		}
+	}
 	s.mu.Lock()
+	s.state.Usage.QoSError = ""
+	if qosErr != nil {
+		s.state.Usage.QoSError = qosErr.Error()
+	}
 	defer s.mu.Unlock()
 	if err != nil {
 		s.state.Usage.Error = err.Error()
@@ -196,4 +219,39 @@ func supportsTraffic(v any) bool {
 		Traffic(context.Context) (trafficSnapshot, error)
 	})
 	return ok
+}
+
+// Upstream Clash reports the final leaf first in chains. Never infer the class
+// from the device's assignment: DNS/custom/Iran routing can override it.
+func classifyQoSFlows(connections []connectionSample, limits map[string]netfilter.DeviceLimits, tags map[string]string) []netfilter.QoSFlow {
+	known := make(map[string]bool, len(tags))
+	for _, tag := range tags {
+		known[tag] = true
+	}
+	var flows []netfilter.QoSFlow
+	for _, c := range connections {
+		m := c.Metadata
+		if !strings.HasPrefix(m.Type, "tproxy/") || len(c.Chains) == 0 {
+			continue
+		}
+		ip, err := deviceIP(m.SourceIP)
+		if err != nil || limits[ip] == (netfilter.DeviceLimits{}) {
+			continue
+		}
+		dst, err := netip.ParseAddr(m.DestinationIP)
+		if err != nil || !dst.Unmap().Is4() || dst.IsUnspecified() || dst.IsMulticast() {
+			continue
+		}
+		sport, srcErr := strconv.ParseUint(m.SourcePort, 10, 16)
+		dport, dstErr := strconv.ParseUint(m.DestinationPort, 10, 16)
+		if srcErr != nil || dstErr != nil || sport == 0 || dport == 0 || (m.Network != "tcp" && m.Network != "udp") {
+			continue
+		}
+		leaf := c.Chains[0]
+		if leaf != "direct" && !known[leaf] {
+			continue
+		}
+		flows = append(flows, netfilter.QoSFlow{SourceIP: ip, DestinationIP: dst.Unmap().String(), Network: m.Network, SourcePort: uint16(sport), DestinationPort: uint16(dport), Direct: leaf == "direct"})
+	}
+	return flows
 }

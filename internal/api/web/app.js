@@ -59,6 +59,7 @@
     state.groupSelections.clear(); state.chainHops = []; state.chainExistingNodes = []; state.chainEditingID = null;
     if ($('qr-dialog').open) $('qr-dialog').close();
     if ($('node-editor').open) $('node-editor').close();
+    if ($('device-settings').open) $('device-settings').close();
     ['balance-form', 'telegram-form', 'subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
   }
   function signInRequired() {
@@ -626,6 +627,7 @@
     $('chain-preview').dataset.noI18n = ''; text($('chain-preview'),state.chainHops.map(label).join(' → '));
   }
   function wireBatchEvents() {
+    wireDeviceSettings();
     document.addEventListener('change', function (event) {
       var target = event.target, id = target.dataset.selectNode, group = target.dataset.selectGroup;
       if (id) { var selected = groupSelection(target.dataset.group); if (target.checked) selected.add(id); else selected.delete(id); }
@@ -806,64 +808,90 @@
     renderDevices(response, false);
   }
 
+  function deviceRouteOptions(select, assigned) {
+    text(select, '');
+    [['', 'Global Default'], ['direct', 'Direct']].forEach(function (pair) {
+      var option = element('option', '', pair[1]); option.value = pair[0]; select.appendChild(option);
+    });
+    var included = new Set();
+    function addOptions(name, nodes, userLabel) {
+      var group = document.createElement('optgroup'); group.label = name; if (userLabel) group.dataset.noI18n = '';
+      nodes.forEach(function (node) {
+        if (included.has(node.id)) return; included.add(node.id);
+        var option = element('option', '', node.tag || node.server); option.value = node.id;
+        option.dataset.noI18n = ''; option.disabled = !node.enabled; group.appendChild(option);
+      });
+      if (group.children.length) select.appendChild(group);
+    }
+    addOptions('Manual configurations', groupNodes('manual'));
+    state.subscriptions.forEach(function (sub) { addOptions(sub.name || 'Subscription', groupNodes(sub.id), !!sub.name); });
+    addOptions('Other configurations', state.nodes);
+    if (assigned && assigned !== 'direct' && !included.has(assigned)) {
+      var unavailable = element('option', '', 'Unavailable node (using Global Default)');
+      unavailable.value = assigned; unavailable.disabled = true; select.appendChild(unavailable);
+    }
+    select.value = assigned;
+  }
+
+  var qosFields = ['proxy_upload_mbps', 'proxy_download_mbps', 'direct_upload_mbps', 'direct_download_mbps'];
+  function openDeviceSettings(ip, response) {
+    var dialog = $('device-settings'), limits = (response.device_limits || {})[ip] || {};
+    dialog.dataset.ip = ip; dialog.dataset.route = (response.device_routes || {})[ip] || '';
+    text($('device-settings-ip'), ip); text($('device-settings-error'), '');
+    $('device-alias').value = (response.device_aliases || {})[ip] || '';
+    deviceRouteOptions($('device-route'), dialog.dataset.route);
+    qosFields.forEach(function (field) { $('device-' + field).value = limits[field] || ''; });
+    dialog.showModal(); updateControls();
+  }
+  function wireDeviceSettings() {
+    $('device-settings-cancel').addEventListener('click', function () { $('device-settings').close(); });
+    $('device-settings').addEventListener('cancel', function (event) { if (state.busy) event.preventDefault(); });
+    $('device-settings').addEventListener('close', function () {
+      var ip = $('device-settings').dataset.ip;
+      delete $('device-settings').dataset.ip; delete $('device-settings').dataset.route;
+      $('device-settings-form').reset();
+      // Polling can have replaced the row that originally opened the dialog.
+      var button = Array.from($('usage-devices').querySelectorAll('[data-device-settings]')).find(function (b) { return b.dataset.deviceSettings === ip; });
+      if (button) button.focus();
+    });
+    $('device-settings-form').addEventListener('submit', function (event) {
+      event.preventDefault(); var dialog = $('device-settings'); if (!dialog.dataset.ip) return;
+      var payload = {ip: dialog.dataset.ip, alias: $('device-alias').value, qos: {}};
+      // Preserve an unavailable assignment when only editing its name/limits.
+      if ($('device-route').value !== dialog.dataset.route) payload.node_id = $('device-route').value;
+      qosFields.forEach(function (field) { payload.qos[field] = Number($('device-' + field).value); });
+      mutate('Save device settings', async function () {
+        text($('device-settings-error'), '');
+        try { await call('PUT', '/api/devices', payload); }
+        catch (error) { text($('device-settings-error'), error.message); throw error; }
+        dialog.close(); toast('Device settings saved and applied.', 'ok');
+        if (!state.exiting) renderDevices(await call('GET', '/api/usage'), true);
+      });
+    });
+  }
   function renderDevices(response, force) {
     var list = $('usage-devices');
-    // Polling must not discard a name being typed or close an open dropdown.
     if (!force && list.contains(document.activeElement)) return;
     text(list, '');
+    text($('device-qos-status'), response.usage.qos_error ? 'QoS classification unavailable; unclassified connections use the stricter limit.' : '');
     var values = response.usage.devices || {}, aliases = response.device_aliases || {}, routes = response.device_routes || {}, limits = response.device_limits || {};
     var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits)))).sort(function (a, b) { return a.localeCompare(b, undefined, {numeric: true}); });
     if (!ips.length) { list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
-    var table = element('table', 'node-table device-table'), header = element('tr');
-    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'Speed Limit (Mbps)'].forEach(function (name) { header.appendChild(element('th', '', name)); }); table.appendChild(header);
+    var table = element('table', 'node-table device-table'), header = element('tr'), head = element('thead'), body = element('tbody');
+    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'QoS'].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
+    head.appendChild(header); table.appendChild(head); table.appendChild(body);
     ips.forEach(function (ip) {
-      var value = values[ip] || {}, row = element('tr'); row.appendChild(element('td', 'node-server', ip));
-      var nameCell = element('td'), nameForm = element('form', 'device-name-form'), input = document.createElement('input');
-      input.value = aliases[ip] || ''; input.maxLength = 80; input.placeholder = 'Device name'; input.setAttribute('aria-label', 'Name for ' + ip); input.dataset.mutation = ''; input.dataset.job = '';
-      var save = element('button', 'button subtle', 'Save name'); save.type = 'submit'; save.dataset.mutation = ''; save.dataset.job = '';
-      nameForm.appendChild(input); nameForm.appendChild(save); nameCell.appendChild(nameForm); row.appendChild(nameCell);
-      nameForm.addEventListener('submit', function (event) {
-        event.preventDefault(); var alias = input.value;
-        mutate('Save device name', async function () { await call('PUT', '/api/devices', {ip: ip, alias: alias}); toast('Device name saved.', 'ok'); });
-      });
+      var value = values[ip] || {}, row = element('tr'), address = element('td', 'node-server', ip);
+      address.dir = 'ltr'; address.dataset.noI18n = ''; row.appendChild(address);
+      var name = element('td', '', aliases[ip] || '—'); name.dataset.noI18n = ''; row.appendChild(name);
       row.appendChild(element('td', '', byteCount(value.upload || 0))); row.appendChild(element('td', '', byteCount(value.download || 0)));
-      var routeCell = element('td'), select = document.createElement('select'); select.setAttribute('aria-label', 'Route for ' + ip); select.dataset.mutation = ''; select.dataset.job = '';
-      var fallback = element('option', '', 'Global Default'); fallback.value = ''; select.appendChild(fallback);
-      var direct = element('option', '', 'Direct'); direct.value = 'direct'; select.appendChild(direct);
-      var included = new Set();
-      function addOptions(name, nodes, userLabel) {
-        var group = document.createElement('optgroup'); group.label = name; if (userLabel) group.dataset.noI18n = '';
-        nodes.forEach(function (node) {
-          if (included.has(node.id)) return; included.add(node.id);
-          var option = element('option', '', (node.tag || node.server) + (!node.enabled ? ' (disabled; Global Default)' : '')); option.value = node.id; option.dataset.noI18n = ''; option.disabled = !node.enabled; group.appendChild(option);
-        });
-        if (group.children.length) select.appendChild(group);
-      }
-      addOptions('Manual configurations', groupNodes('manual'));
-      state.subscriptions.forEach(function (sub) { addOptions(sub.name || 'Subscription', groupNodes(sub.id), !!sub.name); });
-      addOptions('Other configurations', state.nodes);
-      var assigned = routes[ip] || '';
-      if (assigned && assigned !== 'direct' && !included.has(assigned)) { var unavailable = element('option', '', 'Unavailable node (using Global Default)'); unavailable.value = assigned; unavailable.disabled = true; select.appendChild(unavailable); }
-      select.value = assigned;
-      select.addEventListener('change', function () {
-        var nodeID = select.value;
-        mutate('Save device route', async function () {
-          try { await call('PUT', '/api/devices', {ip: ip, node_id: nodeID}); toast('Device route saved and applied.', 'ok'); }
-          finally { if (!state.exiting) renderDevices(await call('GET', '/api/usage'), true); }
-        });
-      });
-      routeCell.appendChild(select); row.appendChild(routeCell);
-      var limitCell=element('td'), limitForm=element('form','device-name-form'), limit=document.createElement('input');
-      limit.type='number';limit.min='0';limit.max='10000';limit.step='0.01';limit.placeholder='Unlimited';limit.value=limits[ip] || '';limit.setAttribute('aria-label','Speed Limit (Mbps)');limit.dataset.mutation='';limit.dataset.job='';
-      var limitSave=element('button','button subtle','Save limit');limitSave.type='submit';limitSave.dataset.mutation='';limitSave.dataset.job='';
-      limitForm.appendChild(limit);limitForm.appendChild(limitSave);limitCell.appendChild(limitForm);limitCell.appendChild(element('p','muted small','Each direction; blank or 0 is unlimited.'));row.appendChild(limitCell);
-      limitForm.addEventListener('submit',function(event){event.preventDefault();var mbps=Number(limit.value);
-        mutate('Save device limit',async function(){
-          try {await call('PUT','/api/devices',{ip:ip,speed_limit_mbps:mbps});toast('Device speed limit saved and applied.','ok');}
-          finally {if(!state.exiting)renderDevices(await call('GET','/api/usage'),true);}
-        });
-      });
-      table.appendChild(row);
+      var id = routes[ip] || '', node = state.nodes.find(function (n) { return n.id === id; });
+      var route = element('td', 'device-route-label', id === 'direct' ? 'Direct' : !id ? 'Global Default' : node && node.enabled ? node.tag || node.server : 'Unavailable node (using Global Default)');
+      if (node && node.enabled) route.dataset.noI18n = ''; row.appendChild(route);
+      var actions = element('td'), button = element('button', 'button subtle', 'Manage Limits');
+      button.type = 'button'; button.dataset.mutation = ''; button.dataset.job = ''; button.dataset.deviceSettings = ip;
+      button.addEventListener('click', function () { openDeviceSettings(ip, response); });
+      actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
     });
     list.appendChild(table); updateControls();
   }

@@ -83,7 +83,7 @@
 
       <div class="card form-card"><h2>Internet usage through sing-box</h2><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-device, per-node and direct attribution is estimated from one-second connection samples; short flows can be missed. Local AdGuard/Docker traffic and raw forwarding while OFF are excluded. A chain is attributed to its selected exit node, not counted again for each hop.</p><div id="usage-nodes"></div></div>
 
-      <div class="card form-card"><h2>LAN devices</h2><p class="muted small">Estimated usage by original client IP, including traffic sing-box routes directly. Only private IPv4 clients intercepted by TPROXY appear. Names and assignments persist by IP.</p><p class="muted small">Device routes apply after DNS, private-network, custom and Iran rules. Global Default follows the gateway’s selection. Changing an assignment applies immediately and briefly restarts an active proxy.</p><div id="usage-devices" class="table-wrap"></div></div>
+      <div class="card form-card"><h2>LAN devices</h2><p class="muted small">Estimated usage by original client IP, including traffic sing-box routes directly. Only private IPv4 clients intercepted by TPROXY appear. Names and assignments persist by IP.</p><p class="muted small">Device routes apply after DNS, private-network, custom and Iran rules. Global Default follows the gateway’s selection. Changing an assignment applies immediately and briefly restarts an active proxy.</p><p id="device-qos-status" class="muted small" role="status"></p><div id="usage-devices" class="table-wrap"></div></div>
     </section>
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
 
@@ -141,6 +141,25 @@
     </section>
     <footer class="footer"><span>Proxy Manager · Raspberry Pi gateway</span><span id="foot-poll">Connecting to API…</span></footer>
   </main>
+  <dialog id="device-settings" aria-labelledby="device-settings-title" aria-describedby="device-settings-ip">
+    <form id="device-settings-form">
+      <div class="device-dialog-heading"><h2 id="device-settings-title">Device settings</h2><span id="device-settings-ip" class="pill" dir="ltr" data-no-i18n></span></div>
+      <div class="field"><label for="device-alias">Device name</label><input id="device-alias" maxlength="80" autocomplete="off" placeholder="Device name" data-mutation data-job /></div>
+      <div class="field"><label for="device-route">Assigned outbound routing</label><select id="device-route" data-mutation data-job></select></div>
+      <fieldset class="device-qos-card"><legend>QoS limits</legend>
+        <p class="muted small" id="device-qos-help">Blank or 0 means unlimited. Limits apply separately to proxy and direct traffic in each direction.</p>
+        <div class="qos-grid">
+          <div class="field"><label for="device-proxy_upload_mbps">Proxy Upload</label><div class="qos-input"><input id="device-proxy_upload_mbps" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Unlimited" aria-describedby="device-qos-help" data-mutation data-job /><span data-no-i18n>Mbps</span></div></div>
+          <div class="field"><label for="device-proxy_download_mbps">Proxy Download</label><div class="qos-input"><input id="device-proxy_download_mbps" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Unlimited" aria-describedby="device-qos-help" data-mutation data-job /><span data-no-i18n>Mbps</span></div></div>
+          <div class="field"><label for="device-direct_upload_mbps">Direct Upload</label><div class="qos-input"><input id="device-direct_upload_mbps" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Unlimited" aria-describedby="device-qos-help" data-mutation data-job /><span data-no-i18n>Mbps</span></div></div>
+          <div class="field"><label for="device-direct_download_mbps">Direct Download</label><div class="qos-input"><input id="device-direct_download_mbps" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Unlimited" aria-describedby="device-qos-help" data-mutation data-job /><span data-no-i18n>Mbps</span></div></div>
+        </div>
+      </fieldset>
+      <p class="muted small">Before sing-box reports a connection's route, the stricter nonzero limit applies. Short connections may keep that limit. Forwarded traffic uses Direct immediately, including when the engine is off.</p>
+      <p class="muted small">Limits cover IPv4 traffic crossing this Pi. Same-subnet traffic that bypasses the Pi and access to the Pi's own services are excluded. Keep device IPs stable with DHCP reservations.</p>
+      <p id="device-settings-error" class="device-settings-error small" role="alert"></p><div class="form-footer"><button id="device-settings-cancel" type="button" class="button subtle" data-mutation>Cancel</button><button type="submit" class="button primary" data-mutation data-job>Save device settings</button></div>
+    </form>
+  </dialog>
   <dialog id="node-editor" aria-labelledby="editor-heading">
     <form id="node-edit-form"><h2 id="editor-heading">Edit configuration</h2><p class="muted small">Leave credential fields blank to keep the stored values. Changes apply to the running engine.</p>
       <div id="node-edit-fields" class="edit-grid"></div>

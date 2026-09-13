@@ -10,30 +10,30 @@ import (
 )
 
 func TestDeviceQoSUnitsDirectionsAndValidation(t *testing.T) {
-	raw, err := RenderDeviceLimits("eth0", map[string]float64{"192.168.3.141": 8, "192.168.3.142": 0.01})
+	raw, err := RenderDeviceLimits("eth0", map[string]DeviceLimits{"192.168.3.141": UniformLimits(8), "192.168.3.142": UniformLimits(0.01)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	for _, want := range []string{"priority -151", "priority 99", "ip saddr 192.168.3.141 limit rate over 1000000 bytes/second burst 100000 bytes", "ip daddr 192.168.3.141 limit rate over 1000000 bytes/second", "1250 bytes/second burst 1500 bytes", "fib daddr type { local, broadcast, multicast } return", "ip saddr @local_networks return"} {
+	for _, want := range []string{"priority -149", "priority 99", "192.168.3.141 : jump device_0_up", "192.168.3.141 : jump device_0_down", "limit rate over 1000000 bytes/second burst 100000 bytes", "1250 bytes/second burst 1500 bytes", "fib daddr type { local, broadcast, multicast } return", "ip daddr vmap @devices_down"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q", want)
 		}
 	}
 	for _, rate := range []float64{-1, math.Inf(1), math.NaN(), 0.001, 10001} {
-		if _, err := RenderDeviceLimits("eth0", map[string]float64{"192.168.3.1": rate}); err == nil {
+		if _, err := RenderDeviceLimits("eth0", map[string]DeviceLimits{"192.168.3.1": UniformLimits(rate)}); err == nil {
 			t.Errorf("accepted bad rate %v", rate)
 		}
 	}
 	for _, ip := range []string{"8.8.8.8", "192.168.1.1;flush ruleset", "192.168.1.0/24", "::ffff:192.168.1.1"} {
-		if _, err := RenderDeviceLimits("eth0", map[string]float64{ip: 1}); err == nil {
+		if _, err := RenderDeviceLimits("eth0", map[string]DeviceLimits{ip: UniformLimits(1)}); err == nil {
 			t.Error("accepted bad IP")
 		}
 	}
 	if _, err := RenderDeviceLimits("eth0; drop", nil); err == nil {
 		t.Fatal("interface injection accepted")
 	}
-	raw, err = RenderDeviceLimits("eth0", map[string]float64{"192.168.3.1": 0})
+	raw, err = RenderDeviceLimits("eth0", map[string]DeviceLimits{"192.168.3.1": {}})
 	if err != nil || string(raw) != "add table inet proxy_qos\ndelete table inet proxy_qos\n" {
 		t.Fatal("zero must remove QoS table")
 	}
@@ -66,7 +66,7 @@ func TestDistributionTupleAndDevicePrecedence(t *testing.T) {
 }
 func TestScriptIncludesQoSAndDistributionAtomically(t *testing.T) {
 	f := newScriptFixture(t)
-	qos, _ := RenderDeviceLimits("eth0", map[string]float64{"192.168.3.141": 5})
+	qos, _ := RenderDeviceLimits("eth0", map[string]DeviceLimits{"192.168.3.141": UniformLimits(5)})
 	groups := distributionFixture()
 	balance, _ := RenderDistribution(groups, groups[0].ID, nil)
 	qp, bp := filepath.Join(f.dir, "qos.nft"), filepath.Join(f.dir, "balance.nft")

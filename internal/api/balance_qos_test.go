@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"proxy-manager/internal/engine"
+	"proxy-manager/internal/netfilter"
 	"proxy-manager/internal/store"
 	"proxy-manager/internal/subscription"
 	"reflect"
@@ -18,7 +19,7 @@ type distributionTestFirewall struct {
 	groups             []engine.DistributionGroup
 	selected           string
 	routes             map[string]string
-	desired, installed map[string]float64
+	desired, installed map[string]netfilter.DeviceLimits
 	syncs              int
 	failNext           bool
 }
@@ -28,10 +29,10 @@ func (f *distributionTestFirewall) ConfigureDistribution(g []engine.Distribution
 	f.selected = id
 	f.routes = copyStrings(r)
 }
-func (f *distributionTestFirewall) ConfigureDeviceLimits(l map[string]float64) {
+func (f *distributionTestFirewall) ConfigureDeviceLimits(l map[string]netfilter.DeviceLimits) {
 	f.desired = cloneLimits(l)
 }
-func (f *distributionTestFirewall) ApplyDeviceLimits(_ context.Context, l map[string]float64) error {
+func (f *distributionTestFirewall) ApplyDeviceLimits(_ context.Context, l map[string]netfilter.DeviceLimits) error {
 	f.syncs++
 	if f.failNext {
 		f.failNext = false
@@ -62,7 +63,7 @@ func TestDeviceLimitsPersistApplyRollbackAndRestoreWhileOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persisted.DeviceLimits[ip] != 8.5 || persisted.DeviceAliases[ip] != "Phone" || persisted.DeviceRoutes[ip] != id || fw.installed[ip] != 8.5 {
+	if persisted.DeviceLimits[ip] != netfilter.UniformLimits(8.5) || persisted.DeviceAliases[ip] != "Phone" || persisted.DeviceRoutes[ip] != id || fw.installed[ip] != netfilter.UniformLimits(8.5) {
 		t.Fatal("combined device settings not applied/persisted")
 	}
 	fw.failNext = true
@@ -70,7 +71,7 @@ func TestDeviceLimitsPersistApplyRollbackAndRestoreWhileOff(t *testing.T) {
 		t.Fatal("nft failure accepted")
 	}
 	persisted, _ = h.svc.loadState()
-	if persisted.DeviceLimits[ip] != 8.5 || persisted.DeviceAliases[ip] != "Phone" || fw.installed[ip] != 8.5 {
+	if persisted.DeviceLimits[ip] != netfilter.UniformLimits(8.5) || persisted.DeviceAliases[ip] != "Phone" || fw.installed[ip] != netfilter.UniformLimits(8.5) {
 		t.Fatal("nft failure did not restore previous settings")
 	}
 	before := fw.syncs
@@ -80,14 +81,14 @@ func TestDeviceLimitsPersistApplyRollbackAndRestoreWhileOff(t *testing.T) {
 		t.Fatal("state write failure accepted")
 	}
 	h.svc.cfg.StatePath = oldPath
-	if fw.syncs != before || h.svc.state.DeviceLimits[ip] != 8.5 {
+	if fw.syncs != before || h.svc.state.DeviceLimits[ip] != netfilter.UniformLimits(8.5) {
 		t.Fatal("write failure changed kernel or memory")
 	}
 	fw.installed = nil
 	if err := h.svc.Restore(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if fw.installed[ip] != 8.5 {
+	if fw.installed[ip] != netfilter.UniformLimits(8.5) {
 		t.Fatal("OFF startup failed to restore QoS")
 	}
 	if err := h.svc.UpdateDevice(ctx, DeviceUpdate{IP: ip, SpeedLimit: floatptr(0)}); err != nil {
@@ -240,7 +241,7 @@ func TestLoadBalancerAndLimitsBackupRoundTrip(t *testing.T) {
 	if err := h.svc.applyBackup(ctx, bundle); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.store.Get(id); err != nil || h.svc.state.DeviceRoutes["192.168.3.141"] != id || fw.installed["192.168.3.141"] != 5 {
+	if _, err := h.store.Get(id); err != nil || h.svc.state.DeviceRoutes["192.168.3.141"] != id || fw.installed["192.168.3.141"] != netfilter.UniformLimits(5) {
 		t.Fatal("restore lost balancer, device mapping or applied rate")
 	}
 	// A corrupted group reference must be rejected before any restore mutation.

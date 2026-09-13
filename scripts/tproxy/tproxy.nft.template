@@ -146,4 +146,9 @@ table inet proxy_tproxy {
 
 # Generated QoS table, submitted atomically with interception.
 # An independent table keeps device limits active when interception is removed.
+# Four-way per-device policing lives in inet proxy_qos and survives proxy OFF.
+# Its upload hook runs at -149, AFTER the -150 TPROXY verdict, before userspace.
+# Mark {{TPROXY_FWMARK}} means intercepted, not necessarily proxied: actual
+# direct/Iran versus proxy decisions arrive via expiring Clash tuple sets.
+# Download policing runs at postrouting 99 (before SNAT), matching client daddr.
 {{QOS_TABLE}}

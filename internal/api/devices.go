@@ -16,10 +16,11 @@ import (
 
 // DeviceUpdate changes only the supplied fields. Empty strings clear them.
 type DeviceUpdate struct {
-	IP         string   `json:"ip"`
-	SpeedLimit *float64 `json:"speed_limit_mbps,omitempty"`
-	Alias      *string  `json:"alias,omitempty"`
-	NodeID     *string  `json:"node_id,omitempty"`
+	IP         string                  `json:"ip"`
+	QoS        *netfilter.DeviceLimits `json:"qos,omitempty"`
+	SpeedLimit *float64                `json:"speed_limit_mbps,omitempty"`
+	Alias      *string                 `json:"alias,omitempty"`
+	NodeID     *string                 `json:"node_id,omitempty"`
 }
 
 func deviceIP(value string) (string, error) {
@@ -53,11 +54,18 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 	if err != nil {
 		return err
 	}
-	if req.Alias == nil && req.NodeID == nil && req.SpeedLimit == nil {
-		return fmt.Errorf("%w: supply alias, node_id or speed_limit_mbps", ErrInvalidInput)
+	if req.Alias == nil && req.NodeID == nil && req.SpeedLimit == nil && req.QoS == nil {
+		return fmt.Errorf("%w: supply alias, node_id or qos", ErrInvalidInput)
+	}
+	if req.SpeedLimit != nil && req.QoS != nil {
+		return fmt.Errorf("%w: supply qos or legacy speed_limit_mbps, not both", ErrInvalidInput)
 	}
 	if req.SpeedLimit != nil {
-		if err := netfilter.ValidateDeviceLimits(map[string]float64{ip: *req.SpeedLimit}); err != nil {
+		limits := netfilter.UniformLimits(*req.SpeedLimit)
+		req.QoS = &limits
+	}
+	if req.QoS != nil {
+		if err := netfilter.ValidateDeviceLimits(map[string]netfilter.DeviceLimits{ip: *req.QoS}); err != nil {
 			return fmt.Errorf("%w: %v", ErrInvalidInput, err)
 		}
 	}
@@ -88,7 +96,7 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 	s.mu.Lock()
 	oldAliases, oldRoutes := s.state.DeviceAliases, s.state.DeviceRoutes
 	oldLimits := s.state.DeviceLimits
-	limitChanged := req.SpeedLimit != nil && oldLimits[ip] != *req.SpeedLimit
+	limitChanged := req.QoS != nil && oldLimits[ip] != *req.QoS
 	if limitChanged {
 		if _, ok := s.cfg.Firewall.(deviceLimiter); !ok {
 			s.mu.Unlock()
@@ -118,11 +126,11 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 		}
 	}
 	s.state.DeviceLimits = cloneLimits(oldLimits)
-	if req.SpeedLimit != nil {
-		if *req.SpeedLimit == 0 {
+	if req.QoS != nil {
+		if *req.QoS == (netfilter.DeviceLimits{}) {
 			delete(s.state.DeviceLimits, ip)
 		} else {
-			s.state.DeviceLimits[ip] = *req.SpeedLimit
+			s.state.DeviceLimits[ip] = *req.QoS
 		}
 	}
 	if err := netfilter.ValidateDeviceLimits(s.state.DeviceLimits); err != nil {
@@ -175,11 +183,11 @@ func (h *handlers) updateDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 type deviceLimiter interface {
-	ApplyDeviceLimits(context.Context, map[string]float64) error
+	ApplyDeviceLimits(context.Context, map[string]netfilter.DeviceLimits) error
 }
 
-func cloneLimits(source map[string]float64) map[string]float64 {
-	result := make(map[string]float64, len(source))
+func cloneLimits(source map[string]netfilter.DeviceLimits) map[string]netfilter.DeviceLimits {
+	result := make(map[string]netfilter.DeviceLimits, len(source))
 	for k, v := range source {
 		result[k] = v
 	}
@@ -192,7 +200,9 @@ func (s *Service) configureDeviceLimits() error {
 	if err := netfilter.ValidateDeviceLimits(limits); err != nil {
 		return err
 	}
-	if configurable, ok := s.cfg.Firewall.(interface{ ConfigureDeviceLimits(map[string]float64) }); ok {
+	if configurable, ok := s.cfg.Firewall.(interface {
+		ConfigureDeviceLimits(map[string]netfilter.DeviceLimits)
+	}); ok {
 		configurable.ConfigureDeviceLimits(limits)
 	}
 	return nil
