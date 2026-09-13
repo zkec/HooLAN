@@ -292,6 +292,14 @@
   "Your gateway. Your connections.": "دروازهٔ شما. اتصال‌های شما.",
   "Signing in…": "در حال ورود…",
   "Checking session…": "بررسی نشست…",
+  "Send Telegram through proxy": "ارسال تلگرام از طریق پروکسی",
+  "Off: connect directly from the Pi. On: use the active node; when automatic selection is offline, use the fastest saved healthy node. Proxy mode never falls back to direct.": "خاموش: اتصال مستقیم از رزبری‌پای. روشن: استفاده از گرهٔ فعال؛ وقتی انتخاب خودکار در دسترس نیست، سریع‌ترین گرهٔ سالم ذخیره‌شده استفاده می‌شود. در حالت پروکسی، اتصال مستقیم جایگزین نمی‌شود.",
+  "Save & send test message": "ذخیره و ارسال پیام آزمایشی",
+  "Telegram test": "آزمایش تلگرام",
+  "Sending test message…": "در حال ارسال پیام آزمایشی…",
+  "Test message sent.": "پیام آزمایشی ارسال شد.",
+  "Telegram test failed": "آزمایش تلگرام ناموفق بود",
+  "Speed test started (up to 26 MB with fallback).": "آزمایش سرعت آغاز شد (تا ۲۶ مگابایت با سرور جایگزین).",
   "Telegram notifications": "اعلان‌های تلگرام",
   "Receive engine and subscription alerts. When enabled, only the active node is checked every five minutes; repeated failure alerts are suppressed until recovery.": "اعلان‌های موتور و اشتراک را دریافت کنید. در صورت فعال بودن، فقط گرهٔ فعال هر پنج دقیقه بررسی می‌شود؛ تا بازیابی اتصال، هشدار خرابی تکرار نمی‌شود.",
   "Enable notifications": "فعال‌سازی اعلان‌ها",
@@ -352,7 +360,7 @@
       if (patterns[i][0].test(trimmed)) return trimmed.replace(patterns[i][0], patterns[i][1]).replace(/(\d+)s ago/g, '$1 ثانیه پیش').replace(/(\d+)m ago/g, '$1 دقیقه پیش').replace(/(\d+)h ago/g, '$1 ساعت پیش').replace(/(\d+)d ago/g, '$1 روز پیش');
     }
     // Translate the fixed part of task/status messages; retain diagnostic text.
-    var messages = ['Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
+    var messages = ['Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
     for (var j = 0; j < messages.length; j++) {
       var key = messages[j];
       if (trimmed.startsWith(key + ': ')) return fa[key] + ': ' + trimmed.slice(key.length + 2);

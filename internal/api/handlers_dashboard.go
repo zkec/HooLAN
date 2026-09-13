@@ -9,6 +9,7 @@ import (
 
 func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/telegram", h.svc.telegram)
+	mux.Handle("/api/telegram/test", only(http.MethodPost, h.testTelegram))
 	mux.Handle("/api/backup", only(http.MethodGet, h.backup))
 	mux.Handle("/api/restore", only(http.MethodPost, h.restoreBackup))
 	mux.Handle("/api/nodes/speed", only(http.MethodPost, h.speedTest))

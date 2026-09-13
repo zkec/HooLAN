@@ -151,9 +151,10 @@
     state.jobRunning = job.state === 'running';
     $('job-panel').hidden = !job.state || job.state === 'idle';
     $('job-panel').classList.toggle('failed', job.state === 'failed');
-    var name = ({speed:'Speed test',restore:'Restore backup',health:'Active node health check',latency:'Latency test',refresh:'Subscription refresh'})[job.kind] || 'Background task';
-    if (job.kind === 'speed' && job.node_id) state.speedResults.set(job.node_id, {state:job.state,mbps:job.speed && job.speed.mbps,error:job.error});
+    var name = ({telegram:'Telegram test',speed:'Speed test',restore:'Restore backup',health:'Active node health check',latency:'Latency test',refresh:'Subscription refresh'})[job.kind] || 'Background task';
+    if (job.kind === 'speed' && job.node_id) state.speedResults.set(job.node_id, {state:job.state,mbps:job.speed && job.speed.mbps,server:job.speed && job.speed.server,error:job.error});
     if (previous && previous.state === 'running' && job.kind === 'restore' && job.state === 'succeeded') { state.settings = null; state.settingsDirty = false; state.rulesDirty = false; state.telegramLoaded = false; state.speedResults.clear(); }
+    if (job.kind === 'telegram') text($('telegram-status'), job.state === 'running' ? 'Sending test message…' : job.state === 'succeeded' ? 'Test message sent.' : job.error || 'Telegram test failed');
     var parts = [];
     if (state.jobRunning) parts.push(name + ' running. Testing nodes can take a few minutes on a Pi.');
     if (job.state === 'succeeded') parts.push(name + ' completed ' + ago(job.finished_at) + '.');
@@ -236,7 +237,7 @@
       var speedButton = actionButton(speed && speed.state === 'running' ? 'Testing…' : 'Speed Test', 'speed-node', node.id, !node.enabled, true);
       if (speed && speed.state === 'running') { speedButton.classList.add('testing'); speedButton.setAttribute('aria-busy','true'); }
       buttons.appendChild(speedButton);
-      if (speed && speed.state === 'succeeded') buttons.appendChild(element('span','speed-result',Number(speed.mbps).toFixed(2)+' Mbps'));
+      if (speed && speed.state === 'succeeded') { var result = element('span','speed-result',Number(speed.mbps).toFixed(2)+' Mbps'); result.title = speed.server || ''; buttons.appendChild(result); }
       if (speed && speed.state === 'failed') { var failed = element('span','muted small','Speed test failed'); failed.title = speed.error || ''; buttons.appendChild(failed); }
       var qr = actionButton('QR Code','qr-node',node.id,!!(node.chain_id || node.detour_id || node.detour),false);
       if (qr.dataset.unavailable === 'true') qr.title = 'Chains cannot be shared as one mobile link';
@@ -515,7 +516,7 @@
       var button = event.target.closest('[data-action]');
       if (!button || button.disabled) return;
       var id = button.dataset.id;
-      if (button.dataset.action === 'speed-node') startJob('/api/nodes/speed', {node_id:id}, 'Speed test started (15 MB download).');
+      if (button.dataset.action === 'speed-node') startJob('/api/nodes/speed', {node_id:id}, 'Speed test started (up to 26 MB with fallback).');
       if (button.dataset.action === 'qr-node') showQR(id);
       if (button.dataset.action === 'edit-node') openNodeEditor(id);
       if (button.dataset.action === 'edit-chain') openChainEditor(id);
@@ -660,7 +661,7 @@
 
   async function loadTelegram() {
     var settings = await call('GET','/api/telegram');
-    $('telegram-enabled').checked = settings.enabled; $('telegram-chat').value = settings.chat_id || '';
+    $('telegram-enabled').checked = settings.enabled; $('telegram-proxy').checked = !!settings.use_proxy; $('telegram-chat').value = settings.chat_id || '';
     text($('telegram-status'), settings.last_error || (settings.token_set ? 'Token stored' : 'No token stored'));
     state.telegramLoaded = true;
   }
@@ -671,10 +672,23 @@
     return response;
   }
   function wireAdvancedEvents() {
-    $('telegram-form').addEventListener('submit',function(event){
-      event.preventDefault(); var payload = {enabled:$('telegram-enabled').checked,chat_id:$('telegram-chat').value.trim()};
+    async function saveTelegram() {
+      var payload = {enabled:$('telegram-enabled').checked,use_proxy:$('telegram-proxy').checked,chat_id:$('telegram-chat').value.trim()};
       if ($('telegram-clear').checked) payload.token = ''; else if ($('telegram-token').value) payload.token = $('telegram-token').value.trim();
-      mutate('Save notifications',async function(){await call('PUT','/api/telegram',payload);$('telegram-token').value='';$('telegram-clear').checked=false;await loadTelegram();toast('Notification settings saved','ok');});
+      await call('PUT','/api/telegram',payload);
+      $('telegram-token').value='';$('telegram-clear').checked=false;
+      await loadTelegram();
+    }
+    $('telegram-form').addEventListener('submit',function(event){
+      event.preventDefault();
+      mutate('Save notifications',async function(){await saveTelegram();toast('Notification settings saved','ok');});
+    });
+    $('telegram-test').addEventListener('click',function(){
+      mutate('Telegram test',async function(){
+        await saveTelegram();
+        var result = await call('POST','/api/telegram/test',{});
+        renderJob(result.refresh);text($('telegram-status'),'Sending test message…');
+      });
     });
     $('download-backup').addEventListener('click',function(){mutate('Download Backup',async function(){
       var response = await binaryRequest('GET','/api/backup'); var url = URL.createObjectURL(await response.blob());

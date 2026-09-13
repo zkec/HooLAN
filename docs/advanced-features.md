@@ -30,19 +30,20 @@ credentials. Responses and sensitive downloads use the existing no-store policy.
 PUT /api/telegram
 Content-Type: application/json
 
-{"enabled":true,"token":"123456:BOT_TOKEN_FROM_BOTFATHER","chat_id":"-1001234567890"}
+{"enabled":true,"use_proxy":true,"token":"123456:BOT_TOKEN_FROM_BOTFATHER","chat_id":"-1001234567890"}
 ```
 
 Use an actual valid bot token and chat ID. Omit `token` to preserve it; an empty
 string deletes it (disable notifications at the same time). `GET /api/telegram`
-returns `enabled`, `chat_id`, `token_set` and `last_error`, never the token.
+returns `enabled`, `use_proxy`, `chat_id`, `token_set` and `last_error`, never the token.
+Omitting `use_proxy` on PUT preserves the existing choice. Its default is false.
 The token lives in the existing mode-0600 state file and is included in backups.
 
 The sender posts JSON to Telegram's
 [`sendMessage` API](https://core.telegram.org/bots/api#sendmessage), with no
 Markdown/HTML parsing. It blocks redirects and limits response reads/timeouts;
 errors never contain the token-bearing request URL or Telegram's echoed body.
-Notifications are best-effort, with a 32-message queue, a 10-second timeout, and
+Notifications are best-effort, with a 32-message queue, a 30-second timeout (including temporary proxy startup), and
 no unbounded retry loop. Failure does not stop the gateway. Normal shutdown
 makes one final attempt bounded to three seconds.
 
@@ -53,10 +54,26 @@ check probes only the active node, including its chain dependencies. It skips a
 busy manager and never sweeps other nodes in Manual mode. Repeated failures are
 suppressed until a successful health check (or a different active node).
 
-The bot must be permitted to post to the chosen chat. The Pi must be able to
-reach api.telegram.org; the default Go transport honors HTTPS_PROXY. Telegram
+The bot must be permitted to post to the chosen chat. With **Send Telegram through proxy** OFF, the Pi connects directly to
+api.telegram.org, ignoring HTTP_PROXY/HTTPS_PROXY environment variables. With it
+ON, a temporary loopback SOCKS sing-box process uses the selected node and its
+complete chain. The live engine, LAN routes and selector are not changed. In
+Auto mode it uses the live automatic choice; if no live choice is available, it
+uses the fastest saved healthy enabled configuration. Without a usable choice,
+the notification reports an error. Proxy mode never falls back to direct.
+This separate process permits stop notifications after the production engine
+has stopped; shutdown's final attempt still has only three seconds. Telegram
 blocking or a loss of upstream connectivity can prevent delivery, including a
 stop alert. No messages are sent simply by viewing the settings page.
+
+**Save & send test message** saves the form first, then calls
+`POST /api/telegram/test` (empty JSON body, existing authentication/CSRF).
+The endpoint uses saved credentials and returns a normal 202 job, kind
+`telegram`, polled through `/api/status`. It works even if automatic alerts are
+disabled. The UI displays progress and success/failure; the message identifies
+whether it used direct or proxy. Credentials must be valid and the bot must
+have access to the chat. A Telegram error or unavailable proxy reports failure
+without exposing the bot token or proxy credentials.
 
 ## Backup and restore
 
@@ -122,23 +139,31 @@ Returns the normal 202 background job response. Poll `/api/status`; its `refresh
 object contains `kind: "speed"`, `node_id`, state/error and, on success:
 
 ```json
-{"speed":{"bytes":15000000,"seconds":2,"mbps":60}}
+{"speed":{"bytes":15000000,"seconds":2,"mbps":60,"server":"speed.cloudflare.com"}}
 ```
 
 A temporary sing-box process binds SOCKS on loopback, routes exclusively to the
 requested node with its complete detour path, and is killed/reaped afterward.
 A standard Go `http.Transport` uses this SOCKS proxy for
-`https://speed.cloudflare.com/__down?bytes=15000000`. It never switches the live
+`https://speed.cloudflare.com/__down?bytes=15000000`. If that fails (including
+HTTP 403), it tries the independent
+[NetOne random 10 MiB payload](https://speedtest.netone.nl/speedtest/) at
+`https://speedtest.netone.nl/speedtest/random-10mb.bin` through the same node.
+An endpoint's rejection is not treated as evidence that the node itself is
+broken. If both fail, the error names both hosts and their failure reasons.
+The result includes the successful server, also shown on hover over Mbps.
+It never switches the live
 selector or changes TPROXY rules. No protocol implementation or Go library is
 added. One existing manager job runs at a time.
 
 Startup is excluded from timing; target DNS/TLS, first-byte latency and the
-15,000,000-byte payload are included. Compression and redirects are disabled;
-non-200, truncated, oversized and failed downloads are errors. The deadline is
-90 seconds, bounded further by the configured job timeout. Mbps is
+successful endpoint’s payload are included. Failed attempts are excluded from Mbps timing. Compression and redirects are disabled;
+non-200, truncated, oversized and failed downloads are errors. HTML/JSON/XML error pages are rejected even with HTTP 200. Each endpoint has a
+40-second deadline inside the 90-second overall limit, bounded further by the
+configured job timeout. Mbps is
 `bytes * 8 / elapsed_seconds / 1_000_000`. This is one download's achieved
-throughput, not a guarantee of line rate. Each click consumes about 15 MB through
-that node. Temporary test traffic is not part of the production engine's usage
+throughput, not a guarantee of line rate. A successful primary download consumes 15 MB; the fallback is 10 MiB. A click
+can download up to about 26 MB of payload if both attempts transfer data. Temporary test traffic is not part of the production engine's usage
 counters.
 
 ## QR code sharing

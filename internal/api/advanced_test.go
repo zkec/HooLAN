@@ -285,14 +285,14 @@ func TestActiveNodeFailureNotifiesOnce(t *testing.T) {
 func TestAdvancedRoutesRequireAuthenticationAndCSRF(t *testing.T) {
 	h := backupHarness(t)
 	router := NewRouter(h.svc, RouterOptions{Token: "secret", Logger: quietLogger()})
-	for _, item := range []struct{ method, path string }{{"GET", "/api/backup"}, {"GET", "/api/telegram"}, {"POST", "/api/restore"}, {"POST", "/api/nodes/share"}, {"POST", "/api/nodes/speed"}, {"PUT", "/api/telegram"}} {
+	for _, item := range []struct{ method, path string }{{"GET", "/api/backup"}, {"GET", "/api/telegram"}, {"POST", "/api/restore"}, {"POST", "/api/nodes/share"}, {"POST", "/api/nodes/speed"}, {"PUT", "/api/telegram"}, {"POST", "/api/telegram/test"}} {
 		if w := authRequest(router, item.method, item.path, `{}`, nil, ""); w.Code != 401 {
 			t.Fatalf("unprotected %s: %d", item.path, w.Code)
 		}
 	}
 	login := authRequest(router, "POST", "/api/auth/login", `{"token":"secret"}`, nil, "")
 	cookie := login.Result().Cookies()[0]
-	for _, item := range []struct{ method, path string }{{"POST", "/api/restore"}, {"POST", "/api/nodes/share"}, {"POST", "/api/nodes/speed"}, {"PUT", "/api/telegram"}} {
+	for _, item := range []struct{ method, path string }{{"POST", "/api/restore"}, {"POST", "/api/nodes/share"}, {"POST", "/api/nodes/speed"}, {"PUT", "/api/telegram"}, {"POST", "/api/telegram/test"}} {
 		if w := authRequest(router, item.method, item.path, `{}`, cookie, ""); w.Code != 403 {
 			t.Fatalf("missing CSRF accepted %s: %d", item.path, w.Code)
 		}

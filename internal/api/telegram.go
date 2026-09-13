@@ -8,14 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"proxy-manager/internal/store"
+	"proxy-manager/internal/subscription"
 	"regexp"
 	"time"
 )
 
 type TelegramSettings struct {
-	Enabled bool   `json:"enabled"`
-	Token   string `json:"token"`
-	ChatID  string `json:"chat_id"`
+	Enabled  bool   `json:"enabled"`
+	UseProxy bool   `json:"use_proxy"`
+	Token    string `json:"token"`
+	ChatID   string `json:"chat_id"`
 }
 
 var botTokenPattern = regexp.MustCompile(`^[0-9]{5,20}:[A-Za-z0-9_-]{20,100}$`)
@@ -64,12 +67,13 @@ func (s *Service) telegram(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		defer s.mu.RUnlock()
 		v := s.state.Telegram
-		writeJSON(w, 200, map[string]any{"enabled": v.Enabled, "chat_id": v.ChatID, "token_set": v.Token != "", "last_error": s.telegramError})
+		writeJSON(w, 200, map[string]any{"enabled": v.Enabled, "use_proxy": v.UseProxy, "chat_id": v.ChatID, "token_set": v.Token != "", "last_error": s.telegramError})
 	case http.MethodPut:
 		var req struct {
-			Enabled bool    `json:"enabled"`
-			Token   *string `json:"token"`
-			ChatID  string  `json:"chat_id"`
+			Enabled  bool    `json:"enabled"`
+			UseProxy *bool   `json:"use_proxy"`
+			Token    *string `json:"token"`
+			ChatID   string  `json:"chat_id"`
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeError(w, 400, err.Error())
@@ -80,7 +84,10 @@ func (s *Service) telegram(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		old := s.state.Telegram
-		next := TelegramSettings{Enabled: req.Enabled, ChatID: req.ChatID, Token: old.Token}
+		next := TelegramSettings{Enabled: req.Enabled, ChatID: req.ChatID, Token: old.Token, UseProxy: old.UseProxy}
+		if req.UseProxy != nil {
+			next.UseProxy = *req.UseProxy
+		}
 		if req.Token != nil {
 			next.Token = *req.Token
 		}
@@ -139,19 +146,10 @@ func (s *Service) startNotifications() {
 				if !cfg.Enabled {
 					continue
 				}
-				ctx, cancel := context.WithTimeout(s.jobCtx, 10*time.Second)
-				client := s.cfg.NotificationClient
-				if client == nil {
-					client = &http.Client{Timeout: 10 * time.Second}
-				}
-				err := sendTelegram(ctx, client, cfg, msg)
+				ctx, cancel := context.WithTimeout(s.jobCtx, 30*time.Second)
+				err := s.deliverTelegram(ctx, cfg, msg)
 				cancel()
-				s.mu.Lock()
-				s.telegramError = ""
-				if err != nil {
-					s.telegramError = err.Error()
-				}
-				s.mu.Unlock()
+				s.recordTelegramResult(err)
 			case <-ticker.C:
 				s.checkActiveNode()
 			}
@@ -222,11 +220,121 @@ func (s *Service) notifyShutdown(ctx context.Context) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	client := s.cfg.NotificationClient
-	if client == nil {
-		client = &http.Client{Timeout: 3 * time.Second}
-	}
-	if err := sendTelegram(ctx, client, cfg, "Proxy engine stopped during service shutdown."); err != nil {
+	if err := s.deliverTelegram(ctx, cfg, "Proxy engine stopped during service shutdown."); err != nil {
 		s.log.Warn("shutdown notification was not delivered", "err", err)
 	}
+}
+
+func (s *Service) recordTelegramResult(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.telegramError = ""
+	if err != nil {
+		s.telegramError = err.Error()
+	}
+}
+
+// Direct means no application proxy, including HTTP(S)_PROXY environment
+// variables. Proxy delivery has no direct fallback and uses a separate engine,
+// so it remains possible after the production engine is stopped.
+func (s *Service) deliverTelegram(ctx context.Context, cfg TelegramSettings, message string) error {
+	if !cfg.UseProxy {
+		client := s.cfg.NotificationClient
+		if client == nil {
+			transport := directTelegramTransport()
+			defer transport.CloseIdleConnections()
+			client = &http.Client{Transport: transport}
+		}
+		return sendTelegram(ctx, client, cfg, message)
+	}
+	proxy, ok := s.cfg.Tester.(interface {
+		WithProxyClient(context.Context, subscription.Node, []subscription.Node, func(*http.Client) error) error
+	})
+	if !ok {
+		return errors.New("Telegram proxy transport is unavailable")
+	}
+	choice := s.selection(ctx)
+	targetID := choice.NodeID
+	if choice.Auto {
+		targetID = ""
+		s.mu.RLock()
+		for id, tag := range s.tagByID {
+			if tag == choice.AutoPick && choice.AutoPick != "" {
+				targetID = id
+				break
+			}
+		}
+		s.mu.RUnlock()
+	}
+	all := s.cfg.Store.EnabledNodes()
+	var target *subscription.Node
+	for i := range all {
+		if all[i].ChainInternal {
+			continue
+		}
+		if targetID != "" && store.NodeID(all[i]) == targetID {
+			target = &all[i]
+			break
+		}
+	}
+	// Offline automatic selection has no live URL-test choice. Use its best
+	// saved healthy candidate (the inventory is ordered by measured latency).
+	if target == nil && choice.Auto && choice.AutoPick == "" {
+		for i := range all {
+			rec, err := s.cfg.Store.Get(store.NodeID(all[i]))
+			if err == nil && !all[i].ChainInternal && rec.Healthy() {
+				target = &all[i]
+				break
+			}
+		}
+	}
+	if target == nil {
+		return errors.New("No Telegram proxy node available; select an enabled configuration or run a latency check")
+	}
+	var deliveryErr error
+	err := proxy.WithProxyClient(ctx, *target, all, func(client *http.Client) error {
+		deliveryErr = sendTelegram(ctx, client, cfg, message)
+		return deliveryErr
+	})
+	if deliveryErr != nil {
+		return deliveryErr
+	}
+	// Engine startup/config errors may contain node credentials: do not return
+	// them to the notification status, response, or logs.
+	if err != nil {
+		return errors.New("Telegram proxy connection failed (engine startup or timeout)")
+	}
+	return nil
+}
+
+func directTelegramTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return transport
+}
+
+// Explicit test works even when automatic alerts are disabled. It uses saved
+// credentials/settings, the usual single-job guard and shutdown cancellation.
+func (h *handlers) testTelegram(w http.ResponseWriter, r *http.Request) {
+	h.svc.mu.RLock()
+	cfg := h.svc.state.Telegram
+	h.svc.mu.RUnlock()
+	check := cfg
+	check.Enabled = true
+	if err := validateTelegram(check); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	job, err := h.svc.startJob(JobStatus{Kind: "telegram"}, func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		route := "direct"
+		if cfg.UseProxy {
+			route = "proxy"
+		}
+		err := h.svc.deliverTelegram(ctx, cfg, "Proxy Manager test message: Telegram delivery is working via "+route+".")
+		h.svc.recordTelegramResult(err)
+		return err
+	})
+	h.writeJob(w, job, err)
 }
