@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"proxy-manager/internal/store"
 	"proxy-manager/internal/subscription"
 	"regexp"
+	"strings"
 	"time"
+	"unicode"
 )
 
 type TelegramSettings struct {
@@ -51,16 +54,74 @@ func sendTelegram(ctx context.Context, client *http.Client, cfg TelegramSettings
 	} // never log URL/token
 	defer resp.Body.Close()
 	var result struct {
-		OK bool `json:"ok"`
+		OK          *bool  `json:"ok"`
+		Code        int    `json:"error_code"`
+		Description string `json:"description"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
-		return errors.New("invalid Telegram response")
+	route := "direct"
+	if cfg.UseProxy {
+		route = "proxy"
 	}
-	if resp.StatusCode != 200 || !result.OK {
-		return fmt.Errorf("Telegram rejected notification (HTTP %d)", resp.StatusCode)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil || result.OK == nil {
+		return fmt.Errorf("Telegram endpoint returned HTTP %d via %s without a valid Bot API response. Check the selected network path; try another proxy node or direct delivery", resp.StatusCode, route)
 	}
-	return nil
+	if resp.StatusCode == http.StatusOK && *result.OK {
+		return nil
+	}
+	// Telegram's description explains forbidden chats and missing permissions.
+	// Bound and redact it before persisting/displaying; never include request URLs.
+	description := safeTelegramDescription(result.Description, cfg)
+	hint := telegramFailureHint(result.Code, resp.StatusCode, description)
+	return fmt.Errorf("Telegram API rejected notification (HTTP %d, code %d, via %s): %s. %s", resp.StatusCode, result.Code, route, description, hint)
 }
+
+func safeTelegramDescription(description string, cfg TelegramSettings) string {
+	for _, secret := range []string{cfg.Token, url.QueryEscape(cfg.Token), url.PathEscape(cfg.Token)} {
+		if secret != "" {
+			description = strings.ReplaceAll(description, secret, "[redacted]")
+		}
+	}
+	description = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return ' '
+		}
+		return r
+	}, description)
+	description = strings.Join(strings.Fields(description), " ")
+	runes := []rune(description)
+	if len(runes) > 512 {
+		description = string(runes[:512]) + "…"
+	}
+	if description == "" {
+		return "No reason provided"
+	}
+	return description
+}
+
+func telegramFailureHint(code, status int, description string) string {
+	reason := strings.ToLower(description)
+	switch {
+	case strings.Contains(reason, "blocked by the user"):
+		return "Unblock this bot in Telegram, open its chat and send /start, then retry"
+	case strings.Contains(reason, "can't initiate"), strings.Contains(reason, "cannot initiate"):
+		return "Open this bot's chat and send /start from the receiving account, then retry"
+	case strings.Contains(reason, "deactivated"):
+		return "Choose the Chat ID of an active receiving account"
+	case strings.Contains(reason, "kicked"), strings.Contains(reason, "not a member"), strings.Contains(reason, "not enough rights"), strings.Contains(reason, "chat_write_forbidden"):
+		return "Add the bot to the target chat and allow it to send messages; channels require permission to post"
+	case strings.Contains(reason, "chat not found"):
+		return "Check the target Chat ID and the bot's access to that chat; for a private chat, send /start first"
+	case code == 401 || status == 401:
+		return "Check the saved BotFather token and replace it if revoked"
+	case code == 403 || status == 403:
+		return "Check the receiving Chat ID, unblock/start the bot and verify its chat permissions; proxy routing does not grant chat access"
+	case code == 429 || status == 429:
+		return "Telegram rate-limited this request; wait before retrying"
+	default:
+		return "Check the bot token, target Chat ID and Telegram's reported reason"
+	}
+}
+
 func (s *Service) telegram(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

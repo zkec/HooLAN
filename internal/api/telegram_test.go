@@ -177,3 +177,38 @@ func TestTelegramAutomaticProxyChoiceOnlineAndOffline(t *testing.T) {
 		t.Fatal("no healthy offline candidate must fail without dialing")
 	}
 }
+
+func TestTelegramDeliveryErrorDiagnostics(t *testing.T) {
+	cfg := TelegramSettings{UseProxy: true, Token: "123456:" + strings.Repeat("x", 30), ChatID: "12345"}
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"blocked", 403, `{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`, "Unblock this bot"},
+		{"not started", 403, `{"ok":false,"error_code":403,"description":"Forbidden: bot can't initiate conversation with a user"}`, "send /start"},
+		{"removed", 403, `{"ok":false,"error_code":403,"description":"Forbidden: bot was kicked from the group chat"}`, "allow it to send messages"},
+		{"invalid chat", 400, `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`, "Check the target Chat ID"},
+		{"token", 401, `{"ok":false,"error_code":401,"description":"Unauthorized"}`, "BotFather token"},
+		{"html denial", 403, `<html>upstream denied</html>`, "without a valid Bot API response"},
+		{"unrelated json", 403, `{"message":"denied"}`, "without a valid Bot API response"},
+		{"missing reason", 403, `{"ok":false,"error_code":403}`, "No reason provided"},
+		{"logical rejection", 200, `{"ok":false,"error_code":403,"description":"Forbidden"}`, "chat permissions"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+			})}
+			err := sendTelegram(context.Background(), client, cfg, "test")
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "via proxy") {
+				t.Fatalf("unexpected diagnostic: %v", err)
+			}
+		})
+	}
+	description := safeTelegramDescription("URL https://api.telegram.org/bot"+cfg.Token+"/sendMessage\n"+strings.Repeat("a", 600), cfg)
+	if strings.Contains(description, cfg.Token) || strings.Contains(description, "\n") || len([]rune(description)) > 513 {
+		t.Fatal("unsafe description")
+	}
+}

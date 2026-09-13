@@ -21,8 +21,8 @@ function checkWeb(sources) {
   const title = root.appendChild(element('h2')); title.textContent = 'Device settings';
   const field = root.appendChild(element('input')); field.setAttribute('placeholder','Device name');
   const user = root.appendChild(element('span')); user.setAttribute('data-no-i18n',''); user.textContent='Device name';
-  const themeButton = root.appendChild(element('button')), languageButton=root.appendChild(element('button'));
-  const document = {documentElement: root, events: {}, getElementById(id) {return {'theme-toggle':themeButton,'language-toggle':languageButton}[id] || null;}, addEventListener(name, cb) {this.events[name]=cb;}};
+  const themeButton = root.appendChild(element('button')), languageButton=root.appendChild(element('button')), favicon=root.appendChild(element('link'));
+  const document = {documentElement: root, events: {}, getElementById(id) {return {'theme-toggle':themeButton,'language-toggle':languageButton,'favicon':favicon}[id] || null;}, addEventListener(name, cb) {this.events[name]=cb;}};
   const observers=[];
   class MutationObserver { constructor(callback) {this.callback=callback; observers.push(this);} disconnect() {} observe() {} }
   const window = {matchMedia() {return {matches:false};}};
@@ -51,6 +51,9 @@ function checkWeb(sources) {
   let refreshes=0; const refresh=window.I18n.refresh; window.I18n.refresh=function(){refreshes++;refresh();};
   themeButton.events.click();
   assert(root.dataset.theme==='light' && refreshes===0,'theme toggle retraversed document');
+  assert(favicon.getAttribute('href')==='/hoo-logo-light.svg','favicon does not follow light theme');
+  themeButton.events.click();
+  assert(favicon.getAttribute('href')==='/hoo-logo-dark.svg','favicon does not follow dark theme');
   languageButton.events.click();
   assert(root.lang==='fa' && root.dir==='rtl' && refreshes===1,'language toggle failed');
   languageButton.events.click();

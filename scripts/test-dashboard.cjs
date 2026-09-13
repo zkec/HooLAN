@@ -69,7 +69,8 @@ function checkDashboard(source) {
   assert(!table.textContent.includes('No traffic'), 'zero usage node shown');
   let devices = document.getElementById('usage-devices').children[0];
   assert(devices.rows[1].children[0].textContent === '192.168.3.2', 'rendered device download order');
-  assert(devices.rows[0].children[5].textContent === '', 'action header is not blank');
+  assert(devices.rows[0].children[5].textContent === 'Speed set', 'speed column heading missing');
+  assert(devices.rows[1].children[5].textContent.includes('2 Mbps') && devices.rows[1].children[6].textContent === 'Settings', 'settings must follow speed in a separate column');
   assert(devices.rows[1].textContent.includes('Settings') && devices.rows[1].textContent.includes('2 Mbps'), 'settings/limits missing');
   document.getElementById('devices-sort').value = 'upload';
   document.getElementById('devices-sort').events.change();

@@ -1,5 +1,11 @@
 # HooLAN
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="internal/api/web/hoo-logo-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="internal/api/web/hoo-logo-light.svg" />
+  <img src="internal/api/web/hoo-logo-light.svg" alt="HooLAN" width="100" height="100" />
+</picture>
+
 HooLAN keeps the existing `proxy-manager` binary, systemd service, file paths and
 `PROXY_MANAGER_*` environment variables for installation compatibility.
 
@@ -399,3 +405,15 @@ Further reading: [configuration workflow](docs/configuration-workflow.md),
 [device routing](docs/device-routing.md), [load balancing/QoS](docs/load-balancing-qos.md),
 [notifications/backup/speed/QR](docs/advanced-features.md),
 [review and deletion list](docs/consolidation-review.md).
+
+### Telegram delivery errors
+
+A failed test now reports the HTTP status, Telegram's error code/description,
+and whether it used direct or proxy delivery. A Bot API `403` requires checking
+the reported reason: unblock the bot, start its private chat, or restore its
+membership/send permissions in the receiving group/channel as appropriate.
+Use the receiving chat's ID, not the bot's own ID. An HTML/non-Bot-API rejection
+instead calls for checking the selected network path or trying another node.
+Do not paste bot tokens into logs or support messages; replace exposed tokens
+through BotFather. See [Telegram's bot introduction](https://core.telegram.org/bots#how-are-bots-different-from-humans)
+and [API response format](https://core.telegram.org/bots/api#making-requests).

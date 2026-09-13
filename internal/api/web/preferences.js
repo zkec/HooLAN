@@ -8,6 +8,8 @@
   var lang = get('proxy-manager-language', 'en');
   function applyTheme(value) {
     theme = value === 'light' ? 'light' : 'dark'; root.dataset.theme = theme;
+    var favicon = document.getElementById('favicon');
+    if (favicon) favicon.setAttribute('href', '/hoo-logo-' + theme + '.svg');
     var button = document.getElementById('theme-toggle');
     if (button) { button.textContent = theme === 'dark' ? 'Light mode' : 'Dark mode'; button.setAttribute('aria-pressed', String(theme === 'light')); }
   }

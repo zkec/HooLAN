@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="dark light" />
   <meta name="referrer" content="no-referrer" />
   <title>HooLAN</title>
+  <link id="favicon" rel="icon" type="image/svg+xml" href="/hoo-logo-dark.svg" />
   <script src="/preferences.js"></script>
   <script src="/i18n.js" defer></script>
   <link rel="stylesheet" href="/style.css" />
@@ -15,7 +16,7 @@
   <a class="skip-link" href="#main">Skip to dashboard</a>
   <header class="header">
     <div class="header-inner">
-      <a class="brand" href="/" aria-label="HooLAN home"><span class="brand-icon" aria-hidden="true">H</span><span>HooLAN</span></a>
+      <a class="brand" href="/" aria-label="HooLAN home"><span class="brand-logo" aria-hidden="true"><img class="logo-dark" src="/hoo-logo-dark.svg" width="40" height="40" alt="" /><img class="logo-light" src="/hoo-logo-light.svg" width="40" height="40" alt="" /></span><span>HooLAN</span></a>
       <span id="engine-status" class="pill">Connecting…</span>
       <div class="header-actions">
         <button id="theme-toggle" type="button" class="button subtle" aria-label="Switch theme">Light mode</button>
@@ -134,6 +135,7 @@
         <div class="edit-grid"><div class="field"><label for="telegram-token">Telegram Bot Token</label><input id="telegram-token" type="password" autocomplete="new-password" placeholder="Leave blank to keep current" /></div><div class="field"><label for="telegram-chat">Chat ID</label><input id="telegram-chat" type="text" autocomplete="off" placeholder="-1001234567890" /></div></div>
         <label><input id="telegram-proxy" type="checkbox" /> Send Telegram through proxy</label>
         <p class="muted small">Off: connect directly from the Pi. On: use the active node; when automatic selection is offline, use the fastest saved healthy node. Proxy mode never falls back to direct.</p>
+        <p class="muted small">For a private chat, open your bot in Telegram and send /start first. Use the receiving chat’s ID, and ensure the bot is not blocked. For groups or channels, grant the bot permission to send messages.</p>
         <label><input id="telegram-clear" type="checkbox" /> Remove stored token</label><p id="telegram-status" class="muted small" role="status"></p>
         <div class="form-footer"><button type="submit" class="button primary" data-mutation>Save notifications</button><button id="telegram-test" type="button" class="button" data-mutation data-job>Save &amp; send test message</button></div>
       </form>
@@ -150,7 +152,7 @@
         <div class="log-footer muted small"><span id="log-count">0 lines</span><span>Latest 500 lines · pause anytime · scroll up to read</span></div>
       </div>
     </section>
-    <footer class="footer"><span>HooLAN · Raspberry Pi gateway</span><span id="foot-poll">Connecting to API…</span></footer>
+    <footer class="footer"><span>HooLAN gateway</span><span id="foot-poll">Connecting to API…</span></footer>
   </main>
   <dialog id="device-settings" aria-labelledby="device-settings-title" aria-describedby="device-settings-ip">
     <form id="device-settings-form">

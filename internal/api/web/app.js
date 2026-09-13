@@ -972,7 +972,7 @@
     sortUsageKeys(ips, values, $('devices-sort').value);
     if (!ips.length) { list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
     var table = element('table', 'node-table device-table'), header = element('tr'), head = element('thead'), body = element('tbody');
-    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
+    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'Speed set', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
     head.appendChild(header); table.appendChild(head); table.appendChild(body);
     var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
     ips.forEach(function (ip) {
@@ -983,9 +983,10 @@
       var id = routes[ip] || '', node = nodesByID.get(id);
       var route = element('td', 'device-route-label', id === 'direct' ? 'Direct' : !id ? 'Global Default' : node && node.enabled ? node.tag || node.server : 'Unavailable node (using Global Default)');
       if (node && node.enabled) route.dataset.noI18n = ''; row.appendChild(route);
+      var speed = element('td', 'device-speed'); speed.appendChild(deviceLimitSummary(limits[ip] || {})); row.appendChild(speed);
       var actions = element('td', 'device-actions'), button = element('button', 'button subtle', 'Settings');
       button.type = 'button'; button.dataset.mutation = ''; button.dataset.job = ''; button.dataset.deviceSettings = ip;
-      actions.appendChild(deviceLimitSummary(limits[ip] || {})); actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
+      actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
     });
     list.appendChild(table); updateControls();
   }

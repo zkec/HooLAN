@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="dark light" />
   <meta name="referrer" content="no-referrer" />
   <title>Sign in · HooLAN</title>
+  <link id="favicon" rel="icon" type="image/svg+xml" href="/hoo-logo-dark.svg" />
   <script src="/preferences.js"></script>
   <script src="/i18n.js" defer></script>
   <link rel="stylesheet" href="/style.css" />
@@ -13,18 +14,16 @@
 </head>
 <body class="login-body">
   <main class="login-main">
-    <a class="brand login-brand" href="/"><span class="brand-icon" aria-hidden="true">H</span><span>HooLAN</span></a>
+    <a class="brand login-brand" href="/"><span class="brand-logo" aria-hidden="true"><img class="logo-dark" src="/hoo-logo-dark.svg" width="40" height="40" alt="" /><img class="logo-light" src="/hoo-logo-light.svg" width="40" height="40" alt="" /></span><span>HooLAN</span></a>
     <section class="card login-card" aria-labelledby="login-heading">
-      <p class="eyebrow">GATEWAY ACCESS</p><h1 id="login-heading">Welcome back.</h1><p class="muted">Sign in to manage your network.</p>
+      <h1 id="login-heading">Welcome back.</h1><p class="muted">Sign in to manage your network.</p>
       <noscript><p class="notice">JavaScript is required to sign in.</p></noscript>
       <form id="login-form">
         <div class="field"><label for="login-token">Access token</label><input id="login-token" name="password" type="password" required autocomplete="current-password" spellcheck="false" autocapitalize="none" aria-describedby="token-help" autofocus /><p id="token-help" class="muted small">Use the token configured in PROXY_MANAGER_TOKEN.</p></div>
         <p id="login-error" class="login-error small" role="alert" hidden></p>
         <button id="login-submit" class="button primary" type="submit">Sign in</button>
       </form>
-      <p class="login-footnote muted small">Your session stays in an HttpOnly cookie. The access token is never saved in browser storage.</p>
     </section>
-    <p class="muted small login-caption">Your gateway. Your connections.</p>
   </main>
 </body>
 </html>

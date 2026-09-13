@@ -2,6 +2,12 @@
 
 # HooLAN
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="internal/api/web/hoo-logo-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="internal/api/web/hoo-logo-light.svg" />
+  <img src="internal/api/web/hoo-logo-light.svg" alt="HooLAN" width="100" height="100" />
+</picture>
+
 برای سازگاری با نصب‌های موجود، نام فایل اجرایی و سرویس systemd همچنان
 `proxy-manager` است و مسیر فایل‌ها و متغیرهای محیطی `PROXY_MANAGER_*` تغییر نکرده‌اند.
 
@@ -459,5 +465,17 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/proxy-manager-new ./cmd/s
 [مسیریابی دستگاه](docs/device-routing.md)، [توزیع بار و QoS](docs/load-balancing-qos.md)،
 [تلگرام، پشتیبان، سرعت و QR](docs/advanced-features.md)،
 [گزارش بازبینی و فهرست حذف](docs/consolidation-review.md).
+
+
+### خطاهای ارسال تلگرام
+
+آزمایش ناموفق اکنون وضعیت HTTP، کد و توضیح خطای تلگرام و مسیر ارسال مستقیم یا
+پروکسی را نمایش می‌دهد. برای خطای `403` از Bot API، بر اساس توضیح خطا مسدود بودن
+ربات، آغاز گفت‌وگوی خصوصی یا عضویت و مجوز ارسال آن در گروه/کانال را بررسی کنید.
+شناسهٔ گفت‌وگوی گیرنده را وارد کنید، نه شناسهٔ خود ربات. اگر پاسخ HTML باشد یا قالب
+Bot API نداشته باشد، مسیر شبکه یا یک گرهٔ دیگر را بررسی کنید. توکن ربات را در گزارش
+یا پیام پشتیبانی قرار ندهید؛ توکن افشاشده را از طریق BotFather تعویض کنید.
+[معرفی ربات‌های تلگرام](https://core.telegram.org/bots#how-are-bots-different-from-humans)
+و [قالب پاسخ API](https://core.telegram.org/bots/api#making-requests) را ببینید.
 
 </div>

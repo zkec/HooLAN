@@ -2,6 +2,8 @@
 (function () {
   "use strict";
   var fa = {
+  "For a private chat, open your bot in Telegram and send /start first. Use the receiving chat\u2019s ID, and ensure the bot is not blocked. For groups or channels, grant the bot permission to send messages.": "برای گفت‌وگوی خصوصی، ابتدا ربات خود را در تلگرام باز کنید و /start بفرستید. شناسهٔ گفت‌وگوی گیرنده را وارد کنید و مطمئن شوید ربات مسدود نیست. در گروه یا کانال، اجازهٔ ارسال پیام را به ربات بدهید.",
+  "Speed set": "سرعت تنظیم‌شده",
   "Add & create": "افزودن و ساخت",
   "Internet usage": "مصرف اینترنت",
   "Totals are payload bytes reported by the engine. Per-device, per-node and direct attribution is estimated from one-second connection samples; short flows can be missed.": "مجموع مصرف بر اساس بایت‌های دادهٔ گزارش‌شده توسط موتور است. سهم هر دستگاه، هر گره و ترافیک مستقیم با نمونه‌برداری یک‌ثانیه‌ای از اتصال‌ها تخمین زده می‌شود؛ اتصال‌های کوتاه ممکن است ثبت نشوند.",
@@ -155,7 +157,7 @@
   "Gateway and sing-box logs": "گزارش‌های دروازه و sing-box",
   "Service and sing-box logs will appear here.": "گزارش‌های سرویس و sing-box اینجا نمایش داده می‌شوند.",
   "Latest 500 lines · pause anytime · scroll up to read": "۵۰۰ خط اخیر · توقف در هر زمان · برای خواندن به بالا بروید",
-  "HooLAN · Raspberry Pi gateway": "HooLAN · دروازهٔ رزبری پای",
+  "HooLAN gateway": "دروازهٔ HooLAN",
   "Connecting to API…": "در حال اتصال به API…",
   "Edit configuration": "ویرایش پیکربندی",
   "Leave credential fields blank to keep the stored values. Changes apply to the running engine.": "برای حفظ اطلاعات ورود فعلی، فیلدهای مربوط را خالی بگذارید. تغییرات روی موتور فعال اعمال می‌شوند.",
@@ -315,15 +317,12 @@
   "Automatic updates off": "به‌روزرسانی خودکار خاموش است",
   "within a minute when no other task is running": "تا یک دقیقه دیگر، اگر کار دیگری در حال اجرا نباشد",
   "Sign in · HooLAN": "ورود · HooLAN",
-  "GATEWAY ACCESS": "دسترسی به دروازه",
   "Welcome back.": "خوش آمدید.",
   "Sign in to manage your network.": "برای مدیریت شبکه وارد شوید.",
   "JavaScript is required to sign in.": "برای ورود باید جاوااسکریپت فعال باشد.",
   "Access token": "توکن دسترسی",
   "Use the token configured in PROXY_MANAGER_TOKEN.": "از توکن تنظیم‌شده در PROXY_MANAGER_TOKEN استفاده کنید.",
   "Sign in": "ورود",
-  "Your session stays in an HttpOnly cookie. The access token is never saved in browser storage.": "نشست شما در کوکی HttpOnly نگهداری می‌شود. توکن دسترسی در حافظهٔ مرورگر ذخیره نمی‌شود.",
-  "Your gateway. Your connections.": "دروازهٔ شما. اتصال‌های شما.",
   "Signing in…": "در حال ورود…",
   "Checking session…": "بررسی نشست…",
   "Send Telegram through proxy": "ارسال تلگرام از طریق پروکسی",
