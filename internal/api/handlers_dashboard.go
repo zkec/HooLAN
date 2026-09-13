@@ -14,6 +14,7 @@ func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/restore", only(http.MethodPost, h.restoreBackup))
 	mux.Handle("/api/nodes/speed", only(http.MethodPost, h.speedTest))
 	mux.Handle("/api/nodes/share", only(http.MethodPost, h.shareNode))
+	mux.Handle("/api/load-balancers", only(http.MethodPost, h.createLoadBalancer))
 	mux.HandleFunc("/api/chains", h.chains)
 	mux.HandleFunc("/api/nodes/edit", h.editNode)
 	mux.Handle("/api/nodes/delete", only(http.MethodPost, h.deleteNode))

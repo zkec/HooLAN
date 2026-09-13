@@ -2,6 +2,20 @@
 (function () {
   "use strict";
   var fa = {
+  "Load balancing": "توزیع بار",
+  "Load Balanced": "توزیع بار",
+  "Create Load Balancer": "ایجاد گروه توزیع بار",
+  "Load balancer name": "نام گروه توزیع بار",
+  "My load balancer": "گروه توزیع بار من",
+  "Load balancer saved": "گروه توزیع بار ذخیره شد",
+  "Select 2–32 nodes or chains using the checkboxes below. New connections are distributed across saved member copies; each connection stays on one member. This does not bond a single download or automatically remove failed members.": "۲ تا ۳۲ گره یا زنجیره را با کادرهای زیر انتخاب کنید. اتصال‌های جدید بین نسخه‌های ذخیره‌شدهٔ اعضا توزیع می‌شوند و هر اتصال روی یک عضو می‌ماند. سرعت یک دریافت با هم ترکیب نمی‌شود و اعضای خراب به‌طور خودکار حذف نمی‌شوند.",
+  "Manually added configurations, saved chains and load balancers": "پیکربندی‌های دستی، زنجیره‌ها و گروه‌های توزیع بار ذخیره‌شده",
+  "Speed Limit (Mbps)": "محدودیت سرعت (مگابیت بر ثانیه)",
+  "Unlimited": "نامحدود",
+  "Save limit": "ذخیرهٔ محدودیت",
+  "Save device limit": "ذخیرهٔ محدودیت دستگاه",
+  "Each direction; blank or 0 is unlimited.": "برای هر جهت؛ خالی یا صفر یعنی نامحدود.",
+  "Device speed limit saved and applied.": "محدودیت سرعت دستگاه ذخیره و اعمال شد.",
   "Proxy Manager": "مدیر پروکسی",
   "Skip to dashboard": "رفتن به داشبورد",
   "Proxy Manager home": "صفحهٔ اصلی مدیر پروکسی",
@@ -342,7 +356,7 @@
     var trimmed = value.trim();
     if (Object.prototype.hasOwnProperty.call(fa, trimmed)) return value.replace(trimmed, fa[trimmed]);
     var patterns = [
-      [/^Process (\d+)$/, 'فرایند $1'], [/^(\d+) enabled$/, '$1 فعال'], [/^(\d+) healthy$/, '$1 سالم'],
+      [/^(\d+) members$/, '$1 عضو'], [/^Process (\d+)$/, 'فرایند $1'], [/^(\d+) enabled$/, '$1 فعال'], [/^(\d+) healthy$/, '$1 سالم'],
       [/^Updated (.*)$/, 'به‌روزرسانی $1'], [/^(\d+)\/(\d+) sources$/, '$1 از $2 منبع'], [/^(\d+) added, (\d+) updated$/, '$1 افزوده، $2 به‌روزشده'], [/^(\d+)\/(\d+) reachable$/, '$1 از $2 در دسترس'],
       [/^(\d+) selected$/, '$1 انتخاب‌شده'], [/^(\d+) lines$/, '$1 خط'],
       [/^(\d+)s ago$/, '$1 ثانیه پیش'], [/^(\d+)m ago$/, '$1 دقیقه پیش'], [/^(\d+)h ago$/, '$1 ساعت پیش'], [/^(\d+)d ago$/, '$1 روز پیش'],
@@ -360,7 +374,7 @@
       if (patterns[i][0].test(trimmed)) return trimmed.replace(patterns[i][0], patterns[i][1]).replace(/(\d+)s ago/g, '$1 ثانیه پیش').replace(/(\d+)m ago/g, '$1 دقیقه پیش').replace(/(\d+)h ago/g, '$1 ساعت پیش').replace(/(\d+)d ago/g, '$1 روز پیش');
     }
     // Translate the fixed part of task/status messages; retain diagnostic text.
-    var messages = ['Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
+    var messages = ['Create Load Balancer', 'Save device limit', 'Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
     for (var j = 0; j < messages.length; j++) {
       var key = messages[j];
       if (trimmed.startsWith(key + ': ')) return fa[key] + ': ' + trimmed.slice(key.length + 2);

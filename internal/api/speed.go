@@ -30,7 +30,7 @@ func (h *handlers) speedTest(w http.ResponseWriter, r *http.Request) {
 		h.dashboardError(w, err)
 		return
 	}
-	if !rec.Enabled || rec.Node.ChainInternal {
+	if !rec.Enabled || rec.Node.ChainInternal || rec.Node.Protocol == subscription.ProtoBalance {
 		writeError(w, 400, "Choose an enabled configuration")
 		return
 	}

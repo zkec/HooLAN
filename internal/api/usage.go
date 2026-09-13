@@ -124,6 +124,13 @@ func (s *Service) sampleUsage(ctx context.Context) {
 					break
 				}
 			}
+			// Distributed listeners bypass the selector, so attribute their proxied
+			// bytes to the visible saved group. Direct bypass remains direct above.
+			inbound := strings.TrimPrefix(c.Metadata.Type, "tproxy/balance-")
+			if len(inbound) > 33 && inbound[32] == '-' && s.tagByID[inbound[:32]] != "" {
+				key = inbound[:32]
+			}
+
 		}
 		v := u.Outbounds[key]
 		v.Upload += delta(c.Upload, old.Upload)
@@ -181,7 +188,7 @@ func (h *handlers) usage(w http.ResponseWriter, r *http.Request) {
 	s := h.svc
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	writeJSON(w, 200, map[string]any{"usage": s.state.Usage, "device_aliases": s.state.DeviceAliases, "device_routes": s.state.DeviceRoutes, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
+	writeJSON(w, 200, map[string]any{"usage": s.state.Usage, "device_aliases": s.state.DeviceAliases, "device_routes": s.state.DeviceRoutes, "device_limits": s.state.DeviceLimits, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
 }
 
 func supportsTraffic(v any) bool {

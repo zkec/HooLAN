@@ -59,7 +59,7 @@
     state.groupSelections.clear(); state.chainHops = []; state.chainExistingNodes = []; state.chainEditingID = null;
     if ($('qr-dialog').open) $('qr-dialog').close();
     if ($('node-editor').open) $('node-editor').close();
-    ['telegram-form', 'subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
+    ['balance-form', 'telegram-form', 'subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
   }
   function signInRequired() {
     if (state.exiting) return;
@@ -207,7 +207,7 @@
     header.appendChild(headingRow);
     table.appendChild(header);
     var body = element('tbody');
-    var activeTag = state.selection.auto ? state.selection.auto_pick : state.selection.active;
+    var activeTag = state.selection.auto ? (state.selection.auto_pick || state.selection.active) : state.selection.active;
     nodes.forEach(function (node) {
       var pinned = !state.selection.auto && (node.selected || state.selection.node_id === node.id);
       var active = !!activeTag && (node.tag === activeTag || node.effective_tag === activeTag);
@@ -217,10 +217,10 @@
       if (pinned || active) name.appendChild(element('span', 'pill good', pinned ? 'Pinned' : 'Active'));
       if (state.status && state.status.engine_running && !node.in_config) name.appendChild(element('span', 'pill', 'Not loaded'));
       row.appendChild(name);
-      row.appendChild(element('td', 'node-protocol protocol-column', node.protocol + (node.transport ? ' / ' + node.transport : '')));
+      row.appendChild(element('td', 'node-protocol protocol-column', node.protocol === 'loadbalance' ? 'Load Balanced' : node.protocol + (node.transport ? ' / ' + node.transport : '')));
       var server = node.server || '';
       if (server.indexOf(':') !== -1) server = '[' + server + ']';
-      row.appendChild(element('td', 'node-server server-column', server + ':' + node.port));
+      row.appendChild(element('td', 'node-server server-column', node.protocol === 'loadbalance' ? String(node.member_count) + ' members' : server + ':' + node.port));
       var result = latency(node);
       var resultCell = element('td', 'latency ' + result.className, result.label);
       resultCell.title = result.title;
@@ -232,14 +232,14 @@
       select.setAttribute('aria-label', (pinned ? 'Pinned configuration: ' : 'Activate ') + (node.tag || node.server));
       if (pinned) select.classList.add('active-button');
       buttons.appendChild(select);
-      if (node.chain_id || isManual(node)) buttons.appendChild(actionButton('Edit', node.chain_id ? 'edit-chain' : 'edit-node', node.id, false, true));
+      if (node.protocol !== 'loadbalance' && (node.chain_id || isManual(node))) buttons.appendChild(actionButton('Edit', node.chain_id ? 'edit-chain' : 'edit-node', node.id, false, true));
       var speed = state.speedResults.get(node.id);
-      var speedButton = actionButton(speed && speed.state === 'running' ? 'Testing…' : 'Speed Test', 'speed-node', node.id, !node.enabled, true);
+      var speedButton = actionButton(speed && speed.state === 'running' ? 'Testing…' : 'Speed Test', 'speed-node', node.id, !node.enabled || node.protocol === 'loadbalance', true);
       if (speed && speed.state === 'running') { speedButton.classList.add('testing'); speedButton.setAttribute('aria-busy','true'); }
       buttons.appendChild(speedButton);
       if (speed && speed.state === 'succeeded') { var result = element('span','speed-result',Number(speed.mbps).toFixed(2)+' Mbps'); result.title = speed.server || ''; buttons.appendChild(result); }
       if (speed && speed.state === 'failed') { var failed = element('span','muted small','Speed test failed'); failed.title = speed.error || ''; buttons.appendChild(failed); }
-      var qr = actionButton('QR Code','qr-node',node.id,!!(node.chain_id || node.detour_id || node.detour),false);
+      var qr = actionButton('QR Code','qr-node',node.id,!!(node.chain_id || node.detour_id || node.detour || node.protocol === 'loadbalance'),false);
       if (qr.dataset.unavailable === 'true') qr.title = 'Chains cannot be shared as one mobile link';
       buttons.appendChild(qr);
       actions.appendChild(buttons);
@@ -268,7 +268,7 @@
     if (subscription) { card.open = state.groupOpen.has(group) ? state.groupOpen.get(group) : false; card.addEventListener('toggle', function () { if (card.isConnected) state.groupOpen.set(group, card.open); }); }
     var heading = element(subscription ? 'summary' : 'div', 'subscription-heading'), details = element('div'), title = element('div', 'subscription-name');
     var groupTitle = element('h3', '', name); if (subscription) groupTitle.dataset.noI18n = ''; title.appendChild(groupTitle); title.appendChild(element('span', 'count', String(nodes.length))); details.appendChild(title);
-    if (!subscription) details.appendChild(element('p', 'muted small', 'Manually added configurations and saved chains'));
+    if (!subscription) details.appendChild(element('p', 'muted small', 'Manually added configurations, saved chains and load balancers'));
     heading.appendChild(details); card.appendChild(heading);
     if (subscription) {
       var source = element('details', 'subscription-source group-source'); source.appendChild(element('summary', '', 'Show source URL'));
@@ -592,14 +592,21 @@
     window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
   }
 
+  function balanceSelection() {
+    var ids = new Set(); state.groupSelections.forEach(function(selected) { selected.forEach(function(id) { ids.add(id); }); });
+    return Array.from(ids).filter(function(id) { return state.nodes.some(function(n) { return n.id === id && n.enabled && n.protocol !== 'loadbalance'; }); });
+  }
   function updateBulkControls() {
+    var count = balanceSelection().length;
+    text($('balance-selected'), count + ' selected');
+    $('balance-create').disabled = state.busy || state.jobRunning || !state.authenticated || count < 2 || count > 32;
     document.querySelectorAll('[data-config-group]').forEach(function (card) {
       var group = card.dataset.configGroup, count = groupSelection(group).size, total = groupNodes(group).length;
       text(card.querySelector('[data-group-count]'), count + ' selected');
       var all = card.querySelector('[data-select-group]');
       all.disabled = state.busy || !state.authenticated || !total;
       all.checked = !!total && count === total; all.indeterminate = count > 0 && count < total;
-      card.querySelectorAll('[data-bulk-action]').forEach(function (button) { button.disabled = !count || state.busy || state.jobRunning || !state.authenticated; });
+      card.querySelectorAll('[data-bulk-action]').forEach(function (button) { button.disabled = !count || state.busy || state.jobRunning || !state.authenticated || (button.dataset.bulkAction === 'ping' && groupNodes(group).some(function(n) { return n.protocol === 'loadbalance' && groupSelection(group).has(n.id); })); });
       card.querySelectorAll('[data-select-node]').forEach(function (box) { box.checked = groupSelection(group).has(box.dataset.selectNode); box.disabled = state.busy || !state.authenticated; });
     });
     $('chain-save').disabled=state.busy || state.jobRunning || state.chainHops.length<2 || !state.authenticated;
@@ -635,6 +642,13 @@
         await call('POST', '/api/nodes/delete', {node_ids: ids});
         state.groupSelections.forEach(function (selected) { ids.forEach(function (id) { selected.delete(id); }); });
         toast('Selected configurations deleted.', 'ok');
+      });
+    });
+    $('balance-form').addEventListener('submit',function(event) {
+      event.preventDefault(); var ids=balanceSelection(), name=$('balance-name').value.trim();
+      mutate('Create Load Balancer',async function() {
+        await call('POST','/api/load-balancers',{name:name,node_ids:ids});
+        state.groupSelections.clear();$('balance-form').reset();toast('Load balancer saved','ok');
       });
     });
     $('chain-builder-node').addEventListener('change',updateBulkControls);
@@ -726,7 +740,7 @@
   }
 
   function chainOptions() {
-    var originals = state.nodes.filter(function (n) { return n.enabled && !n.detour_id && !n.detour && !n.chain_id; });
+    var originals = state.nodes.filter(function (n) { return n.enabled && !n.detour_id && !n.detour && !n.chain_id && n.protocol !== 'loadbalance'; });
     var ids = new Set(originals.map(function (n) { return n.id; }));
     return originals.concat(state.chainExistingNodes.filter(function (n) { return !ids.has(n.id); }));
   }
@@ -797,11 +811,11 @@
     // Polling must not discard a name being typed or close an open dropdown.
     if (!force && list.contains(document.activeElement)) return;
     text(list, '');
-    var values = response.usage.devices || {}, aliases = response.device_aliases || {}, routes = response.device_routes || {};
-    var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes)))).sort(function (a, b) { return a.localeCompare(b, undefined, {numeric: true}); });
+    var values = response.usage.devices || {}, aliases = response.device_aliases || {}, routes = response.device_routes || {}, limits = response.device_limits || {};
+    var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits)))).sort(function (a, b) { return a.localeCompare(b, undefined, {numeric: true}); });
     if (!ips.length) { list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
     var table = element('table', 'node-table device-table'), header = element('tr');
-    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through'].forEach(function (name) { header.appendChild(element('th', '', name)); }); table.appendChild(header);
+    ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'Speed Limit (Mbps)'].forEach(function (name) { header.appendChild(element('th', '', name)); }); table.appendChild(header);
     ips.forEach(function (ip) {
       var value = values[ip] || {}, row = element('tr'); row.appendChild(element('td', 'node-server', ip));
       var nameCell = element('td'), nameForm = element('form', 'device-name-form'), input = document.createElement('input');
@@ -838,7 +852,18 @@
           finally { if (!state.exiting) renderDevices(await call('GET', '/api/usage'), true); }
         });
       });
-      routeCell.appendChild(select); row.appendChild(routeCell); table.appendChild(row);
+      routeCell.appendChild(select); row.appendChild(routeCell);
+      var limitCell=element('td'), limitForm=element('form','device-name-form'), limit=document.createElement('input');
+      limit.type='number';limit.min='0';limit.max='10000';limit.step='0.01';limit.placeholder='Unlimited';limit.value=limits[ip] || '';limit.setAttribute('aria-label','Speed Limit (Mbps)');limit.dataset.mutation='';limit.dataset.job='';
+      var limitSave=element('button','button subtle','Save limit');limitSave.type='submit';limitSave.dataset.mutation='';limitSave.dataset.job='';
+      limitForm.appendChild(limit);limitForm.appendChild(limitSave);limitCell.appendChild(limitForm);limitCell.appendChild(element('p','muted small','Each direction; blank or 0 is unlimited.'));row.appendChild(limitCell);
+      limitForm.addEventListener('submit',function(event){event.preventDefault();var mbps=Number(limit.value);
+        mutate('Save device limit',async function(){
+          try {await call('PUT','/api/devices',{ip:ip,speed_limit_mbps:mbps});toast('Device speed limit saved and applied.','ok');}
+          finally {if(!state.exiting)renderDevices(await call('GET','/api/usage'),true);}
+        });
+      });
+      table.appendChild(row);
     });
     list.appendChild(table); updateControls();
   }

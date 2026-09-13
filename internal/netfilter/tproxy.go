@@ -14,8 +14,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"proxy-manager/internal/engine"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,6 +29,11 @@ const (
 // tproxy.nft.template. Resolve them at construction so a bad install fails
 // fast instead of at first Apply().
 type Manager struct {
+	qosMu        sync.Mutex
+	deviceLimits map[string]float64
+	distribution []engine.DistributionGroup
+	defaultGroup string
+	deviceRoutes map[string]string
 	applyScript  string
 	removeScript string
 	confFile     string
@@ -81,7 +88,32 @@ func NewWithPaths(applyScript, removeScript, confFile string) *Manager {
 func (m *Manager) Apply(ctx context.Context) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	return m.run(ctx, m.applyScript)
+	m.qosMu.Lock()
+	defer m.qosMu.Unlock()
+	if len(m.distribution) > 0 || len(m.deviceLimits) > 0 {
+		template, err := os.ReadFile(filepath.Join(filepath.Dir(m.applyScript), "tproxy.nft.template"))
+		if err != nil {
+			return err
+		}
+		script, err := os.ReadFile(m.applyScript)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(template), "{{BALANCE_CHAINS}}") || !strings.Contains(string(template), "{{QOS_TABLE}}") || !strings.Contains(string(script), "PROXY_BALANCE_FILE") || !strings.Contains(string(script), "PROXY_QOS_FILE") {
+			return fmt.Errorf("update apply.sh and tproxy.nft.template alongside the Go binary to enable distribution/QoS")
+		}
+	}
+	path, cleanup, err := m.qosFile(m.deviceLimits)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	balancePath, balanceCleanup, err := m.distributionFile()
+	if err != nil {
+		return err
+	}
+	defer balanceCleanup()
+	return m.run(ctx, m.applyScript, "PROXY_QOS_FILE="+path, "PROXY_BALANCE_FILE="+balancePath)
 }
 
 // Remove tears down the TPROXY table and policy-routing rule installed by Apply.
@@ -150,7 +182,7 @@ func (m *Manager) Status(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *Manager) run(ctx context.Context, script string) error {
+func (m *Manager) run(ctx context.Context, script string, extraEnv ...string) error {
 	if !fileExists(script) {
 		return fmt.Errorf("netfilter: script not found: %s", script)
 	}
@@ -159,6 +191,7 @@ func (m *Manager) run(ctx context.Context, script string) error {
 	cmd := exec.CommandContext(ctx, "bash", script)
 	// Pass CONF_FILE through so a custom install path works without editing scripts.
 	cmd.Env = append(os.Environ(), fmt.Sprintf("CONF_FILE=%s", m.confFile))
+	cmd.Env = append(cmd.Env, extraEnv...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

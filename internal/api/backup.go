@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 	"unicode"
@@ -155,7 +155,7 @@ func decodeBackup(raw []byte, port int) (backupBundle, error) {
 	if err := json.Unmarshal(files["devices.json"], &devices); err != nil {
 		return out, fmt.Errorf("invalid devices.json")
 	}
-	if !reflect.DeepEqual(devices.Routes, out.State.DeviceRoutes) || !reflect.DeepEqual(devices.Aliases, out.State.DeviceAliases) {
+	if !maps.Equal(devices.Routes, out.State.DeviceRoutes) || !maps.Equal(devices.Aliases, out.State.DeviceAliases) {
 		return out, fmt.Errorf("device mappings disagree with state.json")
 	}
 	out.Conf = files["tproxy.conf"]
@@ -198,10 +198,17 @@ func decodeBackup(raw []byte, port int) (backupBundle, error) {
 			nodes[i].Detour = tags[dep]
 		}
 	}
+	store.ResolveBalanceMembers(nodes)
+	if _, err := engine.DistributionPlan(nodes, port); err != nil {
+		return out, err
+	}
 	if err := subscription.ValidateChains(nodes); err != nil {
 		return out, err
 	}
 	state := &out.State
+	if err := netfilter.ValidateDeviceLimits(state.DeviceLimits); err != nil {
+		return out, err
+	}
 	if state.ProxyEnabled && len(nodes) == 0 {
 		return out, fmt.Errorf("enabled backup has no enabled nodes")
 	}
@@ -316,7 +323,7 @@ func (s *Service) applyBackup(ctx context.Context, bundle backupBundle) error {
 		s.usageSeen = nil
 		err = errors.Join(err, s.saveState())
 		s.mu.Unlock()
-		err = errors.Join(err, s.configureEngineRouting())
+		err = errors.Join(err, s.configureEngineRouting(), s.syncDeviceLimits(cleanCtx))
 		if err == nil && wasRunning && oldState.ProxyEnabled {
 			err = s.enable(cleanCtx)
 		}
@@ -336,7 +343,7 @@ func (s *Service) applyBackup(ctx context.Context, bundle backupBundle) error {
 	err = s.saveState()
 	s.mu.Unlock()
 	if err == nil {
-		err = s.configureEngineRouting()
+		err = errors.Join(s.configureEngineRouting(), s.syncDeviceLimits(ctx))
 	}
 	if err == nil && bundle.State.ProxyEnabled {
 		err = s.enable(ctx)

@@ -191,6 +191,12 @@ func (s *Service) Settings() Settings {
 }
 
 func (s *Service) configureEngineRouting() error {
+	if err := s.configureDistribution(); err != nil {
+		return err
+	}
+	if err := s.configureDeviceLimits(); err != nil {
+		return err
+	}
 	if err := s.configureRulePolicy(); err != nil {
 		return err
 	}
@@ -577,8 +583,12 @@ func (s *Service) StartLatencyTest(nodeID, subscriptionID string) (JobStatus, er
 	}
 	wanted := make(map[string]bool)
 	if nodeID != "" {
-		if _, err := s.cfg.Store.Get(nodeID); err != nil {
+		rec, err := s.cfg.Store.Get(nodeID)
+		if err != nil {
 			return JobStatus{}, err
+		}
+		if rec.Node.Protocol == subscription.ProtoBalance {
+			return JobStatus{}, fmt.Errorf("%w: latency-test individual members", ErrInvalidInput)
 		}
 		wanted[nodeID] = true
 	} else {

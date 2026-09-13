@@ -260,7 +260,7 @@ func (s *Service) chainRecords(id string) ([]store.Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	if exit.ChainID == "" || exit.Node.ChainInternal {
+	if exit.ChainID == "" || exit.Node.ChainInternal || exit.Node.Protocol == subscription.ProtoBalance {
 		return nil, fmt.Errorf("%w: select a saved chain", ErrInvalidInput)
 	}
 	seen := map[string]bool{}

@@ -7,16 +7,19 @@ import (
 	"net/http"
 	"net/netip"
 	"proxy-manager/internal/engine"
+	"proxy-manager/internal/netfilter"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
 
 // DeviceUpdate changes only the supplied fields. Empty strings clear them.
 type DeviceUpdate struct {
-	IP     string  `json:"ip"`
-	Alias  *string `json:"alias,omitempty"`
-	NodeID *string `json:"node_id,omitempty"`
+	IP         string   `json:"ip"`
+	SpeedLimit *float64 `json:"speed_limit_mbps,omitempty"`
+	Alias      *string  `json:"alias,omitempty"`
+	NodeID     *string  `json:"node_id,omitempty"`
 }
 
 func deviceIP(value string) (string, error) {
@@ -50,8 +53,13 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 	if err != nil {
 		return err
 	}
-	if req.Alias == nil && req.NodeID == nil {
-		return fmt.Errorf("%w: supply alias or node_id", ErrInvalidInput)
+	if req.Alias == nil && req.NodeID == nil && req.SpeedLimit == nil {
+		return fmt.Errorf("%w: supply alias, node_id or speed_limit_mbps", ErrInvalidInput)
+	}
+	if req.SpeedLimit != nil {
+		if err := netfilter.ValidateDeviceLimits(map[string]float64{ip: *req.SpeedLimit}); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		}
 	}
 	alias := ""
 	if req.Alias != nil {
@@ -79,6 +87,14 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 	}
 	s.mu.Lock()
 	oldAliases, oldRoutes := s.state.DeviceAliases, s.state.DeviceRoutes
+	oldLimits := s.state.DeviceLimits
+	limitChanged := req.SpeedLimit != nil && oldLimits[ip] != *req.SpeedLimit
+	if limitChanged {
+		if _, ok := s.cfg.Firewall.(deviceLimiter); !ok {
+			s.mu.Unlock()
+			return errors.New("firewall does not support device limits")
+		}
+	}
 	routeChanged := req.NodeID != nil && oldRoutes[ip] != *req.NodeID
 	if routeChanged {
 		if _, ok := s.cfg.Engine.(interface{ ConfigureDeviceRoutes(map[string]string) }); !ok {
@@ -101,27 +117,48 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 			s.state.DeviceRoutes[ip] = *req.NodeID
 		}
 	}
+	s.state.DeviceLimits = cloneLimits(oldLimits)
+	if req.SpeedLimit != nil {
+		if *req.SpeedLimit == 0 {
+			delete(s.state.DeviceLimits, ip)
+		} else {
+			s.state.DeviceLimits[ip] = *req.SpeedLimit
+		}
+	}
+	if err := netfilter.ValidateDeviceLimits(s.state.DeviceLimits); err != nil {
+		s.state.DeviceAliases, s.state.DeviceRoutes, s.state.DeviceLimits = oldAliases, oldRoutes, oldLimits
+		s.mu.Unlock()
+		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
 	if err := s.saveState(); err != nil {
-		s.state.DeviceAliases, s.state.DeviceRoutes = oldAliases, oldRoutes
+		s.state.DeviceAliases, s.state.DeviceRoutes, s.state.DeviceLimits = oldAliases, oldRoutes, oldLimits
 		s.mu.Unlock()
 		return err
 	}
 	s.mu.Unlock()
-	if !routeChanged {
-		return nil
+	if limitChanged {
+		err = s.syncDeviceLimits(ctx)
 	}
-	if err = s.configureEngineRouting(); err == nil {
-		err = s.reloadRunningLocked(ctx)
+	if err == nil && routeChanged {
+		if err = s.configureEngineRouting(); err == nil {
+			err = s.reloadRunningLocked(ctx)
+		}
 	}
 	if err == nil {
 		return nil
 	}
 	s.mu.Lock()
-	s.state.DeviceAliases, s.state.DeviceRoutes = oldAliases, oldRoutes
+	s.state.DeviceAliases, s.state.DeviceRoutes, s.state.DeviceLimits = oldAliases, oldRoutes, oldLimits
 	saveErr := s.saveState()
 	s.mu.Unlock()
 	configureErr := s.configureEngineRouting()
-	return errors.Join(fmt.Errorf("device routing was not applied: %w", err), saveErr, configureErr)
+	var limitErr error
+	if limitChanged {
+		cleanCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		limitErr = s.syncDeviceLimits(cleanCtx)
+	}
+	return errors.Join(fmt.Errorf("device settings were not applied: %w", err), saveErr, configureErr, limitErr)
 }
 
 func (h *handlers) updateDevice(w http.ResponseWriter, r *http.Request) {
@@ -135,4 +172,40 @@ func (h *handlers) updateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"message": "Device settings saved"})
+}
+
+type deviceLimiter interface {
+	ApplyDeviceLimits(context.Context, map[string]float64) error
+}
+
+func cloneLimits(source map[string]float64) map[string]float64 {
+	result := make(map[string]float64, len(source))
+	for k, v := range source {
+		result[k] = v
+	}
+	return result
+}
+func (s *Service) configureDeviceLimits() error {
+	s.mu.RLock()
+	limits := cloneLimits(s.state.DeviceLimits)
+	s.mu.RUnlock()
+	if err := netfilter.ValidateDeviceLimits(limits); err != nil {
+		return err
+	}
+	if configurable, ok := s.cfg.Firewall.(interface{ ConfigureDeviceLimits(map[string]float64) }); ok {
+		configurable.ConfigureDeviceLimits(limits)
+	}
+	return nil
+}
+func (s *Service) syncDeviceLimits(ctx context.Context) error {
+	s.mu.RLock()
+	limits := cloneLimits(s.state.DeviceLimits)
+	s.mu.RUnlock()
+	if limiter, ok := s.cfg.Firewall.(deviceLimiter); ok {
+		return limiter.ApplyDeviceLimits(ctx, limits)
+	}
+	if len(limits) > 0 {
+		return errors.New("firewall does not support device limits")
+	}
+	return nil
 }

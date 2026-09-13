@@ -146,6 +146,7 @@ type Service struct {
 type State struct {
 	Telegram TelegramSettings `json:"telegram"`
 
+	DeviceLimits       map[string]float64 `json:"device_limits,omitempty"`
 	DeviceAliases      map[string]string  `json:"device_aliases,omitempty"`
 	DeviceRoutes       map[string]string  `json:"device_routes,omitempty"`
 	Usage              Usage              `json:"usage"`
@@ -341,7 +342,7 @@ func (s *Service) Restore(ctx context.Context) error {
 				return fmt.Errorf("remove stale ruleset: %w", err)
 			}
 		}
-		return nil
+		return s.syncDeviceLimits(ctx)
 	}
 	s.log.Info("restoring proxy to enabled state")
 	return s.enable(ctx)
@@ -616,6 +617,16 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 	if port <= 0 {
 		return nil
 	}
+	plan, err := engine.DistributionPlan(s.cfg.Store.EnabledNodes(), port)
+	if err != nil {
+		return err
+	}
+	ports := []int{port}
+	for _, group := range plan {
+		for _, member := range group.Members {
+			ports = append(ports, member.Port)
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -625,9 +636,17 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 		if !s.cfg.Engine.Running() {
 			return errors.New("sing-box exited before its TPROXY listeners became ready")
 		}
-		listening, err := tproxySocketsReady(s.cfg.Engine.Pid(), port)
-		if err != nil {
-			return err
+		listening := true
+		for _, candidate := range ports {
+			ready, err := tproxySocketsReady(s.cfg.Engine.Pid(), candidate)
+			if err != nil {
+				return err
+			}
+			if !ready {
+				listening = false
+				port = candidate
+				break
+			}
 		}
 		if listening {
 			return nil
@@ -714,6 +733,12 @@ var ErrNoSelector = errors.New("api: no control API configured")
 func (s *Service) Select(ctx context.Context, auto bool, nodeID string) (applied bool, err error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	s.mu.RLock()
+	busy := s.refreshing || s.closing
+	s.mu.RUnlock()
+	if busy {
+		return false, ErrRefreshInProgress
+	}
 	if !auto && nodeID == "" {
 		return false, errors.New("api: node id required when auto is false")
 	}
@@ -722,7 +747,7 @@ func (s *Service) Select(ctx context.Context, auto bool, nodeID string) (applied
 		if err != nil {
 			return false, err
 		}
-		if record.Node.ChainInternal {
+		if record.Node.ChainInternal || !record.Enabled {
 			return false, fmt.Errorf("%w: select the chain configuration, not an internal hop", ErrInvalidInput)
 		}
 	}
@@ -746,15 +771,31 @@ func (s *Service) Select(ctx context.Context, auto bool, nodeID string) (applied
 	if !s.cfg.Engine.Running() {
 		return false, nil
 	}
+	reloaded := false
 	if _, configurable := s.cfg.Engine.(interface{ ConfigureAutoSelection(bool) }); configurable && oldAuto != auto {
 		// URLTest starts probing even when the selector points elsewhere.
 		// Rebuild with interception removed before stopping the listener.
 		if err := s.reloadRunningLocked(ctx); err != nil {
 			return false, err
 		}
+		reloaded = true
 	}
 	if err := s.applySelection(ctx); err != nil {
 		return false, err
+	}
+	if err := s.configureDistribution(); err != nil {
+		return false, err
+	}
+	if _, ok := s.cfg.Firewall.(distributionFirewall); ok && !reloaded {
+		if err := s.cfg.Firewall.Apply(ctx); err != nil {
+			s.mu.Lock()
+			s.state.AutoSelect, s.state.SelectedNodeID = oldAuto, oldNodeID
+			saveErr := s.saveState()
+			s.mu.Unlock()
+			configureErr := s.configureDistribution()
+			selectionErr := s.applySelection(ctx)
+			return false, errors.Join(err, saveErr, configureErr, selectionErr)
+		}
 	}
 	return true, nil
 }
@@ -770,6 +811,13 @@ func (s *Service) applySelection(ctx context.Context) error {
 	s.mu.RUnlock()
 
 	member := engine.DefaultURLTest
+	if auto {
+		if fallback := engine.AutomaticFallback(s.cfg.Store.EnabledNodes()); fallback != "" {
+			s.mu.RLock()
+			member = s.tagByID[fallback]
+			s.mu.RUnlock()
+		}
+	}
 	if !auto {
 		if tag == "" {
 			// The node exists in the store but was not rendered into the live
@@ -924,7 +972,7 @@ func (s *Service) sweepLatency(ctx context.Context) error {
 	var nodes []subscription.Node
 	var ids []string
 	for _, n := range all {
-		if !n.ChainInternal {
+		if !n.ChainInternal && n.Protocol != subscription.ProtoBalance {
 			nodes = append(nodes, n)
 			ids = append(ids, store.NodeID(n))
 		}

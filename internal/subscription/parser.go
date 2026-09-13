@@ -21,6 +21,7 @@ import (
 type Protocol string
 
 const (
+	ProtoBalance     Protocol = "loadbalance" // Local gateway group, not a sing-box outbound type.
 	ProtoVLESS       Protocol = "vless"
 	ProtoTrojan      Protocol = "trojan"
 	ProtoVMess       Protocol = "vmess"
@@ -56,6 +57,8 @@ var ErrUnsupportedScheme = errors.New("subscription: unsupported scheme")
 // link" — renderers must omit rather than guess, so a node that carried no SNI
 // does not silently acquire one.
 type Node struct {
+	BalanceMembers []string `json:",omitempty"` // stable IDs of private member snapshots
+	BalanceTags    []string `json:"-"`          // resolved only for rendering
 	// LocalVariant separates saved chain snapshots from provider node identity.
 	LocalVariant  string `json:",omitempty"`
 	ChainInternal bool   `json:",omitempty"`
@@ -114,6 +117,19 @@ func (n Node) Addr() string {
 // produces a config that fails validation at engine startup with a far less
 // obvious error.
 func (n Node) Validate() error {
+	if n.Protocol == ProtoBalance {
+		if n.LocalVariant == "" || len(n.BalanceMembers) < 2 || len(n.BalanceMembers) > 32 || n.Detour != "" || n.ChainInternal {
+			return errors.New("invalid load balanced configuration")
+		}
+		seen := map[string]bool{}
+		for _, id := range n.BalanceMembers {
+			if id == "" || seen[id] {
+				return errors.New("invalid or duplicate balance member")
+			}
+			seen[id] = true
+		}
+		return nil
+	}
 	if n.Server == "" {
 		return errors.New("missing server")
 	}

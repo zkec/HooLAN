@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"proxy-manager/internal/engine"
 	"proxy-manager/internal/store"
+	"proxy-manager/internal/subscription"
 	"strings"
 	"time"
 )
@@ -38,6 +39,9 @@ func (s *Service) StartBulkLatency(ids []string) (JobStatus, error) {
 		r, err := s.cfg.Store.Get(id)
 		if err != nil {
 			return JobStatus{}, err
+		}
+		if r.Node.Protocol == subscription.ProtoBalance {
+			return JobStatus{}, fmt.Errorf("%w: latency-test the original members, not the balancer", ErrInvalidInput)
 		}
 		if r.Node.ChainInternal {
 			return JobStatus{}, fmt.Errorf("%w: select the chain configuration, not an internal hop", ErrInvalidInput)
@@ -198,7 +202,7 @@ func (s *Service) CreateChain(ctx context.Context, name string, ids []string) (s
 		if !r.Enabled || r.Node.ChainInternal {
 			return "", fmt.Errorf("%w: chain nodes must be enabled visible configurations", ErrInvalidInput)
 		}
-		if r.DetourID != "" || r.Node.Detour != "" {
+		if r.DetourID != "" || r.Node.Detour != "" || r.Node.Protocol == subscription.ProtoBalance {
 			return "", fmt.Errorf("%w: use original single-hop nodes, not an existing chain", ErrInvalidInput)
 		}
 		node := r.Node

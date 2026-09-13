@@ -233,6 +233,21 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		return nil, errors.New("engine: no nodes to build config from")
 	}
 	subscription.DedupeTags(nodes)
+	store.ResolveBalanceMembers(nodes)
+	distribution, err := DistributionPlan(nodes, m.opts.TProxyPort)
+	if err != nil {
+		return nil, err
+	}
+	inbounds := []any{}
+	inboundTags := []string{m.opts.InboundTag}
+	listenerPorts := []int{m.opts.TProxyPort}
+	for _, group := range distribution {
+		for _, member := range group.Members {
+			inbounds = append(inbounds, &TProxyInbound{Type: "tproxy", Tag: member.Inbound, Listen: m.opts.Listen, ListenPort: member.Port, UDPTimeout: "5m"})
+			inboundTags = append(inboundTags, member.Inbound)
+			listenerPorts = append(listenerPorts, member.Port)
+		}
+	}
 
 	// Validate the detour graph BEFORE anything is written. sing-box's `check`
 	// subcommand accepts cycles and dangling detour targets (verified against
@@ -331,7 +346,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		if !renderedTags[n.Tag] {
 			continue
 		}
-		if n.Detour == "" && !n.ChainInternal {
+		if n.Detour == "" && !n.ChainInternal && n.Protocol != subscription.ProtoBalance {
 			autoMembers = append(autoMembers, n.Tag)
 		}
 	}
@@ -382,7 +397,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		// bypass intentionally leaves loopback traffic outside interception.
 		{
 			IPIsPrivate: true,
-			Port:        []int{m.opts.TProxyPort},
+			Port:        listenerPorts,
 			Action:      "reject",
 		},
 		// Sniff first: without it, routing sees only IPs, because TPROXY
@@ -391,7 +406,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		// on this having run.
 		// This is the 1.11+ replacement for the removed inbound `sniff`.
 		{
-			Inbound: []string{m.opts.InboundTag},
+			Inbound: inboundTags,
 			Action:  "sniff",
 			Sniffer: []string{"http", "tls", "quic", "dns"},
 			Timeout: "300ms",
@@ -449,6 +464,16 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	}
 	route.Rules = rules
 	m.applyRulePolicy(route)
+	// nftables selects a member only for devices/global intent using this group.
+	// DNS, private and configured bypass rules retain their existing precedence.
+	for _, group := range distribution {
+		for _, member := range group.Members {
+			if !renderedTags[member.Tag] {
+				return nil, fmt.Errorf("unusable load balancer member")
+			}
+			route.Rules = append(route.Rules, RouteRule{Inbound: []string{member.Inbound}, Action: "route", Outbound: member.Tag})
+		}
+	}
 	// Resolve stable IDs only after outbound tags have been deduplicated.
 	tagsByID := map[string]string{}
 	for _, n := range nodes {
@@ -481,7 +506,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	cfg := &Config{
 		Log:       &LogOptions{Level: m.opts.LogLevel, Timestamp: true},
 		DNS:       dns,
-		Inbounds:  []any{inbound},
+		Inbounds:  append([]any{inbound}, inbounds...),
 		Outbounds: outbounds,
 		Route:     route,
 	}
@@ -552,6 +577,14 @@ func (m *Manager) buildOutbound(n subscription.Node) (any, error) {
 	}
 
 	switch n.Protocol {
+	case subscription.ProtoBalance:
+		// A real upstream selector provides a valid tag for the control API and
+		// non-distributed DNS/local traffic. LAN balancing happens in nftables.
+		tags := n.BalanceTags
+		if len(tags) == 0 {
+			tags = n.BalanceMembers
+		}
+		return &SelectorOutbound{Type: "selector", Tag: n.Tag, Outbounds: tags, Default: tags[0]}, nil
 	case subscription.ProtoVLESS:
 		return &VLESSOutbound{
 			Type: "vless", Tag: n.Tag, Server: n.Server, ServerPort: n.Port,

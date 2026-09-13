@@ -165,6 +165,7 @@ func (r *statusRecorder) Flush() { _ = r.FlushError() }
 // NodeView is one node as the API presents it. Credentials are omitted unless
 // RouterOptions.ExposeCredentials is set.
 type NodeView struct {
+	MemberCount     int      `json:"member_count,omitempty"`
 	ChainID         string   `json:"chain_id,omitempty"`
 	SubscriptionIDs []string `json:"subscription_ids"`
 	Manual          bool     `json:"manual"`
@@ -256,6 +257,7 @@ func (h *handlers) viewOf(rec store.Record, tagByID map[string]string, selectedI
 	effective := tagByID[rec.ID]
 	v := NodeView{
 		ID:            rec.ID,
+		MemberCount:   len(n.BalanceMembers),
 		ChainID:       rec.ChainID,
 		Tag:           displayTag(n),
 		Protocol:      string(n.Protocol),

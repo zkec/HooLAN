@@ -69,6 +69,10 @@
           <button class="button primary" type="submit" data-mutation>Add subscription</button>
         </form>
       </div>
+      <form id="balance-form" class="card form-card">
+        <h2>Load balancing</h2><p class="muted small">Select 2–32 nodes or chains using the checkboxes below. New connections are distributed across saved member copies; each connection stays on one member. This does not bond a single download or automatically remove failed members.</p>
+        <div class="form-footer"><div class="field field-grow"><label for="balance-name">Load balancer name</label><input id="balance-name" required maxlength="100" placeholder="My load balancer" /></div><span id="balance-selected" class="muted small" role="status"></span><button id="balance-create" type="submit" class="button primary" data-mutation data-job>Create Load Balancer</button></div>
+      </form>
       <div id="manual-group" class="stack"></div>
       <div class="section-heading"><div><h2>Your subscriptions <span id="subscription-count" class="count">0</span></h2><p class="muted small">Select and manage configurations within each source group.</p></div><button id="refresh-all-btn" class="button" type="button" data-mutation data-job>Refresh all &amp; test</button></div>
       <div id="subscriptions-list" class="stack"></div>

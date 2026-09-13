@@ -81,7 +81,7 @@ func (s *Service) SetNodeDetour(ctx context.Context, id, target string) error {
 		if err != nil {
 			return err
 		}
-		if hop.Node.ChainInternal {
+		if hop.Node.ChainInternal || hop.Node.Protocol == subscription.ProtoBalance {
 			return fmt.Errorf("%w: internal chain hops cannot be targeted", ErrInvalidInput)
 		}
 	}

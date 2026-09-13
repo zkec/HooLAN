@@ -73,6 +73,20 @@ subst LAN_CIDR_LIST "$LAN_CIDR_LIST"
 subst SELF_ORIGIN_LIST "$SELF_ORIGIN_LIST"
 subst TPROXY_PORT "$TPROXY_PORT"
 subst TPROXY_FWMARK "$TPROXY_FWMARK"
+# Only the Go manager supplies this mode-0600, generated fragment. Standalone
+# application leaves the independent QoS table unchanged.
+QOS_RENDER_TMP="$(mktemp "$RUNTIME_DIR/qos-render.XXXXXX")"
+for fragment in "${PROXY_QOS_FILE:-}" "${PROXY_BALANCE_FILE:-}"; do
+  [[ -z "$fragment" || -f "$fragment" ]] || { echo "generated firewall fragment missing" >&2; rm -f "$QOS_RENDER_TMP"; exit 1; }
+done
+awk -v qos="${PROXY_QOS_FILE:-}" -v balance="${PROXY_BALANCE_FILE:-}" '
+ /^[[:space:]]*{{QOS_TABLE}}$/ { if (qos!="") {while ((getline line < qos)>0) print line; close(qos)}; next }
+ /^[[:space:]]*{{BALANCE_CHAINS}}$/ { if (balance!="") {while ((getline line < balance)>0) print line; close(balance)} else {print "chain balance_dispatch {}"}; next }
+ { print }
+' "$RENDER_TMP" > "$QOS_RENDER_TMP"
+mv "$QOS_RENDER_TMP" "$RENDER_TMP"
+# Generated dispatch uses the same validated mark as the ordinary listener.
+subst TPROXY_FWMARK "$TPROXY_FWMARK"
 if grep -q '{{' "$RENDER_TMP"; then echo "unreplaced template variable" >&2; exit 1; fi
 if ! nft --check -f "$RENDER_TMP" 2>"$CHECK_LOG"; then
   echo "[apply] nft validation failed; existing firewall retained:" >&2

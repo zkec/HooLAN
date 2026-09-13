@@ -183,6 +183,9 @@ func (s *Service) checkActiveNode() {
 	if id == "" {
 		return
 	}
+	if r, err := s.cfg.Store.Get(id); err == nil && r.Node.Protocol == subscription.ProtoBalance {
+		return
+	}
 	_, _ = s.startJob(JobStatus{Kind: "health", NodeID: id}, func(ctx context.Context) error {
 		err := s.testSelectedNodes(ctx, map[string]bool{id: true})
 		if err != nil {
@@ -290,6 +293,19 @@ func (s *Service) deliverTelegram(ctx context.Context, cfg TelegramSettings, mes
 	}
 	if target == nil {
 		return errors.New("No Telegram proxy node available; select an enabled configuration or run a latency check")
+	}
+	if target.Protocol == subscription.ProtoBalance {
+		memberID := target.BalanceMembers[0]
+		target = nil
+		for i := range all {
+			if store.NodeID(all[i]) == memberID {
+				target = &all[i]
+				break
+			}
+		}
+		if target == nil {
+			return errors.New("Telegram load balancer member unavailable")
+		}
 	}
 	var deliveryErr error
 	err := proxy.WithProxyClient(ctx, *target, all, func(client *http.Client) error {

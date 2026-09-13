@@ -411,7 +411,11 @@ func (s *Store) Len() int {
 // push a never-tested node to the head of a urltest group before any probe has
 // run.
 func (s *Store) EnabledNodes() []subscription.Node {
-	recs := s.All()
+	return EnabledRecords(s.All())
+}
+
+// EnabledRecords renders an uncommitted snapshot for validation before writes.
+func EnabledRecords(recs []Record) []subscription.Node {
 	filtered := make([]Record, 0, len(recs))
 	for _, r := range recs {
 		if r.Enabled {
@@ -451,6 +455,7 @@ func (s *Store) EnabledNodes() []subscription.Node {
 			out[i].Detour = tag
 		}
 	}
+	ResolveBalanceMembers(out)
 	return out
 }
 

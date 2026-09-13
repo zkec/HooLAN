@@ -80,6 +80,8 @@ table inet proxy_tproxy {
     counter marked_input {}
     counter marked_output {}
 
+    {{BALANCE_CHAINS}}
+
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
         comment "sing-box TPROXY interception (LAN clients)"
@@ -100,6 +102,8 @@ table inet proxy_tproxy {
         ip daddr @bypass_daddrs counter name bypass_private accept
         ip saddr @self_origin counter name bypass_source accept
         ip saddr { 127.0.0.0/8, 0.0.0.0/32 } counter name bypass_source accept
+
+        jump balance_dispatch
 
         # Every client packet, including established TCP ACK/data and UDP
         # replies within a flow, must be assigned to its transparent socket.
@@ -139,3 +143,7 @@ table inet proxy_tproxy {
     # outbound sockets. Site-specific NAT for BYPASSED/forwarded LAN traffic
     # belongs to the host/router's existing firewall configuration.
 }
+
+# Generated QoS table, submitted atomically with interception.
+# An independent table keeps device limits active when interception is removed.
+{{QOS_TABLE}}
