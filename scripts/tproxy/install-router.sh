@@ -4,14 +4,19 @@
 set -euo pipefail
 LAN_IF="${LAN_IF:-eth0}"
 LAN_CIDR="${LAN_CIDR:-192.168.3.0/24}"
+TPROXY_FWMARK="${TPROXY_FWMARK:-0x1}"
 [[ $(id -u) == 0 ]] || { echo 'Run with sudo on the gateway Pi.' >&2; exit 1; }
 for tool in python3 ufw sysctl ip; do command -v "$tool" >/dev/null; done
 ip link show dev "$LAN_IF" >/dev/null
 UFW_STATUS="$(LC_ALL=C ufw status)"
 [[ "$UFW_STATUS" == *"Status: active"* ]] || { echo "This installer requires an active UFW firewall." >&2; exit 1; }
-python3 - "$LAN_IF" "$LAN_CIDR" <<'PY'
+python3 - "$LAN_IF" "$LAN_CIDR" "$TPROXY_FWMARK" <<'PY'
 import sys,re,ipaddress,pathlib,shutil,datetime
-iface,cidr=sys.argv[1:]
+iface,cidr,mark=sys.argv[1:]
+if not re.fullmatch(r'(0x[0-9a-fA-F]{1,8}|[1-9][0-9]{0,9})',mark): raise SystemExit('Invalid TPROXY_FWMARK')
+mark_number=int(mark,16 if mark.startswith('0x') else 10)
+if not 0<mark_number<=0xffffffff: raise SystemExit('Invalid TPROXY_FWMARK')
+mark=hex(mark_number)
 if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,15}',iface): raise SystemExit('Invalid interface')
 net=ipaddress.ip_network(cidr,strict=True)
 if net.version!=4 or not net.is_private or net.prefixlen<16: raise SystemExit('Use the actual private IPv4 LAN subnet, /16 or narrower')
@@ -24,8 +29,8 @@ lines=s.splitlines(True);start=next(i for i,l in enumerate(lines) if l.strip()==
 end=next(i for i in range(start+1,len(lines)) if lines[i].strip()=='COMMIT')
 insert=next(i for i in range(start+1,end) if lines[i].startswith('-A '))
 rules=f'''# BEGIN proxy-manager router filter
--A ufw-before-input -i {iface} -s {net} -p tcp -m mark --mark 0x1/0xffffffff -j ACCEPT
--A ufw-before-input -i {iface} -s {net} -p udp -m mark --mark 0x1/0xffffffff -j ACCEPT
+-A ufw-before-input -i {iface} -s {net} -p tcp -m mark --mark {mark}/0xffffffff -j ACCEPT
+-A ufw-before-input -i {iface} -s {net} -p udp -m mark --mark {mark}/0xffffffff -j ACCEPT
 -A ufw-before-forward -i {iface} -o {iface} -s {net} ! -d {net} -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
 -A ufw-before-forward -i {iface} -o {iface} -d {net} -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 # END proxy-manager router

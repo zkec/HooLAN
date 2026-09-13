@@ -1,5 +1,9 @@
 # Configuration workflow
 
+> Feature implementation notes. For current installation, tabs and operational
+> behavior, start with [README](../README.md) ([فارسی](../README-fa.md));
+> the latest device limiter is documented in [four-way QoS](load-balancing-qos.md).
+
 The dashboard has Configurations, Usage, Settings and Live logs tabs. Manual
 configurations and subscriptions use separate matching cards inside Configurations.
 Usage includes per-node and per-device traffic, aliases and route assignments;

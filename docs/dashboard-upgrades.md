@@ -1,5 +1,9 @@
 # Dashboard upgrades and deployment
 
+> Feature implementation notes. For current installation, tabs and operational
+> behavior, start with [README](../README.md) ([فارسی](../README-fa.md));
+> the latest device limiter is documented in [four-way QoS](load-balancing-qos.md).
+
 All code is embedded Go plus vanilla HTML/JS/CSS. There is no frontend build
 step and no additional Go module dependency.
 

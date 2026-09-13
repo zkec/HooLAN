@@ -908,26 +908,49 @@ func (m *Manager) Apply(ctx context.Context, nodes []subscription.Node) error {
 // logWriter forwards engine stdout/stderr line-by-line into slog, so journald
 // gets structured records instead of one blob per read.
 type logWriter struct {
-	log *slog.Logger
-	buf bytes.Buffer
+	log       *slog.Logger
+	buf       bytes.Buffer
+	truncated bool
 }
 
 func newLogWriter(l *slog.Logger) io.Writer { return &logWriter{log: l} }
 
+// Bound a subprocess line even if it never emits a newline. Continue draining
+// oversized lines, dropping their remainder rather than blocking child pipes.
+const maxEngineLogLine = 64 << 10
+
 func (w *logWriter) Write(p []byte) (int, error) {
-	w.buf.Write(p)
-	for {
-		line, err := w.buf.ReadString('\n')
-		if err != nil {
-			// Partial line: put it back and wait for the rest.
-			w.buf.WriteString(line)
+	n := len(p)
+	for len(p) > 0 {
+		end := bytes.IndexByte(p, '\n')
+		part := p
+		if end >= 0 {
+			part = p[:end]
+		}
+		if !w.truncated {
+			remaining := maxEngineLogLine - w.buf.Len()
+			if len(part) > remaining {
+				w.buf.Write(part[:remaining])
+				w.truncated = true
+			} else {
+				w.buf.Write(part)
+			}
+		}
+		if end < 0 {
 			break
 		}
-		if line = trimEOL(line); line != "" {
+		line := trimEOL(w.buf.String())
+		if w.truncated {
+			line += " [line truncated]"
+		}
+		if line != "" {
 			w.log.Info(line, "src", "sing-box")
 		}
+		w.buf.Reset()
+		w.truncated = false
+		p = p[end+1:]
 	}
-	return len(p), nil
+	return n, nil
 }
 
 func trimEOL(s string) string {

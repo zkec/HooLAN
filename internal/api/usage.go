@@ -113,7 +113,11 @@ func (s *Service) sampleUsage(ctx context.Context) {
 	u.Previous = Bytes{snap.Upload, snap.Download}
 	u.LastSample = time.Now().UTC()
 	u.Error = ""
-	next := map[string]Bytes{}
+	next := make(map[string]Bytes, len(snap.Connections))
+	idByTag := make(map[string]string, len(s.tagByID))
+	for id, tag := range s.tagByID {
+		idByTag[tag] = id
+	}
 	for _, c := range snap.Connections {
 		old := s.usageSeen[c.ID]
 		next[c.ID] = Bytes{c.Upload, c.Download}
@@ -141,11 +145,8 @@ func (s *Service) sampleUsage(ctx context.Context) {
 		if tag == "direct" {
 			key = "direct"
 		} else {
-			for id, t := range s.tagByID {
-				if t == tag {
-					key = id
-					break
-				}
+			if id := idByTag[tag]; id != "" {
+				key = id
 			}
 			// Distributed listeners bypass the selector, so attribute their proxied
 			// bytes to the visible saved group. Direct bypass remains direct above.
@@ -210,8 +211,12 @@ func (s *Service) startUsageSampler() {
 func (h *handlers) usage(w http.ResponseWriter, r *http.Request) {
 	s := h.svc
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	writeJSON(w, 200, map[string]any{"usage": s.state.Usage, "device_aliases": s.state.DeviceAliases, "device_routes": s.state.DeviceRoutes, "device_limits": s.state.DeviceLimits, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
+	usage := s.state.Usage
+	usage.Devices = cloneBytes(usage.Devices)
+	usage.Outbounds = cloneBytes(usage.Outbounds)
+	aliases, routes, limits := copyStrings(s.state.DeviceAliases), copyStrings(s.state.DeviceRoutes), cloneLimits(s.state.DeviceLimits)
+	s.mu.RUnlock()
+	writeJSON(w, 200, map[string]any{"usage": usage, "device_aliases": aliases, "device_routes": routes, "device_limits": limits, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
 }
 
 func supportsTraffic(v any) bool {
@@ -254,4 +259,15 @@ func classifyQoSFlows(connections []connectionSample, limits map[string]netfilte
 		flows = append(flows, netfilter.QoSFlow{SourceIP: ip, DestinationIP: dst.Unmap().String(), Network: m.Network, SourcePort: uint16(sport), DestinationPort: uint16(dport), Direct: leaf == "direct"})
 	}
 	return flows
+}
+
+func cloneBytes(source map[string]Bytes) map[string]Bytes {
+	if source == nil {
+		return nil
+	}
+	result := make(map[string]Bytes, len(source))
+	for key, value := range source {
+		result[key] = value
+	}
+	return result
 }

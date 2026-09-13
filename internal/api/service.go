@@ -13,7 +13,6 @@ package api
 //     reason in reverse.
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -637,17 +636,12 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 		if !s.cfg.Engine.Running() {
 			return errors.New("sing-box exited before its TPROXY listeners became ready")
 		}
-		listening := true
-		for _, candidate := range ports {
-			ready, err := tproxySocketsReady(s.cfg.Engine.Pid(), candidate)
-			if err != nil {
-				return err
-			}
-			if !ready {
-				listening = false
-				port = candidate
-				break
-			}
+		listening, pendingPort, err := tproxyPortsReady(s.cfg.Engine.Pid(), ports)
+		if err != nil {
+			return err
+		}
+		if !listening {
+			port = pendingPort
 		}
 		if listening {
 			return nil
@@ -658,65 +652,6 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
-}
-
-// procTCPFiles are the kernel socket tables consulted by tcpPortIsListening.
-// tcp6 is absent on kernels booted with ipv6.disable=1, which is not an error.
-var procTCPFiles = []string{"/proc/net/tcp", "/proc/net/tcp6"}
-
-// tcpPortIsListening reports whether any local TCP socket is in LISTEN state on
-// port, bound to any address.
-//
-// Both files share one format: a header line, then whitespace-separated columns
-//
-//	sl  local_address rem_address st ...
-//	0:  0100007F:1ED4 00000000:0000 0A ...   <- 127.0.0.1:7892, TCP_LISTEN
-//
-// local_address is HEX_ADDR:HEX_PORT (address little-endian) and state 0A is
-// TCP_LISTEN. The address half is ignored on purpose: "::", 0.0.0.0 and
-// 127.0.0.1 all mean "bound and ready", and the engine's default listen of "::"
-// appears here as sixteen zeroes in tcp6 rather than as a loopback address.
-func tcpPortIsListening(port int) (bool, error) {
-	const tcpListen = "0A"
-	want := fmt.Sprintf("%04X", port)
-	for _, path := range procTCPFiles {
-		f, err := os.Open(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue // tcp6 on an ipv6-disabled kernel
-			}
-			return false, fmt.Errorf("api: open %s: %w", path, err)
-		}
-		found, err := scanProcTCPListen(f, want, tcpListen)
-		f.Close()
-		if err != nil {
-			return false, fmt.Errorf("api: parse %s: %w", path, err)
-		}
-		if found {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func scanProcTCPListen(r io.Reader, wantPort, wantState string) (bool, error) {
-	sc := bufio.NewScanner(r)
-	for sc.Scan() {
-		// The header line has "st" in this column, so it never matches.
-		fields := strings.Fields(sc.Text())
-		if len(fields) < 4 || fields[3] != wantState {
-			continue
-		}
-		local := fields[1]
-		i := strings.LastIndexByte(local, ':')
-		if i < 0 {
-			continue
-		}
-		if strings.EqualFold(local[i+1:], wantPort) {
-			return true, nil
-		}
-	}
-	return false, sc.Err()
 }
 
 // --- selection --------------------------------------------------------------
@@ -989,21 +924,19 @@ func (s *Service) sweepLatency(ctx context.Context) error {
 	} else {
 		results = s.cfg.Tester.TestNodes(ctx, nodes)
 	}
+	if len(results) != len(ids) {
+		return errors.New("latency tester returned incomplete results")
+	}
 	reachable := 0
-	for i, res := range results {
-		if i >= len(ids) {
-			break
-		}
-		if res.OK() {
+	measurements := make([]store.Measurement, len(results))
+	for i, result := range results {
+		if result.OK() {
 			reachable++
-			if err := s.cfg.Store.RecordLatency(ids[i], res.Latency); err != nil {
-				s.warn(fmt.Sprintf("record latency for %s: %v", nodes[i].Tag, err))
-			}
-			continue
 		}
-		if err := s.cfg.Store.RecordFailure(ids[i], res.Err); err != nil {
-			s.warn(fmt.Sprintf("record failure for %s: %v", nodes[i].Tag, err))
-		}
+		measurements[i] = store.Measurement{ID: ids[i], Latency: result.Latency, Err: result.Err}
+	}
+	if err := s.cfg.Store.RecordMeasurements(measurements); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	s.job.Tested = len(results)

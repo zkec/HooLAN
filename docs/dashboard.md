@@ -1,5 +1,9 @@
 # Dashboard and API
 
+> Feature implementation notes. For current installation, tabs and operational
+> behavior, start with [README](../README.md) ([فارسی](../README-fa.md));
+> the latest device limiter is documented in [four-way QoS](load-balancing-qos.md).
+
 The dashboard is compiled into the Go binary. All HTML, CSS and vanilla JavaScript
 are local; it needs no CDN or frontend build step. Build with `go build ./cmd/server`.
 The default generated configuration targets sing-box 1.14.

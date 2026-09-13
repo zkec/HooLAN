@@ -219,12 +219,32 @@ func (h *handlers) listNodes(w http.ResponseWriter, r *http.Request) {
 		tagByID[k] = v
 	}
 	selectedID := h.svc.state.SelectedNodeID
+	origins := make(map[string][]string)
+	for _, sub := range h.svc.state.Subscriptions {
+		seen := make(map[string]bool, len(sub.NodeIDs))
+		for _, id := range sub.NodeIDs {
+			if !seen[id] {
+				origins[id] = append(origins[id], sub.ID)
+				seen[id] = true
+			}
+		}
+	}
+	manual := make(map[string]bool, len(h.svc.state.ManualNodeIDs))
+	for id, value := range h.svc.state.ManualNodeIDs {
+		manual[id] = value
+	}
 	h.svc.mu.RUnlock()
 
 	views := make([]NodeView, 0, len(records))
 	for _, rec := range records {
 		if !rec.Node.ChainInternal {
-			views = append(views, h.viewOf(rec, tagByID, selectedID))
+			view := h.viewOf(rec, tagByID, selectedID)
+			view.SubscriptionIDs = origins[rec.ID]
+			if view.SubscriptionIDs == nil {
+				view.SubscriptionIDs = []string{}
+			}
+			view.Manual = manual[rec.ID] || len(view.SubscriptionIDs) == 0
+			views = append(views, view)
 		}
 	}
 	// Fastest first, unmeasured last -- the same order EnabledNodes uses, so the
@@ -281,7 +301,6 @@ func (h *handlers) viewOf(rec store.Record, tagByID map[string]string, selectedI
 	if h.opts.ExposeCredentials {
 		v.UUID, v.Password, v.Method = n.UUID, n.Password, n.Method
 	}
-	v.SubscriptionIDs, v.Manual = h.svc.NodeOrigins(rec.ID)
 	return v
 }
 

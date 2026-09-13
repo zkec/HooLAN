@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render and atomically replace ONLY inet proxy_tproxy, at priority -150.
+# Atomically replace owned interception/QoS tables; interception is at -150.
 # Syntax/configuration failures leave the running firewall untouched.
 set -euo pipefail
 

@@ -1,5 +1,9 @@
 # Device usage and routing
 
+> Feature implementation notes. For current installation, tabs and operational
+> behavior, start with [README](../README.md) ([فارسی](../README-fa.md));
+> the latest device limiter is documented in [four-way QoS](load-balancing-qos.md).
+
 The dashboard has Configurations, Usage, Settings and Live logs tabs. Manual
 configurations (including saved chains) have their own card with the same layout
 as subscription cards. Each card has independent checkboxes, Select all, Bulk

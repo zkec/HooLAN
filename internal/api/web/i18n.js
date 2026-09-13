@@ -367,11 +367,7 @@
   "Request failed": "درخواست ناموفق بود"
 };
   var originals = new WeakMap(), attributes = new WeakMap();
-  function translate(value) {
-    if (document.documentElement.lang !== 'fa' || typeof value !== 'string') return value;
-    var trimmed = value.trim();
-    if (Object.prototype.hasOwnProperty.call(fa, trimmed)) return value.replace(trimmed, fa[trimmed]);
-    var patterns = [
+  var patterns = [
       [/^(\d+) members$/, '$1 عضو'], [/^Process (\d+)$/, 'فرایند $1'], [/^(\d+) enabled$/, '$1 فعال'], [/^(\d+) healthy$/, '$1 سالم'],
       [/^Updated (.*)$/, 'به‌روزرسانی $1'], [/^(\d+)\/(\d+) sources$/, '$1 از $2 منبع'], [/^(\d+) added, (\d+) updated$/, '$1 افزوده، $2 به‌روزشده'], [/^(\d+)\/(\d+) reachable$/, '$1 از $2 در دسترس'],
       [/^(\d+) selected$/, '$1 انتخاب‌شده'], [/^(\d+) lines$/, '$1 خط'],
@@ -385,12 +381,16 @@
       [/^(.*) \(disabled; Global Default\)$/, '$1 (غیرفعال؛ پیش‌فرض عمومی)'],
       [/^Delete (\d+) selected configurations\? Shared configurations are removed from every group\. Deleting the active config switches to Auto; deleting all configs stops the proxy\. Subscription refresh may reimport provider nodes\.$/, 'آیا $1 پیکربندی انتخاب‌شده حذف شود؟ پیکربندی‌های مشترک از همهٔ گروه‌ها حذف می‌شوند. حذف پیکربندی فعال، انتخاب را خودکار می‌کند؛ حذف همهٔ پیکربندی‌ها پروکسی را متوقف می‌کند. تازه‌سازی اشتراک ممکن است گره‌های ارائه‌دهنده را دوباره وارد کند.']
     ];
+  var messages = ['Create Load Balancer', 'Save device limit', 'Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
+  function translate(value) {
+    if (document.documentElement.lang !== 'fa' || typeof value !== 'string') return value;
+    var trimmed = value.trim();
+    if (Object.prototype.hasOwnProperty.call(fa, trimmed)) return value.replace(trimmed, fa[trimmed]);
     if (value.includes(' · ')) return value.split(' · ').map(translate).join(' · ');
     for (var i = 0; i < patterns.length; i++) {
       if (patterns[i][0].test(trimmed)) return trimmed.replace(patterns[i][0], patterns[i][1]).replace(/(\d+)s ago/g, '$1 ثانیه پیش').replace(/(\d+)m ago/g, '$1 دقیقه پیش').replace(/(\d+)h ago/g, '$1 ساعت پیش').replace(/(\d+)d ago/g, '$1 روز پیش');
     }
     // Translate the fixed part of task/status messages; retain diagnostic text.
-    var messages = ['Create Load Balancer', 'Save device limit', 'Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
     for (var j = 0; j < messages.length; j++) {
       var key = messages[j];
       if (trimmed.startsWith(key + ': ')) return fa[key] + ': ' + trimmed.slice(key.length + 2);
@@ -408,9 +408,7 @@
     var output = translate(source); originals.set(node, {source: source, output: output});
     if (node.data !== output) node.data = output;
   }
-  function walk(node) {
-    if (node.nodeType === 3) { convertText(node); return; }
-    if (node.nodeType !== 1 || skip(node)) return;
+  function convertAttributes(node) {
     var saved = attributes.get(node) || {};
     ['placeholder', 'aria-label', 'title', 'label'].forEach(function (name) {
       if (!node.hasAttribute(name)) return;
@@ -420,13 +418,28 @@
       if (value !== output) node.setAttribute(name, output);
     });
     attributes.set(node, saved);
+  }
+  function walk(node) {
+    if (node.nodeType === 3) { convertText(node); return; }
+    if (node.nodeType !== 1 || skip(node)) return;
+    convertAttributes(node);
     Array.from(node.childNodes).forEach(walk);
   }
   var observer = new MutationObserver(function (records) {
     observer.disconnect();
+    var roots = new Set(), changedAttributes = new Set();
     records.forEach(function (record) {
-      if (record.type === 'childList') Array.from(record.addedNodes).forEach(walk);
-      else walk(record.target);
+      if (record.type === 'childList') record.addedNodes.forEach(function (node) { roots.add(node); });
+      else if (record.type === 'attributes') changedAttributes.add(record.target);
+      else roots.add(record.target);
+    });
+    function covered(node) {
+      for (var parent = node.parentNode; parent; parent = parent.parentNode) if (roots.has(parent)) return true;
+      return false;
+    }
+    roots.forEach(function (node) { if (node.isConnected && !covered(node)) walk(node); });
+    changedAttributes.forEach(function (node) {
+      if (node.isConnected && !roots.has(node) && !covered(node) && !skip(node)) convertAttributes(node);
     });
     observe();
   });

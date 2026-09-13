@@ -29,7 +29,7 @@ node outbounds. No external Go requirements or frontend libraries were added.
 | `internal/api/web/index.html`, `app.js`, `i18n.js` | Create Load Balancer form, checkbox selection across cards, group rows, per-device rate form, English/Persian copy |
 
 The new forms reuse existing theme-aware CSS classes (`form-card`, `form-footer`,
-`device-name-form`, inputs/buttons); no separate styling framework is needed.
+`device-qos-card`, inputs/buttons); no separate styling framework is needed.
 
 ## Create and select a group
 

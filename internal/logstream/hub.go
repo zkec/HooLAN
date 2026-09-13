@@ -35,6 +35,7 @@ var ErrUnavailable = errors.New("log stream capacity reached or service shutting
 type Hub struct {
 	mu      sync.Mutex
 	entries []Entry
+	start   int
 	next    uint64
 	subs    map[chan Entry]struct{}
 	secrets []string
@@ -95,8 +96,8 @@ func (h *Hub) Publish(level, source, message string) {
 	h.next++
 	entry.ID = h.next
 	if len(h.entries) == maxEntries {
-		copy(h.entries, h.entries[1:])
-		h.entries[len(h.entries)-1] = entry
+		h.entries[h.start] = entry
+		h.start = (h.start + 1) % maxEntries
 	} else {
 		h.entries = append(h.entries, entry)
 	}
@@ -124,7 +125,8 @@ func (h *Hub) Subscribe(after uint64) ([]Entry, <-chan Entry, func(), error) {
 		after = 0
 	}
 	history := make([]Entry, 0, len(h.entries))
-	for _, entry := range h.entries {
+	for i := 0; i < len(h.entries); i++ {
+		entry := h.entries[(h.start+i)%len(h.entries)]
 		if entry.ID > after {
 			history = append(history, entry)
 		}

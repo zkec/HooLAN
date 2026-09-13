@@ -1,637 +1,389 @@
-# proxy-manager
+# Proxy Manager · Smart LAN Gateway
 
-A transparent proxy gateway for a home LAN. It runs on a Raspberry Pi, intercepts
-outbound traffic from every client on the network with nftables TPROXY, and
-forwards it through sing-box — without installing or configuring anything on the
-clients themselves.
+[فارسی](README-fa.md) · [Review and cleanup notes](docs/consolidation-review.md)
 
-Point your router's DHCP at the Pi and the whole LAN is proxied. Phones, TVs,
-consoles, guests: anything that takes a DHCP lease.
+A transparent IPv4 gateway for a Raspberry Pi or Linux host. A single Go binary
+serves the dashboard, manages configuration and supervises **sing-box**;
+**nftables TPROXY** intercepts LAN traffic without installing proxy software on
+each device. The dashboard is embedded Vanilla JS/HTML/CSS, with no frontend
+build step. The Go module has **no external dependencies**.
 
-- **No client config.** No per-device apps, no proxy settings, no root.
-- **No Docker for the gateway.** A single static Go binary plus a systemd unit.
-  Your existing Docker stack (AdGuard Home, Nginx Proxy Manager, Jellyfin) keeps
-  working untouched.
-- **No third-party Go dependencies.** `go.mod` has an empty require block. All
-  netfilter work lives in auditable shell scripts under [scripts/tproxy/](scripts/tproxy/).
-- **Fails open, not closed.** Every failure path removes the ruleset before it
-  gives up, because a loaded ruleset with no engine behind it blackholes the LAN.
+## Features
 
----
+- **Token-based Web UI:** login with `PROXY_MANAGER_TOKEN`, HttpOnly/SameSite
+  sessions, CSRF protection, login throttling and bearer authentication for API clients.
+- **Configuration management:** subscriptions and a separate manual group in one
+  Configurations tab, collapsible cards, selected-node bulk ping/delete, manual
+  editing and strict subscription synchronization. Successful refreshes prune
+  orphaned provider nodes while preserving other sources and manual ownership.
+- **Multi-hop Chaining:** create and edit ordered 2–8-hop chains. Saved chains
+  use independent snapshots of their source configurations.
+- **Active-Active Load Balancing:** group 2–32 nodes/chains. nftables hashes each
+  connection to a separate sing-box TPROXY listener; concurrent connections use
+  multiple members. This works with upstream sing-box, without a native
+  `loadbalance` outbound, single-download bonding or automatic failed-member removal.
+- **Per-Device Split Tunneling:** assign a client IP to Global Default, Direct,
+  a node, a chain or a load balancer. Device names and assignments persist.
+- **Per-Device QoS Rate Limiting:** independent Proxy Upload/Download and Direct
+  Upload/Download caps, edited in a device modal. Zero/blank means unlimited for
+  that class; see the classification caveat below. Direct policing survives OFF.
+- **Routing and DNS:** editable Iran bypass, custom domain/CIDR rules and compiled
+  GeoIP/geosite `.srs` sources; manual, interval, daily or weekly updates with
+  time/timezone settings, filesystem paths and update status.
+- **Usage tab:** cumulative engine traffic, nonzero node usage and named LAN
+  devices. Per-device/node/direct attribution is sampled, not billing-grade.
+- **Live SSE Logs:** pause/resume, bounded replay, credential redaction and slow
+  subscriber handling. Service and sing-box logs also go to journald.
+- **Dark/Light and Persian/English UI:** persisted browser preferences and RTL layout.
+- **Operations:** Telegram alerts with direct/proxy delivery and a test button;
+  ZIP backup/restore; real download speed tests through a selected node; mobile QR sharing.
 
-## Contents
+Supported node links: `vless://`, `vmess://`, `trojan://`, `ss://`,
+`hysteria2://` / `hy2://`, with supported TCP/WS/gRPC/HTTP, TLS and Reality options.
+QR rendering alone loads a small pinned client-side CDN library on demand; the
+share link is rendered in the browser, with a copy-link fallback.
 
-- [How it works](#how-it-works)
-- [Requirements](#requirements)
-- [Setup](#setup)
-  - [1. Enable IP forwarding](#1-enable-ip-forwarding)
-  - [2. Install sing-box](#2-install-sing-box)
-  - [3. Build the binary](#3-build-the-binary)
-  - [4. Install files](#4-install-files)
-  - [5. Configure the interception](#5-configure-the-interception)
-  - [6. Install the systemd unit](#6-install-the-systemd-unit)
-  - [7. Add a subscription and start](#7-add-a-subscription-and-start)
-  - [8. Point the LAN at the Pi](#8-point-the-lan-at-the-pi)
-- [Docker coexistence](#docker-coexistence)
-- [Configuration reference](#configuration-reference)
-- [API](#api)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
+## Architecture and operating limits
 
----
-
-## How it works
-
-```
-LAN client                Raspberry Pi                          Internet
-──────────               ──────────────────────────────         ────────
-                         ┌────────────────────────────┐
- 192.168.3.x ─── eth0 ──▶│ nftables prerouting (-150) │
- default gw = Pi         │   bypass local / RFC1918   │──────▶ direct
-                         │   else: mark 0x1 + tproxy  │
-                         └─────────────┬──────────────┘
-                                       │ ip rule fwmark 0x1 → table 100
-                                       │ ip route local default dev lo
-                                       ▼
-                         ┌────────────────────────────┐
-                         │ sing-box tproxy in :7892   │──────▶ proxy node
-                         │   sniff → route → outbound │
-                         └────────────────────────────┘
-                                       ▲
-                         ┌─────────────┴──────────────┐
-                         │ proxy-manager (Go, :8080)  │
-                         │   renders config.json      │
-                         │   supervises sing-box      │
-                         │   loads/unloads nftables   │
-                         └────────────────────────────┘
+```mermaid
+flowchart LR
+  LAN[LAN clients] --> NFT[nftables prerouting -150]
+  NFT -->|local/private bypass| Router[Linux forwarding and site NAT]
+  NFT -->|TPROXY + mark| SB[sing-box listeners]
+  SB -->|routing decision| Out[Proxy node / chain / direct]
+  UI[Embedded dashboard] --> Go[Go control plane]
+  Go --> SB
+  Go --> NFT
+  Go --> State[JSON state and node store]
 ```
 
-The Go service owns the lifecycle. It renders `config.json` from your
-subscription, starts sing-box, waits for the TPROXY port to reach `LISTEN`, and
-only then loads the nftables ruleset. On the way down it does the reverse. That
-ordering is the whole ballgame — rules loaded with nothing listening on 7892
-means every LAN connection hangs.
+The Pi must have a stable LAN address and its **own default route via the upstream
+router**. DHCP gives clients the Pi's address as their gateway. First make the
+Pi work as an ordinary router with the proxy OFF; then enable interception.
 
-The ruleset hooks `prerouting` at priority `mangle` (-150), which is **before**
-Docker's DNAT chains at -100. That ordering is what makes the
-`fib daddr type local` bypass work: at -150 the destination address is still the
-original one, so traffic aimed at any port published by any container is
-recognised as local and left alone.
+On enable, the manager renders/checks config, starts sing-box, verifies ownership
+of **every IPv4 TCP and UDP wildcard listener**, then installs interception and
+policy routing. The default packet mark `0x1` selects table `100`, whose local
+route delivers intercepted traffic through `lo`. Stopping removes interception
+before stopping the engine. Crash cleanup attempts the same recovery; it cannot
+guarantee connectivity if firewall cleanup fails or ordinary forwarding is absent.
 
-### Interception policy
+Local/Pi service traffic bypasses interception before Docker DNAT. Normal
+sing-box egress consists of new Pi-originated sockets using the host default
+route; the TPROXY mark must not be reused as their outbound routing mark.
+Forwarded client traffic instead needs firewall permission and a valid return
+route, or scoped SNAT/MASQUERADE. **OFF does not remove router/NAT or QoS settings.**
 
-Bypassed (never proxied):
+Routing precedence is: listener loop protection → sniff → intercepted DNS
+forwarding → private destinations → configured custom/Iran rules → device or
+balanced-listener routing → global default. **DNS Hijacking is not enabled:**
+intercepted DNS is forwarded to its original resolver through the selected proxy.
+Local AdGuard traffic bypasses interception. The DNS setting changes sing-box's
+resolver; it does not reconfigure LAN DHCP DNS or AdGuard.
 
-| Match | Why |
-| --- | --- |
-| `iifname lo, docker0, br-*, veth*` | Container and loopback traffic |
-| `fib daddr type local` | **Every** port bound on this host, present and future |
-| `ip daddr @lan_cidrs` | Same-subnet traffic never leaves the LAN |
-| `ip daddr @bypass_daddrs` | RFC1918, CGNAT, multicast, link-local |
+QoS uses packet-drop policers, not queued traffic shaping. Upload runs at -149,
+after interception but before userspace; download runs at postrouting 99, before
+SNAT. The interception mark does **not** reveal Iran/direct decisions inside
+sing-box. One-second Clash connection samples populate expiring tuple sets.
+Until classified, a connection uses the stricter nonzero cap for that direction;
+short flows, missing samples and busy operations may prolong that fallback.
+An unlimited class may therefore be temporarily limited by the other class's
+cap. Forwarded traffic uses Direct immediately. See [QoS details](docs/load-balancing-qos.md).
 
-On `LAN_IF`, remaining IPv4 TCP and UDP packets are assigned to TPROXY and
-then marked. This includes established client packets. Named counters record
-attempts, successful socket assignments, failures, and marked INPUT/OUTPUT.
-Failed socket lookups fall back to ordinary forwarding without adding our mark.
-
-IPv4 only, deliberately. Clients should get **no** IPv6 connectivity while this
-gateway is active, or they will route around sing-box entirely. Disable IPv6 RA
-and DHCPv6 on your router.
-
----
+This is an **IPv4, single-gateway** design. IPv6 can bypass it; configure LAN
+IPv6 deliberately. Same-subnet traffic that never crosses the Pi cannot be
+limited. Keep per-device IPs stable with DHCP reservations. Usage excludes raw
+forwarding while OFF, protocol overhead and traffic outside sing-box; short
+connections can be missed. Chains and load balancers are not HA for the Pi itself.
 
 ## Requirements
 
-- Raspberry Pi running Raspberry Pi OS or Debian (arm64 or armhf), wired via
-  Ethernet. Wi-Fi works but is a bad idea for a gateway.
-- A **static IP** on the Pi, with its own default gateway hardcoded to the
-  router. If the Pi takes its gateway from DHCP and DHCP points at the Pi, you
-  get a routing loop on boot.
-- `nftables`, `iproute2`, `bash`, and Go 1.21+ (or build elsewhere and copy).
-- `sing-box` 1.14 or newer. The default generated config uses typed DNS
-  servers and `http_client` settings for rule-set downloads (tested against 1.14).
-- Root, for `CAP_NET_ADMIN`.
-- A proxy subscription URL, or a file of `vless://` / `vmess://` / `trojan://`
-  / `ss://` / `hysteria2://` links.
+- Raspberry Pi OS / Debian Linux, preferably wired Ethernet and a static IPv4 address.
+- Upstream **sing-box 1.14-compatible** configuration, with Clash API support;
+  validate a new release before upgrading. Install from the
+  [official package instructions](https://sing-box.sagernet.org/installation/package-manager/).
+- `bash`, `nftables`, `iproute2`, `procps`, `util-linux` (`flock`), systemd and root
+  access for firewall/process management. The optional UFW router installer also
+  needs active UFW and Python 3.
+- A Go toolchain supporting the module's Go 1.21 baseline, or an ARM binary built
+  elsewhere. Use a maintained Go release for deployment.
 
-This README assumes the topology the project was built against. Substitute your
-own addresses throughout:
+Examples use Pi `192.168.3.5`, router `192.168.3.1`, LAN `192.168.3.0/24`,
+interface `eth0`, dashboard port `8080`, TPROXY `7892`, Clash `127.0.0.1:9090`.
+Replace these with your site values. The LAN CIDRs used for interception are
+read from live interface addresses.
 
-| Thing | Value |
-| --- | --- |
-| LAN | `192.168.3.0/24` |
-| Router | `192.168.3.1` |
-| Pi | `192.168.3.5`, static |
-| LAN interface | `eth0` |
-| TPROXY port | `7892` |
-| API / dashboard | `:8080` |
+## Installation
 
----
-
-## Setup
-
-### 1. Enable IP forwarding
-
-`apply.sh` sets this at runtime, but it must survive reboots:
+### 1. Prepare the host and build
 
 ```bash
-echo 'net.ipv4.ip_forward=1' | sudo tee /etc/sysctl.d/99-gateway.conf
-sudo sysctl --system
-```
-
-Confirm the Pi's own default route points at the **router**, not at itself:
-
-```bash
-ip route show default    # expect: default via 192.168.3.1 dev eth0
-```
-
-If that says anything else, fix it before continuing. A Pi that is its own
-gateway cannot reach the internet, and no amount of correct nftables will save
-it.
-
-### 2. Install sing-box
-
-Use the official repo so you get 1.14+; the Debian archive version is usually
-too old.
-
-```bash
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://sing-box.app/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/sagernet.asc
-sudo chmod a+r /etc/apt/keyrings/sagernet.asc
-echo 'deb [signed-by=/etc/apt/keyrings/sagernet.asc] https://deb.sagernet.org/ * *' \
-  | sudo tee /etc/apt/sources.list.d/sagernet.list
-sudo apt update && sudo apt install -y sing-box nftables
+sudo apt-get update
+sudo apt-get install nftables iproute2 procps util-linux ca-certificates curl
 sing-box version
+ip -4 route show default
 ```
 
-Disable its own unit. proxy-manager supervises the process itself, and two
-instances fighting over port 7892 is a confusing failure:
+Install sing-box using the official instructions above. Disable its standalone
+unit if it is installed: this manager must own the sing-box instance.
 
 ```bash
-sudo systemctl disable --now sing-box 2>/dev/null || true
-```
-
-### 3. Build the binary
-
-On the Pi:
-
-```bash
-cd /home/hooman/Documents/proxy-manager
-go build -trimpath -ldflags='-s -w' -o proxy-manager ./cmd/server
-```
-
-Cross-compiling from a workstation (no cgo, so this is clean):
-
-```bash
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+sudo systemctl disable --now sing-box
+# From the repository root; no npm or Go dependencies to install.
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
   go build -trimpath -ldflags='-s -w' -o proxy-manager ./cmd/server
-# 32-bit userland: GOARCH=arm GOARM=7
+# For a 32-bit Pi userland: GOARCH=arm GOARM=7 instead of GOARCH=arm64.
 ```
 
-Verify the toolchain and tests first if you're building on the Pi:
+### 2. Install files and configure the site
+
+The following is for a **first installation**. For an existing gateway, use the
+upgrade section so you preserve its environment, `tproxy.conf` and state.
 
 ```bash
-go vet ./... && go test ./...
-```
-
-### 4. Install files
-
-```bash
-# Binary and scripts
 sudo install -Dm755 proxy-manager /opt/proxy-manager/proxy-manager
-sudo install -Dm755 scripts/tproxy/apply.sh   /opt/proxy-manager/scripts/tproxy/apply.sh
-sudo install -Dm755 scripts/tproxy/remove.sh  /opt/proxy-manager/scripts/tproxy/remove.sh
-sudo install -Dm755 scripts/tproxy/diagnose.sh /opt/proxy-manager/scripts/tproxy/diagnose.sh
-sudo install -Dm644 scripts/tproxy/tproxy.nft.template \
-                                              /opt/proxy-manager/scripts/tproxy/tproxy.nft.template
-
-# Config and state
-sudo install -Dm644 scripts/tproxy/tproxy.conf /opt/proxy-manager/scripts/tproxy/tproxy.conf
-sudo mkdir -p /etc/proxy-manager/singbox /var/lib/proxy-manager
-sudo chmod 700 /var/lib/proxy-manager
+for script in apply.sh remove.sh diagnose.sh install-router.sh; do
+  sudo install -Dm755 "scripts/tproxy/$script" "/opt/proxy-manager/scripts/tproxy/$script"
+done
+sudo install -Dm644 scripts/tproxy/tproxy.nft.template /opt/proxy-manager/scripts/tproxy/tproxy.nft.template
+sudo install -Dm600 scripts/tproxy/tproxy.conf /opt/proxy-manager/scripts/tproxy/tproxy.conf
+sudo install -d -m700 /var/lib/proxy-manager /etc/proxy-manager/singbox
+sudo install -m600 deploy/proxy-manager.env.example /etc/proxy-manager/env
+sudoedit /etc/proxy-manager/env
+sudoedit /opt/proxy-manager/scripts/tproxy/tproxy.conf
 ```
 
-`/opt/proxy-manager/scripts/tproxy` is one of the paths the binary probes by
-default, so `-scripts` can be omitted if you use it.
+Replace both example secrets with different long random values. The Web UI token
+is the login credential; the Clash secret protects the separate local control API.
+Subscriptions may be added entirely through the dashboard.
 
-The store at `/var/lib/proxy-manager/nodes.json` holds proxy credentials and is
-written `0600`. Keep the parent directory `0700`.
-
-### 5. Configure the interception
-
-Edit `/opt/proxy-manager/scripts/tproxy/tproxy.conf`. One `KEY="value"` per
-line, and **no inline comments after a value** — the file is sourced by bash and
-scraped for template substitution.
+`tproxy.conf` uses literal assignments; do not put inline comments after values:
 
 ```bash
-LAN_IF="eth0"            # interface facing your clients
-TPROXY_PORT="7892"       # must equal -tproxy-port
-TPROXY_FWMARK="0x1"      # mark proving we intercepted the packet
-TPROXY_TABLE="100"       # dedicated policy routing table
-TPROXY_RULE_PRIORITY="10000" # free priority before main-table lookup
-PI_LAN_IP="192.168.3.5"  # site reference; LAN_IF must have a live IPv4 address
-SELF_ORIGIN_NETS=""      # extra source prefixes to never intercept
-WG_RP_FILTER="yes"       # zero rp_filter on wg* interfaces
+LAN_IF="eth0"
+TPROXY_PORT="7892"
+TPROXY_FWMARK="0x1"
+TPROXY_TABLE="100"
+TPROXY_RULE_PRIORITY="10000"
+PI_LAN_IP="192.168.3.5"
+SELF_ORIGIN_NETS=""
+WG_RP_FILTER="yes"
 ```
 
-`TPROXY_PORT` here and `-tproxy-port` on the binary must match. The service
-checks this before enabling interception and requires IPv4 TCP and UDP wildcard
-listeners owned by the sing-box PID. The default listen address is `0.0.0.0`.
+Match `TPROXY_PORT` to the service flag. Reserve the mark, table and rule priority
+for this gateway. Load-balanced groups allocate additional TPROXY ports; the
+service checks them before enabling interception.
 
-The LAN subnet is **discovered from the live addresses on `LAN_IF`**, not
-hardcoded — a `/22` site works correctly without editing the template.
+### 3. Establish forwarding with the engine OFF
 
-Sanity-check the ruleset before wiring up systemd:
+The supported convenience installer is for an **already active UFW firewall**
+and a single-interface gateway:
 
 ```bash
-sudo bash /opt/proxy-manager/scripts/tproxy/apply.sh
-sudo nft list table inet proxy_tproxy
-sudo ip rule show | grep 0x1
-sudo bash /opt/proxy-manager/scripts/tproxy/remove.sh
+sudo env LAN_IF=eth0 LAN_CIDR=192.168.3.0/24 TPROXY_FWMARK=0x1 \
+  bash /opt/proxy-manager/scripts/tproxy/install-router.sh
 ```
 
-`apply.sh` renders to `/run/proxy-manager/tproxy.nft` and runs `nft --check`
-before touching the kernel, so a bad template leaves your networking alone.
-Both scripts are idempotent.
+It backs up UFW files and persists scoped forwarding, marked TCP/UDP INPUT
+exceptions, MASQUERADE, IPv4 forwarding, disabled redirects and reverse-path
+settings. Pass the same mark as `tproxy.conf`. Do not use it unchanged for a
+two-interface gateway or another firewall manager.
 
-> Do not hand-edit the loaded ruleset. `apply.sh` re-renders from
-> `tproxy.nft.template` on every run and your changes will vanish. Edit the
-> template.
+For another firewall, configure those functions through its existing rules and
+persistence mechanism. A return route can replace SNAT. Inspect all INPUT and
+FORWARD chains: an accept in one nft base chain cannot cancel a drop in another.
+Test a client with the Pi as gateway **while OFF** before changing DHCP for everyone.
 
-### 6. Install the systemd unit
-
-```bash
-sudo tee /etc/systemd/system/proxy-manager.service >/dev/null <<'EOF'
-[Unit]
-Description=proxy-manager transparent gateway
-Documentation=https://github.com/your/proxy-manager
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-Type=exec
-ExecStart=/opt/proxy-manager/proxy-manager \
-  -listen 127.0.0.1:8080 \
-  -scripts /opt/proxy-manager/scripts/tproxy \
-  -sub https://example.com/your-subscription \
-  -tproxy-port 7892 \
-  -log-level info
-
-# Root is required: nft, ip rule and ip route all need CAP_NET_ADMIN, and the
-# scripts refuse to run as anyone else.
-User=root
-
-# Credentials live here rather than in the unit file, so they stay out of
-# `systemctl cat` and the journal. chmod 600.
-EnvironmentFile=-/etc/proxy-manager/env
-
-Restart=on-failure
-RestartSec=5s
-
-# Teardown removes the nftables ruleset and stops sing-box. Give it room: a
-# SIGKILL mid-teardown is what leaves the LAN blackholed.
-TimeoutStopSec=90s
-KillMode=mixed
-
-[Install]
-WantedBy=multi-user.target
-EOF
-```
-
-Optional credentials file:
+### 4. Start the service and sign in
 
 ```bash
-sudo tee /etc/proxy-manager/env >/dev/null <<'EOF'
-PROXY_MANAGER_TOKEN=generate-a-long-random-string
-PROXY_MANAGER_SUBS=https://example.com/your-subscription
-EOF
-sudo chmod 600 /etc/proxy-manager/env
-```
-
-```bash
+sudo install -m644 deploy/proxy-manager.service /etc/systemd/system/proxy-manager.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now proxy-manager
-journalctl -u proxy-manager -f
+sudo journalctl -u proxy-manager -n 80 --no-pager
 ```
 
-> **Security.** The API starts and stops interception and reads node metadata.
-> Bound to `127.0.0.1:8080` as above, it is reachable only from the Pi. If you
-> bind it anywhere else, set `-token` (or `PROXY_MANAGER_TOKEN`) — the service
-> logs a loud warning if you expose it without one.
->
-> The token gates `/api` only. The dashboard's own HTML, CSS and JS load without
-> it, by necessity: a browser cannot attach an `Authorization` header to a
-> document or script load. Those assets are a static shell holding no secrets,
-> and every operation that touches the engine, the ruleset or node metadata sits
-> behind the token. `/healthz` is also exempt, for systemd and monitoring, and
-> exposes nothing. To reach the dashboard from your LAN, front it with your
-> existing Nginx Proxy Manager rather than binding `0.0.0.0`.
-
-### 7. Add a subscription and start
-
-Open `http://127.0.0.1:8080/` on the Pi (or via an SSH tunnel:
-`ssh -L 8080:127.0.0.1:8080 pi@192.168.3.5`) and use the dashboard. Or curl it:
+The supplied unit binds the dashboard to loopback. From your workstation:
 
 ```bash
-TOKEN=your-token   # omit the -H below if you did not set a token
-
-# Fetch the subscription, parse links, latency-test each node
-curl -sX POST -H "Authorization: Bearer $TOKEN" \
-  localhost:8080/api/nodes/refresh | jq
-
-# Turn interception on
-curl -sX POST -H "Authorization: Bearer $TOKEN" \
-  -d '{"enabled":true}' localhost:8080/api/proxy/toggle | jq
-
-# Confirm
-curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/api/status | jq
+ssh -N -L 8080:127.0.0.1:8080 pi@192.168.3.5
 ```
 
-You want `proxy_enabled`, `engine_running` and `tproxy_rules_loaded` all `true`.
-Then verify from the Pi itself — the Pi's own traffic is **not** proxied, so this
-should show your real IP, while a LAN client shows the proxy's:
+Open `http://127.0.0.1:8080/`, sign in with `PROXY_MANAGER_TOKEN`, add a
+subscription/manual link, select a configuration and enable the engine. The
+Configurations, Usage, Settings and Live Logs tabs provide the remaining controls.
+Manual mode omits background URLTest sweeps; explicit tests remain available.
+Telegram's optional health monitor checks only the active node.
 
-```bash
-curl -s https://api.ipify.org        # on the Pi: your ISP address
+Then set the router's DHCP gateway option to the Pi and renew client leases.
+On OpenWrt, an example DHCP option is `3,192.168.3.5`; use `6,192.168.3.5` for
+DNS only if a resolver actually listens there. Never point the Pi's own gateway
+back to itself. Configure IPv6 RA/DHCPv6 consistently with the IPv4-only scope.
+
+### HTTPS reverse proxy
+
+Keep the dashboard behind a trusted HTTPS reverse proxy for remote access. In
+its upstream location, preserve the public host and disable SSE buffering:
+
+```nginx
+proxy_pass http://127.0.0.1:8080;
+proxy_set_header Host $http_host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_http_version 1.1;
+proxy_buffering off;
+proxy_read_timeout 75s;
 ```
 
-The on/off state persists to `/var/lib/proxy-manager/state.json` and is restored
-at startup, so interception comes back by itself after a reboot. Start with
-`-no-restore` to suppress that while debugging.
+Add `-secure-cookies` to the unit's `ExecStart` for HTTPS-only browser access,
+then daemon-reload/restart. The application checks the public Origin against
+Host and the configured HTTPS expectation; it does not blindly trust forwarded
+headers. A Dockerized Nginx Proxy Manager cannot reach the host's loopback as
+its own `127.0.0.1`: use a reachable host bind/address and restrict that listener
+to trusted proxy sources. Keep the Clash API loopback-only.
 
-### 8. Point the LAN at the Pi
+## Configuration, persistence and backups
 
-Only once the above is verified. On OpenWrt, under **Network → Interfaces → LAN
-→ DHCP Server → Advanced Settings**:
-
-- **DHCP-Options**: `3,192.168.3.5` (gateway) and `6,192.168.3.5` (DNS, if
-  AdGuard runs on the Pi)
-- Disable **RA** and **DHCPv6** under IPv6 Settings, so clients get no IPv6 to
-  leak through
-
-Then renew a client's lease and confirm it picked up the Pi as its gateway.
-
-Keep a way back in. If interception breaks the LAN, you need to reach the Pi
-over SSH to run `remove.sh` — its own connectivity does not depend on the
-ruleset, but revert the DHCP options from a device with a static config if
-you're locked out.
-
----
-
-## Docker coexistence
-
-This is the constraint the ruleset is built around, and it is handled:
-
-- The table is `inet proxy_tproxy`. It creates **no** iptables rules, touches
-  **no** `DOCKER-USER` chain, and claims no chain name Docker uses. Docker's
-  rules run after ours, untouched.
-- `fib daddr type local` at priority -150 protects **every** published container
-  port, including ones you add later — NPM on 80/443, AdGuard on 53, Jellyfin on
-  8096. A port list would only cover the ports that existed when it was written.
-- `bypass_daddrs` covers `172.16.0.0/12` (bridges), `10.0.0.0/8` (WireGuard
-  subnets) and the rest of RFC1918.
-- `remove.sh` deletes only its own table, full-mark policy rules and local default route. It
-  deliberately does **not** reset `ip_forward` or `rp_filter`, since those are
-  host-wide and Docker may depend on them.
-
-Sing-box opens new outbound sockets sourced from the Pi. These use the normal
-host route; no special MASQUERADE rule is needed for them. Keep sing-box's
-outbound `routing_mark` at zero. The TPROXY mark is reserved for local delivery.
-
-Bypassed traffic is different: it follows the host's forwarding rules and needs
-a return route or site-specific SNAT. Docker may install forwarding drops.
-Check the complete firewall before changing policies; an ACCEPT in one base
-chain does not override a DROP in another. Avoid broad MASQUERADE rules as a
-substitute for diagnosing the intercepted path.
-
-Use [the packet-path diagnostic guide](docs/network-diagnostics.md) to distinguish
-socket lookup, policy routing, INPUT filtering, and outbound connectivity.
-
----
-
-## Configuration reference
-
-### Flags
+Run `proxy-manager -h` for every option. Common settings:
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `-listen` | `:8080` | API and dashboard bind address |
-| `-token` | `$PROXY_MANAGER_TOKEN` | API bearer token and browser login; empty disables auth |
-| `-secure-cookies` | `false` | Require Secure session cookies behind an HTTPS reverse proxy |
-| `-sub` | — | Subscription URL or file; repeatable or comma-separated |
-| `-scripts` | probed | Directory with `apply.sh`, `remove.sh`, `tproxy.conf` |
-| `-tproxy-port` | `7892` | Must equal `TPROXY_PORT` in `tproxy.conf` |
-| `-sing-box` | `sing-box` | Binary path or name on `PATH` |
-| `-config` | `/etc/proxy-manager/singbox/config.json` | Generated sing-box config |
-| `-store` | `/var/lib/proxy-manager/nodes.json` | Node store (`0600`) |
-| `-state` | `/var/lib/proxy-manager/state.json` | Proxy on/off and selection |
-| `-cache` | `/var/lib/proxy-manager/cache.db` | sing-box cache; persists selection |
-| `-clash-api` | `127.0.0.1:9090` | Clash API; required to switch nodes without a restart |
-| `-clash-secret` | `$PROXY_MANAGER_CLASH_SECRET` | Clash API token |
-| `-probe-url` | `http://cp.cloudflare.com/generate_204` | Latency probe target |
-| `-probe-concurrency` | `4` | Parallel probes; each is its own sing-box process |
-| `-refresh-timeout` | `10m` | Budget for one refresh job |
-| `-log-level` | `info` | `debug` \| `info` \| `warn` \| `error` |
-| `-expose-credentials` | `false` | Include UUIDs and passwords in `/api/nodes` |
-| `-no-restore` | `false` | Do not re-enable the proxy at startup |
+| `-listen` | `:8080` (shipped unit: `127.0.0.1:8080`) | Dashboard/API listener |
+| `-token` | `PROXY_MANAGER_TOKEN` | Web login and API token; empty disables authentication |
+| `-secure-cookies` | `false` | HTTPS browser cookies and expected public scheme |
+| `-scripts` | probed directories | Firewall scripts and site config |
+| `-sing-box`, `-tproxy-port` | `sing-box`, `7892` | Engine executable and base listener |
+| `-clash-api`, `-clash-secret` | `127.0.0.1:9090`, `PROXY_MANAGER_CLASH_SECRET` | Local control/usage API |
+| `-sub` | `PROXY_MANAGER_SUBS` if not supplied | Initial URLs/files; repeatable |
+| `-probe-concurrency`, `-refresh-timeout` | `4`, `10m` | Probe workers and job budget |
+| `-probe-url` | `http://cp.cloudflare.com/generate_204` | Latency target |
+| `-log-level` | `info` | debug/info/warn/error |
+| `-expose-credentials` | `false` | Include node secrets in ordinary listings |
+| `-no-restore` | `false` | Skip startup state restoration; not a firewall cleanup command |
 
-Env vars: `PROXY_MANAGER_TOKEN`, `PROXY_MANAGER_SUBS`,
-`PROXY_MANAGER_CLASH_SECRET`.
+| Default path | Contents |
+| --- | --- |
+| `/var/lib/proxy-manager/nodes.json` (`-store`) | Nodes, private chain/member snapshots and health |
+| `/var/lib/proxy-manager/state.json` (`-state`) | Selection, subscriptions, aliases/routes/QoS, rules, schedules, usage, Telegram settings |
+| `/etc/proxy-manager/singbox/config.json` (`-config`) | Generated engine configuration; edit through the manager |
+| `/var/lib/proxy-manager/cache.db` (`-cache`) | sing-box runtime cache |
+| `/opt/proxy-manager/scripts/tproxy/tproxy.conf` | Administrator-owned firewall configuration |
+| `/run/proxy-manager/` | Generated nft batch, lock and interception routing metadata |
 
-### Supported protocols
+Rule-set paths and last update/next due time appear in Settings. Scheduled
+updates run even when the proxy is OFF. The actual rule file paths are also
+returned by `/api/rules`.
 
-`vless://` (including Reality and XTLS Vision), `vmess://`, `trojan://`, `ss://`,
-`hysteria2://` / `hy2://`. Transports: `tcp`, `ws`, `grpc`, `http`. TLS and
-Reality are both supported, with optional uTLS fingerprinting.
-Multi-hop chaining is supported per node via a `detour` to another node's tag.
-
-An unparseable node is skipped with a warning rather than failing the whole
-subscription.
-
-### Routing behaviour
-
-Generated route rules, in order:
-
-1. **Loop breaker** — rejects any connection to a local/private address on the
-   TPROXY port. Without it, the `ip_is_private → direct` rule below matches
-   `127.0.0.1:7892` and sing-box dials its own listener in an unbounded loop.
-2. **Sniff** — extracts SNI/Host, since TPROXY hands over an IP and no domain.
-   Every domain-based rule depends on this having run.
-3. **DNS forwarding** — intercepted DNS goes through the proxy to the original
-   resolver (`action: route`, not `hijack-dns`). DNS addressed to local AdGuard
-   bypasses interception. The dashboard DNS setting changes the engine resolver
-   used for outbound server names; it does not reconfigure AdGuard.
-4. **Private destinations → direct.**
-5. **Iran rule-sets → direct** (on by default), with optional ad/tracker
-   rejection.
-
-Auto mode includes a `urltest` group tagged `auto` and a `selector` tagged
-`proxy`. Manual mode omits URLTest so other nodes are not probed in the
-background. Switching modes briefly restarts the engine with interception
-removed during the restart; switching between manual nodes uses the Clash API
-without restarting. Subscription refresh skips automatic probes in manual
-mode, while the explicit latency-test buttons remain available.
-
----
+Settings → Backup downloads `nodes.json`, `state.json`, `tproxy.conf` and
+`devices.json`. The archive contains credentials and the Telegram token: store
+it privately. Restore validates filenames, sizes, references and configuration
+before replacing settings and applying the saved ON/OFF intent. Binary files,
+systemd units, UFW/NAT rules, caches and downloaded `.srs` payloads are not in
+the ZIP; preserve those separately or redownload rule sets after migration.
 
 ## API
 
-With `-token` set, API clients use `Authorization: Bearer <token>`. The browser
-logs in at `/login.html` and uses an HttpOnly session cookie plus a CSRF header
-for mutations. Login/session discovery are public; privileged routes are protected.
-See [dashboard routes, persistence and deployment](docs/dashboard.md) for the new
-subscription, manual-config, latency, DNS, Iran bypass and SSE log controls.
+Use `Authorization: Bearer <token>` for automation. Browser sessions use an
+HttpOnly cookie plus `X-CSRF-Token` for mutations. `/healthz` is public liveness,
+not proof of functioning LAN routing. Tokens are not stored in browser localStorage.
 
-| Method | Path | Body | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/api/status` | — | Engine, ruleset, selection, node counts |
-| `GET` | `/api/nodes` | — | Node list with latency |
-| `POST` | `/api/nodes/refresh` | — | Fetch subscriptions, parse, latency-test |
-| `POST` | `/api/proxy/toggle` | `{"enabled":true}` | Start/stop; omit body to flip |
-| `POST` | `/api/proxy/select` | `{"auto":true}` or `{"node_id":"..."}` or `{"tag":"..."}` | Choose a node |
-| `GET` | `/healthz` | — | Liveness. Never authenticated |
+| Routes | Purpose |
+| --- | --- |
+| `GET /api/status`, `GET /api/nodes` | Status, selection and configurations |
+| `POST /api/proxy/toggle`, `POST /api/proxy/select` | Enable/disable and select |
+| `POST /api/nodes`, `PUT /api/nodes/edit` | Add link / edit manual node |
+| `GET/POST /api/subscriptions`, `POST /api/subscriptions/refresh` | Subscription management |
+| `POST /api/nodes/test`, `POST /api/nodes/delete` | Selected `node_ids` arrays |
+| `GET/POST/PUT /api/chains`, `POST /api/load-balancers` | Chains and saved distribution groups |
+| `GET /api/usage`, `PUT /api/devices` | Statistics, alias, outbound and four QoS fields |
+| `GET/PUT /api/settings`, `GET/PUT /api/rules`, `POST /api/rules/update` | DNS/routing and schedules |
+| `GET /api/logs` | SSE stream, replay via Last-Event-ID |
+| `GET/PUT /api/telegram`, `POST /api/telegram/test` | Notifications |
+| `GET /api/backup`, `POST /api/restore` | ZIP export/import |
+| `POST /api/nodes/speed`, `POST /api/nodes/share` | Throughput job / mobile share link |
 
-`node_id` is stable across refreshes; `tag` is a convenience for humans and is
-rejected when ambiguous.
+Example request (set `TOKEN` locally):
 
-Notable statuses: `409` toggling on with no nodes, `503` selecting a node with no
-Clash API configured, `502` when the engine's control API is unreachable.
+```bash
+curl --fail-with-body -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -X PUT http://127.0.0.1:8080/api/devices \
+  -d '{"ip":"192.168.3.141","alias":"Phone","node_id":"direct","qos":{"proxy_upload_mbps":2,"proxy_download_mbps":10,"direct_upload_mbps":4,"direct_download_mbps":20}}'
+```
 
----
+An omitted top-level device field stays unchanged. An included `qos` object
+replaces all four values; `{}` clears them. Legacy single numeric caps migrate
+to the same value in all four fields. Long-running refresh/test/restore actions
+report job progress through status; `409` usually means another operation is active.
 
 ## Troubleshooting
 
-**Start here.** These two commands answer most questions:
+Collect diagnostics **during the failure**, with the affected client's IP:
 
 ```bash
-journalctl -u proxy-manager -n 100 --no-pager
-curl -s localhost:8080/api/status | jq
+sing-box version
+sudo journalctl -u proxy-manager -n 100 --no-pager
+sudo bash /opt/proxy-manager/scripts/tproxy/diagnose.sh 192.168.3.141
+sudo nft -a list table inet proxy_qos
+ip -4 rule show
+ip -4 route show table 100
+sudo ss -lntup '( sport = :7892 )'
 ```
 
-### The whole LAN loses internet when I toggle on
-
-Almost always the ruleset is loaded with nothing on 7892. Check
-`tproxy_rules_loaded` against `engine_running` in `/api/status`. Immediate
-recovery:
-
-```bash
-sudo bash /opt/proxy-manager/scripts/tproxy/remove.sh
-```
-
-Then confirm `TPROXY_PORT` in `tproxy.conf` equals `-tproxy-port`, and that
-sing-box is actually listening:
-
-```bash
-sudo ss -lntup | grep 7892
-```
-
-### Logs spam `inbound connection to 127.0.0.1:7892`
-
-A sing-box self-connection loop: the engine is dialing its own listener, each
-connection spawning another. The giveaway is `outbound/direct[direct]` pointing
-at the TPROXY port.
-
-The firewall deliberately bypasses loopback/local traffic. Route rule 0 rejects
-private destinations on the TPROXY listener port to prevent self-dialing. If you see this, confirm the reject rule is
-present in the generated config:
-
-```bash
-jq '.route.rules[0]' /etc/proxy-manager/singbox/config.json
-# {"ip_is_private": true, "port": [7892], "action": "reject"}
-```
-
-Also make sure nothing external is probing 7892 in a loop. Readiness is checked
-by reading the engine PID’s IPv4 TCP/UDP socket tables and socket inodes, so
-the health check creates no connection of its own.
-
-### TCP connections hang or reset
-
-Do not restore a blanket `ct state established,related accept` in prerouting:
-client ACK/data packets also need transparent socket assignment and a local
-route. Reloading now atomically replaces the owned table and sets, so stale
-rules cannot survive an apply.
-
-For a stall after this correction, capture the gateway **while enabled** using
-[diagnose.sh](scripts/tproxy/diagnose.sh). An absent table, empty table 100 and no
-7892 listeners describe an off/cleaned-up gateway, not a packet-path failure.
-Follow [the counter interpretation guide](docs/network-diagnostics.md).
-
-### A container or local service became unreachable
-
-Verify the local bypass is in place and the table is at the right priority:
-
-```bash
-sudo nft list table inet proxy_tproxy | grep -E 'fib daddr|priority'
-```
-
-`prerouting` must be `priority mangle` (-150). At a later priority Docker's DNAT
-has already rewritten the destination and `fib daddr type local` no longer
-recognises it.
-
-### Clients bypass the proxy entirely
-
-Usually IPv6. Confirm clients have no IPv6 route, and that they actually took the
-Pi as their gateway:
-
-```bash
-ip -6 addr show    # on the client
-ip route get 1.1.1.1
-```
-
-### Rules survived a crash
-
-`remove.sh` is idempotent and safe any time:
-
-```bash
-sudo bash /opt/proxy-manager/scripts/tproxy/remove.sh
-sudo nft list table inet proxy_tproxy   # expect: No such file or directory
-```
-
-The service also sweeps stale rules at startup when the persisted state says the
-proxy should be off.
-
-### Counters, to see what is actually matching
-
-```bash
-sudo nft --handle list table inet proxy_tproxy
-sudo conntrack -L | grep 7892     # apt install conntrack
-```
-
----
-
-## Development
-
-```bash
-go build ./...
-go vet ./...
-go test ./...
-gofmt -l ./cmd ./internal    # silence means clean
-```
-
-Tests run without a sing-box binary, without root and without a live nft table:
-the engine, firewall and tester are faked, and the fakes record call **order**,
-because the ordering guarantees (engine up before rules load, rules down before
-engine stops) are the properties most worth protecting.
-
-Layout:
-
-| Path | Contents |
+| Symptom | Check |
 | --- | --- |
-| [cmd/server/](cmd/server/) | Flags, logging, signal handling, shutdown ordering |
-| [internal/api/](internal/api/) | HTTP router, handlers, orchestration, readiness probe |
-| [internal/engine/](internal/engine/) | sing-box config generation and process supervision |
-| [internal/netfilter/](internal/netfilter/) | `os/exec` wrapper around the nftables scripts |
-| [internal/subscription/](internal/subscription/) | Link parsing, chain validation |
-| [internal/store/](internal/store/) | Node persistence |
-| [internal/tester/](internal/tester/) | Latency probing |
-| [scripts/tproxy/](scripts/tproxy/) | `apply.sh`, `remove.sh`, config, nft template |
-| [internal/api/web/](internal/api/web/) | Embedded dashboard |
+| LAN fails when ON | Match engine/rules status, all TCP/UDP listeners, policy routes, marked INPUT permission and the node's reachability. Do not restore an established-packet bypass in TPROXY prerouting. |
+| LAN fails when OFF | Verify IPv4 forwarding, upstream default route, return routing/SNAT and every FORWARD chain. Test fresh connections; existing proxied sessions cannot survive engine shutdown. |
+| No table, no policy route, no listener | Engine is OFF or startup cleaned up; inspect service/config-check errors before tracing intercepted traffic. |
+| `cross-origin API request denied` | Preserve the public Host (including port), use one dashboard origin and match HTTPS with `-secure-cookies`. Do not disable CSRF checks. |
+| Login loop | Verify token, cookies, public scheme and host; HTTP cannot use Secure cookies. Restarting the service invalidates browser sessions. |
+| Logs arrive in bursts / disconnect | Disable reverse-proxy buffering; allow heartbeat traffic and a long read timeout; log in again if the session expired. |
+| QoS class/speed differs from expectation | Inspect tuple sets and drop counters, allow sampling/burst time, check Direct versus Proxy, stable IPs and flow offload. Policing counts packet bytes, not payload-only usage. |
+| Load balancer seems to use one member | Test multiple distinct connections. A single connection stays on one member; hash distribution is not strict round robin. |
+| Speed test gets 403 | The test server may reject that exit IP. The tester tries a fallback; inspect the job error. It is not a TPROXY handoff test. |
+| Rule/Telegram update fails | Check source/bot settings and direct-versus-proxy reachability; inspect Settings error/status and the journal. |
 
-Some tests encode a bug that cost real debugging time. `TestLoopBreakerIsFirstRule`
-pins the self-connection fix; the `/proc/net/tcp` parser tests bind a real socket
-rather than trusting a fixture. If you touch route rule ordering or the readiness
-probe, run the engine and api suites and read the comments before assuming a
-failure is the test's fault.
+Emergency removal of **interception only**:
 
-Dashboard bulk operations, strict subscription sync and the ordered Chain Builder
-are documented in [Configuration workflow](docs/configuration-workflow.md).
+```bash
+sudo bash /opt/proxy-manager/scripts/tproxy/remove.sh
+```
+
+This retains QoS and persistent routing/NAT. It cannot create missing forwarding
+rules. Avoid `nft flush ruleset`, which would also remove other services' rules.
+See the [packet-path guide](docs/network-diagnostics.md) for counters and captures.
+
+## Upgrades, development and documentation
+
+Build and test before stopping the installed service. Back up state, then stop
+the unit, install the new binary plus matching scripts/template, preserve the
+site's `tproxy.conf` and `/etc/proxy-manager/env`, and restart. Frontend changes
+require rebuilding the Go binary. Validate both OFF and ON from a LAN client.
+Use `systemctl edit proxy-manager` for local unit overrides.
+
+```bash
+go test -race ./...
+go vet ./...
+gofmt -l ./cmd ./internal
+node scripts/test-web.cjs
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/proxy-manager-new ./cmd/server
+```
+
+The optional frontend behavior check uses Node.js 18+ and only its built-in modules.
+Tests use fake firewall/engine operations; socket tests need local networking.
+Optional live sing-box checks depend on its installed version. The opt-in
+`PROXY_MANAGER_TEST_NFT_NAMESPACE=1` test checks QoS in an isolated user/network
+namespace. Never point test fixtures at production state.
+
+| Directory | Responsibility |
+| --- | --- |
+| `cmd/server` | Flags, HTTP server, signals and shutdown |
+| `internal/api` | Authentication, APIs, jobs, state and orchestration |
+| `internal/engine` | sing-box configuration, rule sets and child supervision |
+| `internal/store` | Isolated snapshots and atomic JSON commits |
+| `internal/netfilter`, `scripts/tproxy` | Owned nft tables and policy routing |
+| `internal/subscription`, `internal/tester`, `internal/logstream` | Link parsing, probes/speed tests and bounded SSE feed |
+| `internal/api/web`, `deploy` | Embedded UI and installation templates |
+
+Further reading: [configuration workflow](docs/configuration-workflow.md),
+[device routing](docs/device-routing.md), [load balancing/QoS](docs/load-balancing-qos.md),
+[notifications/backup/speed/QR](docs/advanced-features.md),
+[review and deletion list](docs/consolidation-review.md).

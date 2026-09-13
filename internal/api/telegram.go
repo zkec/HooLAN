@@ -65,9 +65,9 @@ func (s *Service) telegram(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		s.mu.RLock()
-		defer s.mu.RUnlock()
-		v := s.state.Telegram
-		writeJSON(w, 200, map[string]any{"enabled": v.Enabled, "use_proxy": v.UseProxy, "chat_id": v.ChatID, "token_set": v.Token != "", "last_error": s.telegramError})
+		v, lastError := s.state.Telegram, s.telegramError
+		s.mu.RUnlock()
+		writeJSON(w, 200, map[string]any{"enabled": v.Enabled, "use_proxy": v.UseProxy, "chat_id": v.ChatID, "token_set": v.Token != "", "last_error": lastError})
 	case http.MethodPut:
 		var req struct {
 			Enabled  bool    `json:"enabled"`
@@ -79,30 +79,35 @@ func (s *Service) telegram(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, err.Error())
 			return
 		}
-		s.opMu.Lock()
-		defer s.opMu.Unlock()
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		old := s.state.Telegram
-		next := TelegramSettings{Enabled: req.Enabled, ChatID: req.ChatID, Token: old.Token, UseProxy: old.UseProxy}
-		if req.UseProxy != nil {
-			next.UseProxy = *req.UseProxy
-		}
-		if req.Token != nil {
-			next.Token = *req.Token
-		}
-		if err := validateTelegram(next); err != nil {
-			writeError(w, 400, err.Error())
+		status, message := func() (int, string) {
+			s.opMu.Lock()
+			defer s.opMu.Unlock()
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			old := s.state.Telegram
+			next := TelegramSettings{Enabled: req.Enabled, ChatID: req.ChatID, Token: old.Token, UseProxy: old.UseProxy}
+			if req.UseProxy != nil {
+				next.UseProxy = *req.UseProxy
+			}
+			if req.Token != nil {
+				next.Token = *req.Token
+			}
+			if err := validateTelegram(next); err != nil {
+				return http.StatusBadRequest, err.Error()
+			}
+			s.state.Telegram = next
+			if err := s.saveState(); err != nil {
+				s.state.Telegram = old
+				return http.StatusInternalServerError, "could not save notification settings"
+			}
+			s.telegramError = ""
+			return http.StatusOK, "Notification settings saved"
+		}()
+		if status != http.StatusOK {
+			writeError(w, status, message)
 			return
 		}
-		s.state.Telegram = next
-		if err := s.saveState(); err != nil {
-			s.state.Telegram = old
-			writeError(w, 500, "could not save notification settings")
-			return
-		}
-		s.telegramError = ""
-		writeJSON(w, 200, map[string]string{"message": "Notification settings saved"})
+		writeJSON(w, status, map[string]string{"message": message})
 	default:
 		methodsNotAllowed(w, "GET, PUT")
 	}

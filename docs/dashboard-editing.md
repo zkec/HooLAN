@@ -1,5 +1,9 @@
 # Dashboard editing, themes and Persian localization
 
+> Feature implementation notes. For current installation, tabs and operational
+> behavior, start with [README](../README.md) ([فارسی](../README-fa.md));
+> the latest device limiter is documented in [four-way QoS](load-balancing-qos.md).
+
 Rebuild and deploy the Go binary to update both the backend and embedded assets.
 No npm build, external fonts or frontend framework is needed.
 

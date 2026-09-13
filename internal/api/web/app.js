@@ -11,7 +11,7 @@
     speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
-    inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
+    deviceSnapshot: null, inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
     lastLogID: 0, lastLogTime: 0, logAuthCheck: false
   };
 
@@ -47,6 +47,7 @@
 
   function clearPrivateView() {
     stopLogs();
+    state.deviceSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
     state.nodes = [];
     state.subscriptions = [];
     state.status = null;
@@ -264,7 +265,8 @@
   }
   function makeConfigGroup(group, name, subscription) {
     var nodes = groupNodes(group), selected = groupSelection(group);
-    selected.forEach(function (id) { if (!nodes.some(function (n) { return n.id === id; })) selected.delete(id); });
+    var nodeIDs = new Set(nodes.map(function (n) { return n.id; }));
+    selected.forEach(function (id) { if (!nodeIDs.has(id)) selected.delete(id); });
     var card = element(subscription ? 'details' : 'article', 'card config-group'); card.dataset.configGroup = group;
     if (subscription) { card.open = state.groupOpen.has(group) ? state.groupOpen.get(group) : false; card.addEventListener('toggle', function () { if (card.isConnected) state.groupOpen.set(group, card.open); }); }
     var heading = element(subscription ? 'summary' : 'div', 'subscription-heading'), details = element('div'), title = element('div', 'subscription-name');
@@ -333,6 +335,10 @@
     state.nodes = responses[0].nodes || [];
     state.selection = responses[0].selection || state.selection;
     state.subscriptions = responses[1].subscriptions || [];
+    var nodeIDs = new Set(state.nodes.map(function (n) { return n.id; }));
+    state.speedResults.forEach(function (_, id) { if (!nodeIDs.has(id)) state.speedResults.delete(id); });
+    var groupIDs = new Set(state.subscriptions.map(function (s) { return s.id; }));
+    state.groupOpen.forEach(function (_, id) { if (!groupIDs.has(id)) state.groupOpen.delete(id); });
     state.inventoryAt = Date.now();
     renderInventory();
     renderStatus();
@@ -723,9 +729,14 @@
     if (window.QRCode) return Promise.resolve();
     if (!state.qrLoad) state.qrLoad = new Promise(function(resolve,reject){
       var script=document.createElement('script');script.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';script.referrerPolicy='no-referrer';script.async=true;
-      var timer=window.setTimeout(function(){script.remove();reject(new Error('QR renderer unavailable. Copy the share link instead.'));},15000);
-      script.onload=function(){window.clearTimeout(timer);if(window.QRCode)resolve();else reject(new Error('QR renderer unavailable. Copy the share link instead.'));};
-      script.onerror=function(){window.clearTimeout(timer);script.remove();reject(new Error('QR renderer unavailable. Copy the share link instead.'));};document.head.appendChild(script);
+      function finish(error) {
+        window.clearTimeout(timer); script.onload = script.onerror = null;
+        if (error) { script.remove(); reject(error); } else resolve();
+      }
+      function unavailable() { finish(new Error('QR renderer unavailable. Copy the share link instead.')); }
+      var timer = window.setTimeout(unavailable, 15000);
+      script.onload = function () { if (window.QRCode) finish(); else unavailable(); };
+      script.onerror = unavailable; document.head.appendChild(script);
     }).catch(function(error){state.qrLoad=null;throw error;});
     return state.qrLoad;
   }
@@ -799,11 +810,12 @@
   function byteCount(n) { var units=['B','KiB','MiB','GiB','TiB'];var i=0;while(n>=1024&&i<4){n/=1024;i++;}return n.toFixed(i?2:0)+' '+units[i]; }
   function renderUsage(response) {
     var u=response.usage; var total=u.total || {};
+    var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
     text($('usage-total'),'Upload '+byteCount(total.upload||0)+' · Download '+byteCount(total.download||0)+' · Total '+byteCount((total.upload||0)+(total.download||0)));
     text($('usage-status'),'Last sample: '+ago(u.last_sample)+(u.error?' · '+u.error:'')+(!response.supported?' · Clash statistics unavailable':''));
     var list=$('usage-nodes');text(list,'');var table=element('table','node-table');var head=element('tr');['Configuration / route (estimated)','Upload','Download'].forEach(function(label){head.appendChild(element('th','',label));});table.appendChild(head);
     var values=u.outbounds||{};var keys=Array.from(new Set(['direct'].concat(state.nodes.map(function(n){return n.id;}),Object.keys(values))));
-    keys.filter(function(key){var v=values[key]||{};return (v.upload||0)>0 || (v.download||0)>0;}).forEach(function(key){var n=state.nodes.find(function(n){return n.id===key;});var value=values[key]||{};var row=element('tr');var caption=element('td','',key==='direct'?'Direct / bypass':n?n.tag:key);if(key!=='direct')caption.dataset.noI18n='';row.appendChild(caption);row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
+    keys.filter(function(key){var v=values[key]||{};return (v.upload||0)>0 || (v.download||0)>0;}).forEach(function(key){var n=nodesByID.get(key);var value=values[key]||{};var row=element('tr');var caption=element('td','',key==='direct'?'Direct / bypass':n?n.tag:key);if(key!=='direct')caption.dataset.noI18n='';row.appendChild(caption);row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
     if (table.rows.length === 1) list.appendChild(element('p', 'muted', 'No configuration has recorded traffic yet.'));
     renderDevices(response, false);
   }
@@ -844,6 +856,10 @@
     dialog.showModal(); updateControls();
   }
   function wireDeviceSettings() {
+    $('usage-devices').addEventListener('click', function (event) {
+      var button = event.target.closest('[data-device-settings]');
+      if (button && !button.disabled && state.deviceSnapshot) openDeviceSettings(button.dataset.deviceSettings, state.deviceSnapshot);
+    });
     $('device-settings-cancel').addEventListener('click', function () { $('device-settings').close(); });
     $('device-settings').addEventListener('cancel', function (event) { if (state.busy) event.preventDefault(); });
     $('device-settings').addEventListener('close', function () {
@@ -870,6 +886,7 @@
     });
   }
   function renderDevices(response, force) {
+    state.deviceSnapshot = response;
     var list = $('usage-devices');
     if (!force && list.contains(document.activeElement)) return;
     text(list, '');
@@ -880,17 +897,17 @@
     var table = element('table', 'node-table device-table'), header = element('tr'), head = element('thead'), body = element('tbody');
     ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'QoS'].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
     head.appendChild(header); table.appendChild(head); table.appendChild(body);
+    var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
     ips.forEach(function (ip) {
       var value = values[ip] || {}, row = element('tr'), address = element('td', 'node-server', ip);
       address.dir = 'ltr'; address.dataset.noI18n = ''; row.appendChild(address);
       var name = element('td', '', aliases[ip] || '—'); name.dataset.noI18n = ''; row.appendChild(name);
       row.appendChild(element('td', '', byteCount(value.upload || 0))); row.appendChild(element('td', '', byteCount(value.download || 0)));
-      var id = routes[ip] || '', node = state.nodes.find(function (n) { return n.id === id; });
+      var id = routes[ip] || '', node = nodesByID.get(id);
       var route = element('td', 'device-route-label', id === 'direct' ? 'Direct' : !id ? 'Global Default' : node && node.enabled ? node.tag || node.server : 'Unavailable node (using Global Default)');
       if (node && node.enabled) route.dataset.noI18n = ''; row.appendChild(route);
       var actions = element('td'), button = element('button', 'button subtle', 'Manage Limits');
       button.type = 'button'; button.dataset.mutation = ''; button.dataset.job = ''; button.dataset.deviceSettings = ip;
-      button.addEventListener('click', function () { openDeviceSettings(ip, response); });
       actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
     });
     list.appendChild(table); updateControls();

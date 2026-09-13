@@ -1212,10 +1212,7 @@ dialog::backdrop { background: #0009; }
 .config-group { overflow: hidden; }
 .config-group .bulk-bar { border-top: 1px solid var(--line); padding: 12px 18px; }
 #manual-group { margin-bottom: 18px; }
-.device-name-form { display: flex; gap: 8px; align-items: center; }
-.device-name-form input { min-width: 130px; max-width: 220px; }
-.device-table select { min-width: 180px; max-width: 320px; }
-.device-table th { text-align: left; }
+.device-table th { text-align: start; }
 
 /* Shared controls and theme tokens, including controls created after page load. */
 :root { --field-bg: #0d1521; --field-border: #334258; --focus: #69dbbf; --button-bg: #19273a; --button-hover: #23364e; --success-bg: #123328; --error-bg: #361f29; }

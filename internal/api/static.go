@@ -7,9 +7,9 @@ package api
 // would be one more path to get wrong in the unit file, and a missing asset
 // directory would leave an operator with a working API and a blank page.
 //
-// The UI is served unauthenticated by design; see the note on authenticate in
-// handlers.go. These bytes are a static shell -- every privileged operation is
-// behind /api, which the token still guards.
+// Login assets are public. Dashboard documents redirect unauthenticated
+// browsers to login when a token is configured; privileged APIs enforce their
+// own authentication and CSRF checks independently of the embedded shell.
 
 import (
 	"bytes"

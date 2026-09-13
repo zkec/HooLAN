@@ -208,6 +208,14 @@ func (s *Store) persist() error {
 	return nil
 }
 
+// cloneRecord isolates every mutable node field at the store boundary.
+func cloneRecord(r Record) Record {
+	r.Node.ALPN = append([]string(nil), r.Node.ALPN...)
+	r.Node.BalanceMembers = append([]string(nil), r.Node.BalanceMembers...)
+	r.Node.BalanceTags = append([]string(nil), r.Node.BalanceTags...)
+	return r
+}
+
 // Save flushes the current state to disk. Mutating methods already persist, so
 // this is only needed after direct manipulation via Update.
 func (s *Store) Save() error {
@@ -229,12 +237,20 @@ func (s *Store) UpsertNodes(nodes []subscription.Node) (added, updated int, err 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	old := s.records
+	s.records = make(map[string]*Record, len(old)+len(nodes))
+	for id, record := range old {
+		s.records[id] = record
+	}
 	now := s.now()
 	for _, n := range nodes {
+		n = cloneRecord(Record{Node: n}).Node
 		id := NodeID(n)
 		if existing, ok := s.records[id]; ok {
-			existing.Node = n
-			existing.UpdatedAt = now
+			copy := *existing
+			copy.Node = n
+			copy.UpdatedAt = now
+			s.records[id] = &copy
 			updated++
 			continue
 		}
@@ -249,66 +265,24 @@ func (s *Store) UpsertNodes(nodes []subscription.Node) (added, updated int, err 
 		added++
 	}
 	if err := s.persist(); err != nil {
-		return added, updated, err
+		s.records = old
+		return 0, 0, err
 	}
 	return added, updated, nil
 }
 
 // RecordLatency stores a successful measurement and clears the failure state.
 func (s *Store) RecordLatency(id string, latency time.Duration) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r, ok := s.records[id]
-	if !ok {
-		return fmt.Errorf("%w: %s", ErrNotFound, id)
-	}
-	now := s.now()
-	ms := int(latency.Milliseconds())
-	if ms < 0 {
-		ms = 0
-	}
-	r.LastLatencyMS = ms
-	r.LastCheckedAt = now
-	r.UpdatedAt = now
-	r.LastError = ""
-	r.ConsecutiveFailures = 0
-	return s.persist()
+	return s.RecordMeasurements([]Measurement{{ID: id, Latency: latency}})
 }
-
-// RecordFailure marks a failed probe. The previous latency is cleared to the
-// unmeasured sentinel so a stale-but-fast reading cannot keep a dead node at
-// the top of a sorted list.
 func (s *Store) RecordFailure(id string, cause error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r, ok := s.records[id]
-	if !ok {
-		return fmt.Errorf("%w: %s", ErrNotFound, id)
+	if cause == nil {
+		cause = errors.New("unknown failure")
 	}
-	now := s.now()
-	r.LastLatencyMS = LatencyUnmeasured
-	r.LastCheckedAt = now
-	r.UpdatedAt = now
-	r.ConsecutiveFailures++
-	if cause != nil {
-		r.LastError = cause.Error()
-	} else {
-		r.LastError = "unknown failure"
-	}
-	return s.persist()
+	return s.RecordMeasurements([]Measurement{{ID: id, Err: cause}})
 }
-
-// SetEnabled toggles operator intent for a node.
 func (s *Store) SetEnabled(id string, enabled bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r, ok := s.records[id]
-	if !ok {
-		return fmt.Errorf("%w: %s", ErrNotFound, id)
-	}
-	r.Enabled = enabled
-	r.UpdatedAt = s.now()
-	return s.persist()
+	return s.Update(id, func(r *Record) error { r.Enabled = enabled; return nil })
 }
 
 // SetDetour sets (or clears, with an empty target) the chain hop for a node.
@@ -365,11 +339,18 @@ func (s *Store) Update(id string, fn func(*Record) error) error {
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	if err := fn(r); err != nil {
+	updated := cloneRecord(*r)
+	if err := fn(&updated); err != nil {
 		return err
 	}
-	r.UpdatedAt = s.now()
-	return s.persist()
+	updated.UpdatedAt = s.now()
+	owned := cloneRecord(updated)
+	s.records[id] = &owned
+	if err := s.persist(); err != nil {
+		s.records[id] = r
+		return err
+	}
+	return nil
 }
 
 // Get returns a copy of one record.
@@ -380,7 +361,7 @@ func (s *Store) Get(id string) (Record, error) {
 	if !ok {
 		return Record{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return *r, nil
+	return cloneRecord(*r), nil
 }
 
 // All returns copies of every record, ordered by ID for stable output.
@@ -388,11 +369,11 @@ func (s *Store) Get(id string) (Record, error) {
 // going through a method that persists.
 func (s *Store) All() []Record {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	out := make([]Record, 0, len(s.records))
 	for _, r := range s.records {
-		out = append(out, *r)
+		out = append(out, cloneRecord(*r))
 	}
+	s.mu.RUnlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
@@ -439,7 +420,7 @@ func EnabledRecords(recs []Record) []subscription.Node {
 	})
 	out := make([]subscription.Node, 0, len(filtered))
 	for _, r := range filtered {
-		out = append(out, r.Node)
+		out = append(out, cloneRecord(r).Node)
 	}
 	subscription.DedupeTags(out)
 	tags := map[string]string{}
@@ -464,17 +445,23 @@ func EnabledRecords(recs []Record) []subscription.Node {
 func (s *Store) Prune(keep map[string]bool) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	removed := 0
-	for id := range s.records {
-		if !keep[id] {
-			delete(s.records, id)
-			removed++
+	old := s.records
+	next := make(map[string]*Record, len(old))
+	for id, r := range old {
+		if keep[id] {
+			next[id] = r
 		}
 	}
+	removed := len(old) - len(next)
 	if removed == 0 {
 		return 0, nil
 	}
-	return removed, s.persist()
+	s.records = next
+	if err := s.persist(); err != nil {
+		s.records = old
+		return 0, err
+	}
+	return removed, nil
 }
 
 // Delete removes one record.

@@ -651,17 +651,15 @@ func (s *Service) testSelectedNodes(ctx context.Context, wanted map[string]bool)
 		return errors.New("latency tester returned incomplete results")
 	}
 	reachable := 0
+	measurements := make([]store.Measurement, len(results))
 	for i, result := range results {
-		var err error
 		if result.OK() {
 			reachable++
-			err = s.cfg.Store.RecordLatency(ids[i], result.Latency)
-		} else {
-			err = s.cfg.Store.RecordFailure(ids[i], result.Err)
 		}
-		if err != nil {
-			return err
-		}
+		measurements[i] = store.Measurement{ID: ids[i], Latency: result.Latency, Err: result.Err}
+	}
+	if err := s.cfg.Store.RecordMeasurements(measurements); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	s.job.Tested, s.job.Reachable = len(results), reachable
