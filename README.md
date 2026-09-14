@@ -417,3 +417,9 @@ instead calls for checking the selected network path or trying another node.
 Do not paste bot tokens into logs or support messages; replace exposed tokens
 through BotFather. See [Telegram's bot introduction](https://core.telegram.org/bots#how-are-bots-different-from-humans)
 and [API response format](https://core.telegram.org/bots/api#making-requests).
+
+Telegram's **Send Telegram through proxy** switch now supports a saved configuration
+selection. **Global Default** follows the gateway; selecting a node or chain pins
+notification delivery independently. An unavailable pin fails without switching
+routes. In **Device settings**, **Reset limits** clears all four values; save to
+apply unlimited speeds without changing the alias or outbound.

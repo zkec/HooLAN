@@ -53,13 +53,7 @@
         <div class="creation-grid">
           <div class="creation-item"><h3>Add a configuration</h3><p class="muted small">Paste a single node link, such as vless://, vmess://, trojan:// or ss://.</p><form id="node-form" class="node-form"><div class="field field-grow"><label for="node-link">Node link</label><input id="node-link" name="link" type="text" required spellcheck="false" autocomplete="off" placeholder="vless://…" /></div><button class="button primary" type="submit" data-mutation>Add config</button></form></div>
 
-          <section class="creation-item" aria-labelledby="builder-heading">
-            <h3 id="builder-heading">Chain Builder</h3><p id="chain-editing-note" role="status" hidden>Editing an existing chain</p><p class="muted small">Choose 2–8 single-hop nodes in traversal order: first hop → intermediate hops → exit. Saved chains are independent copies; source configurations stay unchanged.</p>
-            <form id="chain-builder-form"><div class="field"><label for="chain-builder-name">Chain name</label><input id="chain-builder-name" required maxlength="100" placeholder="My multi-hop connection" /></div>
-            <div class="field"><label for="chain-builder-node">Add a hop</label><select id="chain-builder-node"></select></div><button id="chain-add-hop" type="button" class="button" data-mutation>Add hop</button>
-            <ol id="chain-hops" class="chain-hops" aria-label="Hop order"></ol><p id="chain-preview" role="status"></p>
-            <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button><button id="chain-cancel-edit" type="button" class="button subtle" hidden>Cancel editing</button></form>
-          </section>
+
 
           <div class="creation-item">
             <h3>Add a subscription</h3><p class="muted small">Each successful refresh replaces that source’s node list. Removed provider nodes are pruned.</p>
@@ -69,6 +63,14 @@
               <button class="button primary" type="submit" data-mutation>Add subscription</button>
             </form>
           </div>
+
+          <section class="creation-item" aria-labelledby="builder-heading">
+            <h3 id="builder-heading">Chain Builder</h3><p id="chain-editing-note" role="status" hidden>Editing an existing chain</p><p class="muted small">Choose 2–8 single-hop nodes in traversal order: first hop → intermediate hops → exit. Saved chains are independent copies; source configurations stay unchanged.</p>
+            <form id="chain-builder-form"><div class="field"><label for="chain-builder-name">Chain name</label><input id="chain-builder-name" required maxlength="100" placeholder="My multi-hop connection" /></div>
+            <div class="field"><label for="chain-builder-node">Add a hop</label><select id="chain-builder-node"></select></div><button id="chain-add-hop" type="button" class="button" data-mutation>Add hop</button>
+            <ol id="chain-hops" class="chain-hops" aria-label="Hop order"></ol><p id="chain-preview" role="status"></p>
+            <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button><button id="chain-cancel-edit" type="button" class="button subtle" hidden>Cancel editing</button></form>
+          </section>
           <form id="balance-form" class="creation-item">
             <h3>Load balancing</h3><p class="muted small">Select 2–32 nodes or chains using the checkboxes below. New connections are distributed across saved member copies; each connection stays on one member. This does not bond a single download or automatically remove failed members.</p>
             <div class="field"><label for="balance-search">Find configurations</label><input id="balance-search" type="search" autocomplete="off" placeholder="Search by name or server" /></div>
@@ -131,12 +133,12 @@
 
       <form id="telegram-form" class="card form-card">
         <h2>Telegram notifications</h2><p class="muted small">Receive engine and subscription alerts. When enabled, only the active node is checked every five minutes; repeated failure alerts are suppressed until recovery.</p>
-        <label><input id="telegram-enabled" type="checkbox" /> Enable notifications</label>
+        <label class="switch telegram-switch" for="telegram-enabled"><input id="telegram-enabled" type="checkbox" role="switch" data-mutation /><span class="switch-track" aria-hidden="true"></span><span>Enable notifications</span></label>
         <div class="edit-grid"><div class="field"><label for="telegram-token">Telegram Bot Token</label><input id="telegram-token" type="password" autocomplete="new-password" placeholder="Leave blank to keep current" /></div><div class="field"><label for="telegram-chat">Chat ID</label><input id="telegram-chat" type="text" autocomplete="off" placeholder="-1001234567890" /></div></div>
-        <label><input id="telegram-proxy" type="checkbox" /> Send Telegram through proxy</label>
-        <p class="muted small">Off: connect directly from the Pi. On: use the active node; when automatic selection is offline, use the fastest saved healthy node. Proxy mode never falls back to direct.</p>
+        <label class="switch telegram-switch" for="telegram-proxy"><input id="telegram-proxy" type="checkbox" role="switch" data-mutation /><span class="switch-track" aria-hidden="true"></span><span>Send Telegram through proxy</span></label>
+        <div id="telegram-route-field" class="field" hidden><label for="telegram-node">Telegram proxy configuration</label><select id="telegram-node" data-mutation></select><p class="muted small">Global Default follows the active proxy. An explicit configuration stays pinned. Unavailable selections fail without falling back to direct. Load balancers use their first saved member.</p></div>
         <p class="muted small">For a private chat, open your bot in Telegram and send /start first. Use the receiving chat’s ID, and ensure the bot is not blocked. For groups or channels, grant the bot permission to send messages.</p>
-        <label><input id="telegram-clear" type="checkbox" /> Remove stored token</label><p id="telegram-status" class="muted small" role="status"></p>
+        <label class="switch telegram-switch" for="telegram-clear"><input id="telegram-clear" type="checkbox" role="switch" data-mutation /><span class="switch-track" aria-hidden="true"></span><span>Remove stored token</span></label><p id="telegram-status" class="telegram-status small" role="status"></p>
         <div class="form-footer"><button type="submit" class="button primary" data-mutation>Save notifications</button><button id="telegram-test" type="button" class="button" data-mutation data-job>Save &amp; send test message</button></div>
       </form>
       <section class="card form-card"><h2>Backup &amp; restore</h2><p class="muted small">Backups contain node credentials, the Telegram token, routing settings and firewall configuration. Store them privately. Restore replaces these settings and restarts the managed engine according to the saved ON/OFF state.</p>
@@ -159,8 +161,8 @@
       <div class="device-dialog-heading"><h2 id="device-settings-title">Device settings</h2><span id="device-settings-ip" class="pill" dir="ltr" data-no-i18n></span></div>
       <div class="field"><label for="device-alias">Device name</label><input id="device-alias" maxlength="80" autocomplete="off" placeholder="Device name" data-mutation data-job /></div>
       <div class="field"><label for="device-route">Assigned outbound routing</label><select id="device-route" data-mutation data-job></select></div>
-      <fieldset class="device-qos-card"><legend>Speed limits</legend>
-        <p class="muted small" id="device-qos-help">Blank or 0 means unlimited. Limits apply separately to proxy and direct traffic in each direction.</p>
+      <fieldset class="device-qos-card"><legend>Speed limits</legend><button id="device-reset-limits" type="button" class="button subtle" data-mutation>Reset limits</button>
+        <p class="muted small" id="device-qos-help">Blank or 0 means unlimited. Reset clears all four limits; save device settings to apply. Limits apply separately to proxy and direct traffic in each direction.</p>
         <div class="qos-grid">
           <div class="field"><label for="device-proxy_upload_mbps">Proxy Upload</label><div class="qos-input"><input id="device-proxy_upload_mbps" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Unlimited" aria-describedby="device-qos-help" data-mutation data-job /><span data-no-i18n>Mbps</span></div></div>
           <div class="field"><label for="device-proxy_download_mbps">Proxy Download</label><div class="qos-input"><input id="device-proxy_download_mbps" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Unlimited" aria-describedby="device-qos-help" data-mutation data-job /><span data-no-i18n>Mbps</span></div></div>

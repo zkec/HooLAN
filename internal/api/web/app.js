@@ -156,7 +156,7 @@
     var name = ({telegram:'Telegram test',speed:'Speed test',restore:'Restore backup',health:'Active node health check',latency:'Latency test',refresh:'Subscription refresh'})[job.kind] || 'Background task';
     if (job.kind === 'speed' && job.node_id) state.speedResults.set(job.node_id, {state:job.state,mbps:job.speed && job.speed.mbps,server:job.speed && job.speed.server,error:job.error});
     if (previous && previous.state === 'running' && job.kind === 'restore' && job.state === 'succeeded') { state.settings = null; state.settingsDirty = false; state.rulesDirty = false; state.telegramLoaded = false; state.speedResults.clear(); }
-    if (job.kind === 'telegram') text($('telegram-status'), job.state === 'running' ? 'Sending test message…' : job.state === 'succeeded' ? 'Test message sent.' : job.error || 'Telegram test failed');
+    if (job.kind === 'telegram') telegramStatus( job.state === 'running' ? 'Sending test message…' : job.state === 'succeeded' ? 'Test message sent.' : job.error || 'Telegram test failed', job.state === 'failed');
     var parts = [];
     if (state.jobRunning) parts.push(name + ' running. Testing nodes can take a few minutes on a Pi.');
     if (job.state === 'succeeded') parts.push(name + ' completed ' + ago(job.finished_at) + '.');
@@ -302,7 +302,7 @@
     state.groupSelections.forEach(function (_, group) {
       if (group !== 'manual' && !state.subscriptions.some(function (s) { return s.id === group; })) state.groupSelections.delete(group);
     });
-    renderChainBuilder(); renderBalancePicker(); updateControls();
+    renderChainBuilder(); renderBalancePicker(); renderTelegramRoute(); updateControls();
     if (focusAction && focusID) {
       var replacement = Array.from(document.querySelectorAll('[data-action]')).find(function (button) { return button.dataset.action === focusAction && button.dataset.id === focusID; });
       if (replacement && !replacement.disabled) replacement.focus({ preventScroll: true });
@@ -732,10 +732,21 @@
     });
   }
 
+  function telegramStatus(message, error) {
+    text($('telegram-status'), message);
+    $('telegram-status').className = 'telegram-status small' + (error ? ' is-error' : '');
+  }
+  function renderTelegramRoute() {
+    var select = $('telegram-node');
+    deviceRouteOptions(select, select.value || '', true);
+    $('telegram-route-field').hidden = !$('telegram-proxy').checked;
+  }
   async function loadTelegram() {
     var settings = await call('GET','/api/telegram');
     $('telegram-enabled').checked = settings.enabled; $('telegram-proxy').checked = !!settings.use_proxy; $('telegram-chat').value = settings.chat_id || '';
-    text($('telegram-status'), settings.last_error || (settings.token_set ? 'Token stored' : 'No token stored'));
+    deviceRouteOptions($('telegram-node'), settings.node_id || '', true);
+    renderTelegramRoute();
+    telegramStatus(settings.last_error || (settings.token_set ? 'Token stored' : 'No token stored'), !!settings.last_error);
     state.telegramLoaded = true;
   }
   async function binaryRequest(method, path, body) {
@@ -745,10 +756,11 @@
     return response;
   }
   function wireAdvancedEvents() {
+    $('telegram-proxy').addEventListener('change', renderTelegramRoute);
     async function saveTelegram() {
-      var payload = {enabled:$('telegram-enabled').checked,use_proxy:$('telegram-proxy').checked,chat_id:$('telegram-chat').value.trim()};
+      var payload = {enabled:$('telegram-enabled').checked,use_proxy:$('telegram-proxy').checked,node_id:$('telegram-node').value,chat_id:$('telegram-chat').value.trim()};
       if ($('telegram-clear').checked) payload.token = ''; else if ($('telegram-token').value) payload.token = $('telegram-token').value.trim();
-      await call('PUT','/api/telegram',payload);
+      try { await call('PUT','/api/telegram',payload); } catch (error) { telegramStatus(error.message, true); throw error; }
       $('telegram-token').value='';$('telegram-clear').checked=false;
       await loadTelegram();
     }
@@ -760,7 +772,7 @@
       mutate('Telegram test',async function(){
         await saveTelegram();
         var result = await call('POST','/api/telegram/test',{});
-        renderJob(result.refresh);text($('telegram-status'),'Sending test message…');
+        renderJob(result.refresh);telegramStatus('Sending test message…', false);
       });
     });
     $('download-backup').addEventListener('click',function(){mutate('Download Backup',async function(){
@@ -879,9 +891,9 @@
     renderDevices(response, false);
   }
 
-  function deviceRouteOptions(select, assigned) {
+  function deviceRouteOptions(select, assigned, proxyOnly) {
     text(select, '');
-    [['', 'Global Default'], ['direct', 'Direct']].forEach(function (pair) {
+    (proxyOnly ? [['', 'Global Default']] : [['', 'Global Default'], ['direct', 'Direct']]).forEach(function (pair) {
       var option = element('option', '', pair[1]); option.value = pair[0]; select.appendChild(option);
     });
     var included = new Set();
@@ -898,7 +910,7 @@
     state.subscriptions.forEach(function (sub) { addOptions(sub.name || 'Subscription', groupNodes(sub.id), !!sub.name); });
     addOptions('Other configurations', state.nodes);
     if (assigned && assigned !== 'direct' && !included.has(assigned)) {
-      var unavailable = element('option', '', 'Unavailable node (using Global Default)');
+      var unavailable = element('option', '', proxyOnly ? 'Unavailable node (delivery will fail)' : 'Unavailable node (using Global Default)');
       unavailable.value = assigned; unavailable.disabled = true; select.appendChild(unavailable);
     }
     select.value = assigned;
@@ -915,6 +927,7 @@
     dialog.showModal(); updateControls();
   }
   function wireDeviceSettings() {
+    $('device-reset-limits').addEventListener('click', function () { qosFields.forEach(function (field) { $('device-' + field).value = ''; }); });
     $('usage-sort').addEventListener('change', function () { if (state.usageSnapshot) renderUsage(state.usageSnapshot); });
     $('devices-sort').addEventListener('change', function () { if (state.deviceSnapshot) renderDevices(state.deviceSnapshot, true); });
     $('usage-devices').addEventListener('click', function (event) {

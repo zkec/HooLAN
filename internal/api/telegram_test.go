@@ -212,3 +212,47 @@ func TestTelegramDeliveryErrorDiagnostics(t *testing.T) {
 		t.Fatal("unsafe description")
 	}
 }
+
+func TestTelegramPinnedProxy(t *testing.T) {
+	proxy := &telegramProxyFake{client: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}}
+	h := newLocalHarness(t, testNodes(), func(c *Config) { c.Tester = proxy })
+	all := h.store.All()
+	h.svc.state.AutoSelect = false
+	h.svc.state.SelectedNodeID = all[0].ID
+	router := NewRouter(h.svc, RouterOptions{Logger: quietLogger()})
+	cfg := TelegramSettings{UseProxy: true, NodeID: all[1].ID, Token: "123456:" + strings.Repeat("x", 30), ChatID: "654321"}
+	raw, _ := json.Marshal(cfg)
+	response := authRequest(router, "PUT", "/api/telegram", string(raw), nil, "")
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	saved, _ := os.ReadFile(h.svc.cfg.StatePath)
+	if !strings.Contains(string(saved), all[1].ID) {
+		t.Fatal("pinned node not persisted")
+	}
+	if err := h.svc.deliverTelegram(context.Background(), cfg, "test"); err != nil || store.NodeID(proxy.target) != all[1].ID {
+		t.Fatalf("pinned delivery: %v", err)
+	}
+	response = authRequest(router, "PUT", "/api/telegram", `{"enabled":false,"chat_id":"654321"}`, nil, "")
+	if response.Code != 200 || h.svc.state.Telegram.NodeID != all[1].ID {
+		t.Fatal("omitted node_id must preserve pin")
+	}
+	response = authRequest(router, "PUT", "/api/telegram", `{"enabled":false,"chat_id":"654321","node_id":"missing"}`, nil, "")
+	if response.Code != 400 {
+		t.Fatal("missing node accepted")
+	}
+	h.store.SetEnabled(all[1].ID, false)
+	calls := proxy.calls
+	if err := h.svc.deliverTelegram(context.Background(), cfg, "test"); err == nil || proxy.calls != calls {
+		t.Fatal("unavailable pin fell back")
+	}
+	response = authRequest(router, "PUT", "/api/telegram", `{"enabled":false,"chat_id":"654321","node_id":""}`, nil, "")
+	if response.Code != 200 || h.svc.state.Telegram.NodeID != "" {
+		t.Fatal("could not clear pin")
+	}
+	if hint := telegramFailureHint(403, 403, "Forbidden: the bot can't send messages to the bot"); !strings.Contains(hint, "receiving person's chat ID") {
+		t.Fatal(hint)
+	}
+}

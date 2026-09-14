@@ -2,6 +2,12 @@
 (function () {
   "use strict";
   var fa = {
+  "Reset limits": "بازنشانی محدودیت‌ها",
+  "Telegram proxy configuration": "پیکربندی پروکسی تلگرام",
+  "Unavailable node (delivery will fail)": "گره در دسترس نیست (ارسال ناموفق خواهد بود)",
+  "Global Default follows the active proxy. An explicit configuration stays pinned. Unavailable selections fail without falling back to direct. Load balancers use their first saved member.": "پیش‌فرض سراسری از پروکسی فعال پیروی می‌کند. پیکربندی انتخاب‌شده ثابت می‌ماند؛ در صورت نبود دسترسی، ارسال بدون تغییر به مسیر مستقیم متوقف می‌شود. گروه‌های توزیع بار از اولین عضو ذخیره‌شده استفاده می‌کنند.",
+  "Blank or 0 means unlimited. Reset clears all four limits; save device settings to apply. Limits apply separately to proxy and direct traffic in each direction.": "خالی یا صفر یعنی نامحدود. بازنشانی هر چهار محدودیت را پاک می‌کند؛ برای اعمال، تنظیمات دستگاه را ذخیره کنید. محدودیت هر جهت برای ترافیک مستقیم و پروکسی جداست.",
+
   "For a private chat, open your bot in Telegram and send /start first. Use the receiving chat\u2019s ID, and ensure the bot is not blocked. For groups or channels, grant the bot permission to send messages.": "برای گفت‌وگوی خصوصی، ابتدا ربات خود را در تلگرام باز کنید و /start بفرستید. شناسهٔ گفت‌وگوی گیرنده را وارد کنید و مطمئن شوید ربات مسدود نیست. در گروه یا کانال، اجازهٔ ارسال پیام را به ربات بدهید.",
   "Speed set": "سرعت تنظیم‌شده",
   "Add & create": "افزودن و ساخت",

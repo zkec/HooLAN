@@ -18,6 +18,7 @@ import (
 )
 
 type TelegramSettings struct {
+	NodeID   string `json:"node_id,omitempty"`
 	Enabled  bool   `json:"enabled"`
 	UseProxy bool   `json:"use_proxy"`
 	Token    string `json:"token"`
@@ -28,6 +29,9 @@ var botTokenPattern = regexp.MustCompile(`^[0-9]{5,20}:[A-Za-z0-9_-]{20,100}$`)
 var chatIDPattern = regexp.MustCompile(`^(?:-?[0-9]{1,20}|@[A-Za-z0-9_]{5,64})$`)
 
 func validateTelegram(v TelegramSettings) error {
+	if len(v.NodeID) > 128 {
+		return fmt.Errorf("%w: invalid Telegram proxy node ID", ErrInvalidInput)
+	}
 	if v.Token != "" && !botTokenPattern.MatchString(v.Token) {
 		return fmt.Errorf("%w: invalid Telegram bot token", ErrInvalidInput)
 	}
@@ -101,6 +105,8 @@ func safeTelegramDescription(description string, cfg TelegramSettings) string {
 func telegramFailureHint(code, status int, description string) string {
 	reason := strings.ToLower(description)
 	switch {
+	case strings.Contains(reason, "send messages to the bot"):
+		return "The Chat ID belongs to a bot. Use the receiving person's chat ID after they send /start, or a group/channel chat ID"
 	case strings.Contains(reason, "blocked by the user"):
 		return "Unblock this bot in Telegram, open its chat and send /start, then retry"
 	case strings.Contains(reason, "can't initiate"), strings.Contains(reason, "cannot initiate"):
@@ -128,9 +134,10 @@ func (s *Service) telegram(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		v, lastError := s.state.Telegram, s.telegramError
 		s.mu.RUnlock()
-		writeJSON(w, 200, map[string]any{"enabled": v.Enabled, "use_proxy": v.UseProxy, "chat_id": v.ChatID, "token_set": v.Token != "", "last_error": lastError})
+		writeJSON(w, 200, map[string]any{"enabled": v.Enabled, "use_proxy": v.UseProxy, "node_id": v.NodeID, "chat_id": v.ChatID, "token_set": v.Token != "", "last_error": lastError})
 	case http.MethodPut:
 		var req struct {
+			NodeID   *string `json:"node_id"`
 			Enabled  bool    `json:"enabled"`
 			UseProxy *bool   `json:"use_proxy"`
 			Token    *string `json:"token"`
@@ -146,9 +153,18 @@ func (s *Service) telegram(w http.ResponseWriter, r *http.Request) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			old := s.state.Telegram
-			next := TelegramSettings{Enabled: req.Enabled, ChatID: req.ChatID, Token: old.Token, UseProxy: old.UseProxy}
+			next := TelegramSettings{Enabled: req.Enabled, ChatID: req.ChatID, Token: old.Token, UseProxy: old.UseProxy, NodeID: old.NodeID}
 			if req.UseProxy != nil {
 				next.UseProxy = *req.UseProxy
+			}
+			if req.NodeID != nil {
+				next.NodeID = strings.TrimSpace(*req.NodeID)
+				if next.NodeID != "" && next.NodeID != old.NodeID {
+					rec, err := s.cfg.Store.Get(next.NodeID)
+					if err != nil || !rec.Enabled || rec.Node.ChainInternal {
+						return http.StatusBadRequest, "Select an enabled Telegram proxy configuration"
+					}
+				}
 			}
 			if req.Token != nil {
 				next.Token = *req.Token
@@ -323,6 +339,10 @@ func (s *Service) deliverTelegram(ctx context.Context, cfg TelegramSettings, mes
 		return errors.New("Telegram proxy transport is unavailable")
 	}
 	choice := s.selection(ctx)
+	if cfg.NodeID != "" {
+		choice.Auto = false
+		choice.NodeID = cfg.NodeID
+	}
 	targetID := choice.NodeID
 	if choice.Auto {
 		targetID = ""
@@ -361,6 +381,9 @@ func (s *Service) deliverTelegram(ctx context.Context, cfg TelegramSettings, mes
 		return errors.New("No Telegram proxy node available; select an enabled configuration or run a latency check")
 	}
 	if target.Protocol == subscription.ProtoBalance {
+		if len(target.BalanceMembers) == 0 {
+			return errors.New("Telegram load balancer has no members")
+		}
 		memberID := target.BalanceMembers[0]
 		target = nil
 		for i := range all {

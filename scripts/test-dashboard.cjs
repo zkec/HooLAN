@@ -54,6 +54,11 @@ function checkDashboard(source) {
   document.getElementById('balance-search').value = 'two.example'; app.filter();
   assert(picker.querySelectorAll('.balance-option').filter(c => !c.hidden).length === 1, 'server search');
   app.wire();
+  ['proxy_upload_mbps','proxy_download_mbps','direct_upload_mbps','direct_download_mbps'].forEach(key => document.getElementById('device-'+key).value = '5');
+  document.getElementById('device-alias').value = 'Phone';
+  document.getElementById('device-reset-limits').events.click();
+  assert(['proxy_upload_mbps','proxy_download_mbps','direct_upload_mbps','direct_download_mbps'].every(key => document.getElementById('device-'+key).value === ''), 'reset must clear all four limits');
+  assert(document.getElementById('device-alias').value === 'Phone', 'reset changed device alias');
   const box = picker.querySelectorAll('[data-balance-node]').find(c => c.dataset.balanceNode === 'b');
   box.checked = false; picker.events.change({target:box});
   assert(app.balanceSelection().join() === 'a' && document.getElementById('balance-create').disabled, 'member checkbox/minimum');
