@@ -3,7 +3,7 @@ package netfilter
 import (
 	"fmt"
 	"os"
-	"proxy-manager/internal/engine"
+	"hoolan/internal/engine"
 	"regexp"
 	"sort"
 	"strings"
@@ -88,7 +88,7 @@ func (m *Manager) distributionFile() (string, func(), error) {
 	if err != nil {
 		return "", func() {}, err
 	}
-	f, err := os.CreateTemp("", "proxy-manager-balance-*.nft")
+	f, err := os.CreateTemp("", "hoolan-balance-*.nft")
 	if err != nil {
 		return "", func() {}, err
 	}

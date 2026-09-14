@@ -1,0 +1,137 @@
+# Install HooLAN
+
+[Home](../README.md) · [Documentation](../README.md#documentation)
+
+## Requirements and topology
+
+Use Raspberry Pi OS / Debian, systemd and root access for firewall management.
+Install Go and [sing-box with Clash API support](https://sing-box.sagernet.org/installation/package-manager/).
+HooLAN targets sing-box 1.14 configuration and owns its child engine process.
+Do not run a separate sing-box service on the same listeners.
+
+Examples use Pi `192.168.3.5`, upstream router `192.168.3.1`, LAN `192.168.3.0/24`,
+interface `eth0`, dashboard `8080`, TPROXY `7892` and Clash `127.0.0.1:9090`.
+Substitute your actual values. The Pi's default route must reach the upstream
+router. Give the Pi a stable address and reserve device addresses in DHCP.
+
+## Build
+
+```bash
+sudo apt-get update
+sudo apt-get install nftables iproute2 procps util-linux ca-certificates curl
+sing-box version
+ip -4 route show default
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+  go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
+```
+
+For 32-bit Pi userland, use `GOARCH=arm GOARM=7`. There is no npm step and no
+external Go module to download. If a standalone sing-box systemd unit is active,
+stop and disable it before letting HooLAN own the engine.
+
+## Install the service files
+
+These commands install the supplied configuration templates. Set secrets and
+site values before starting the service.
+
+```bash
+sudo install -Dm755 hoolan /opt/hoolan/hoolan
+for script in apply.sh remove.sh diagnose.sh install-router.sh; do
+  sudo install -Dm755 "scripts/tproxy/$script" "/opt/hoolan/scripts/tproxy/$script"
+done
+sudo install -Dm644 scripts/tproxy/tproxy.nft.template /opt/hoolan/scripts/tproxy/tproxy.nft.template
+sudo install -Dm600 scripts/tproxy/tproxy.conf /opt/hoolan/scripts/tproxy/tproxy.conf
+sudo install -d -m700 /var/lib/hoolan /etc/hoolan/singbox
+sudo install -m600 deploy/hoolan.env.example /etc/hoolan/env
+sudoedit /etc/hoolan/env
+sudoedit /opt/hoolan/scripts/tproxy/tproxy.conf
+```
+
+Set independent random values for `HOOLAN_TOKEN` (dashboard/API) and
+`HOOLAN_CLASH_SECRET` (engine control API). For example, generate each with
+`openssl rand -hex 32` if OpenSSL is installed. `HOOLAN_SUBS` optionally supplies
+initial subscription URLs; the UI can manage subscriptions without it.
+
+Use literal assignments in `tproxy.conf`, with no inline comments:
+
+```bash
+LAN_IF="eth0"
+TPROXY_PORT="7892"
+TPROXY_FWMARK="0x1"
+TPROXY_TABLE="100"
+TPROXY_RULE_PRIORITY="10000"
+PI_LAN_IP="192.168.3.5"
+SELF_ORIGIN_NETS=""
+WG_RP_FILTER="yes"
+```
+
+The service flag and `TPROXY_PORT` must agree. Reserve the mark, routing table,
+priority and adjacent distribution-listener ports for HooLAN. LAN prefixes are
+read from the live interface. Keep the template and helpers together.
+
+## Establish routing before interception
+
+A LAN client using the Pi as its gateway needs IPv4 forwarding, an upstream
+route and a return route or scoped NAT, even with the proxy engine OFF.
+
+For a **single-interface Pi with UFW already active**, the supplied installer
+requires Python 3 and writes backed-up UFW rules plus persistent sysctls:
+
+```bash
+sudo env LAN_IF=eth0 LAN_CIDR=192.168.3.0/24 TPROXY_FWMARK=0x1 \
+  bash /opt/hoolan/scripts/tproxy/install-router.sh
+```
+
+It configures scoped forwarding/MASQUERADE, marked TCP/UDP INPUT exceptions,
+IPv4 forwarding, reverse-path settings and disabled redirects. Use the same
+mark as `tproxy.conf`. For two interfaces or another firewall manager, configure
+these functions through that firewall instead of running this installer unchanged.
+An explicit return route can replace NAT.
+
+Test a single client with the engine OFF before changing DHCP for the whole LAN.
+
+## Start and sign in
+
+```bash
+sudo install -m644 deploy/hoolan.service /etc/systemd/system/hoolan.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now hoolan
+sudo journalctl -u hoolan -n 80 --no-pager
+```
+
+The supplied unit binds to loopback. From your workstation:
+
+```bash
+ssh -N -L 8080:127.0.0.1:8080 pi@192.168.3.5
+```
+
+Open `http://127.0.0.1:8080/`, sign in with `HOOLAN_TOKEN`, add/test/select a
+configuration and enable the engine. Point DHCP's IPv4 gateway option at the Pi
+only after testing. Advertise the Pi as DNS only if a resolver listens there.
+Plan IPv6 RA/DHCPv6 separately.
+
+## HTTPS access
+
+Use a trusted HTTPS reverse proxy. Preserve the public Host header and disable
+buffering for live logs:
+
+```nginx
+proxy_pass http://127.0.0.1:8080;
+proxy_set_header Host $http_host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_http_version 1.1;
+proxy_buffering off;
+proxy_read_timeout 75s;
+```
+
+Add `-secure-cookies` to the service's `ExecStart` for HTTPS-only browser access.
+Reload systemd and restart after editing the unit. A proxy in a container needs
+a reachable host listener; its own loopback is not the Pi's loopback. Restrict
+that listener to trusted sources. Keep Clash on loopback.
+
+## Updating an installation
+
+Download a backup, build a new executable, stop `hoolan`, replace the executable
+and firewall helpers/template, then start it again. Preserve the live `env`,
+`tproxy.conf` and state files. If the unit changes, install it and run
+`systemctl daemon-reload`. Test OFF forwarding and ON interception afterward.

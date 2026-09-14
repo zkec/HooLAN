@@ -2,8 +2,8 @@ package engine
 
 import (
 	"encoding/json"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 	"strings"
 	"testing"
 )
@@ -88,5 +88,39 @@ func TestBalancePlanRejectsMissingNestedAndOverflow(t *testing.T) {
 				t.Fatal("invalid distribution accepted")
 			}
 		})
+	}
+}
+
+func TestLatencyGroupUsesURLTestWithoutHashListeners(t *testing.T) {
+	nodes := balancedNodes()
+	nodes[2].BalanceStrategy = "latency"
+	m := NewManager(Options{Logger: quietLogger()})
+	m.ConfigureDeviceRoutes(map[string]string{"192.168.3.15": store.NodeID(nodes[2])})
+	cfg, err := m.BuildConfig(nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Inbounds) != 1 {
+		t.Fatal("latency group must use ordinary TPROXY listener")
+	}
+	found := false
+	for _, out := range cfg.Outbounds {
+		if u, ok := out.(*URLTestOutbound); ok && u.Tag == "Balanced" {
+			found = true
+			if len(u.Outbounds) != 2 || u.InterruptExistConnections {
+				t.Fatal("invalid URLTest")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing latency group")
+	}
+	plan, err := DistributionPlan(nodes, 7892)
+	if err != nil || len(plan) != 0 {
+		t.Fatalf("unexpected distribution: %v %v", plan, err)
+	}
+	nodes[2].BalanceStrategy = "invented"
+	if _, err := m.BuildConfig(nodes); err == nil {
+		t.Fatal("unknown strategy accepted")
 	}
 }

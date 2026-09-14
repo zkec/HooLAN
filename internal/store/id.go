@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 )
 
 // NodeID derives a stable identity for a node from the fields that define

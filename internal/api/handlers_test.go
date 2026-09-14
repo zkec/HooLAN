@@ -25,10 +25,10 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
-	"proxy-manager/internal/tester"
+	"hoolan/internal/engine"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
+	"hoolan/internal/tester"
 )
 
 func quietLogger() *slog.Logger {

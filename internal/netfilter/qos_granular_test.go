@@ -93,8 +93,8 @@ func TestQoSFlowTuplesBoundedAtomicAndNoBucketReset(t *testing.T) {
 // This never reads or modifies the host firewall. No sudo is needed when
 // unprivileged user namespaces are allowed by the host/sandbox.
 func TestQoSIsolatedNamespace(t *testing.T) {
-	if os.Getenv("PROXY_MANAGER_TEST_NFT_NAMESPACE") != "1" {
-		t.Skip("set PROXY_MANAGER_TEST_NFT_NAMESPACE=1 for isolated nft kernel validation")
+	if os.Getenv("HOOLAN_TEST_NFT_NAMESPACE") != "1" {
+		t.Skip("set HOOLAN_TEST_NFT_NAMESPACE=1 for isolated nft kernel validation")
 	}
 	dir := t.TempDir()
 	limits := map[string]DeviceLimits{"192.168.3.141": {8, 16, 4, 32}, "192.168.3.142": {0, 1, 2, 0}}

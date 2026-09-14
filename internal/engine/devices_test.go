@@ -2,7 +2,7 @@ package engine
 
 import (
 	"encoding/json"
-	"proxy-manager/internal/store"
+	"hoolan/internal/store"
 	"strings"
 	"testing"
 )

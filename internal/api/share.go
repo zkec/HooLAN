@@ -2,7 +2,7 @@ package api
 
 import (
 	"net/http"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 )
 
 func (h *handlers) shareNode(w http.ResponseWriter, r *http.Request) {

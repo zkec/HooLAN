@@ -218,6 +218,7 @@
       var name = element('td', 'node-name'); var nodeName = element('span', '', node.tag || node.server); nodeName.dataset.noI18n = ''; name.appendChild(nodeName);
       if (pinned || active) name.appendChild(element('span', 'pill good', pinned ? 'Pinned' : 'Active'));
       if (state.status && state.status.engine_running && !node.in_config) name.appendChild(element('span', 'pill', 'Not loaded'));
+      if (node.protocol === 'loadbalance') name.appendChild(element('span', 'pill', node.balance_strategy === 'latency' ? 'Best latency' : 'Distribute connections'));
       row.appendChild(name);
       row.appendChild(element('td', 'node-protocol protocol-column', node.protocol === 'loadbalance' ? 'Load Balanced' : node.protocol + (node.transport ? ' / ' + node.transport : '')));
       var server = node.server || '';
@@ -566,6 +567,16 @@
       });
     });
     $('refresh-all-btn').addEventListener('click', function () { startJob('/api/nodes/refresh', undefined, 'All subscriptions are refreshing and testing.'); });
+    $('iran-bypass').addEventListener('change', function () {
+      var enabled = $('iran-bypass').checked;
+      text($('iran-label'), enabled ? 'On' : 'Off');
+      mutate('Iran preset', async function () {
+        var saved = await call('GET', '/api/settings');
+        try { saved = await call('PUT', '/api/settings', {dns_server:saved.dns_server, iran_bypass:enabled}); }
+        catch (error) { $('iran-bypass').checked = saved.iran_bypass; text($('iran-label'), saved.iran_bypass ? 'On' : 'Off'); throw error; }
+        state.settings = saved; toast('Iran preset saved.', 'ok');
+      });
+    });
     $('settings-form').addEventListener('input', function () {
       state.settingsDirty = true;
       text($('settings-note'), 'Unsaved changes');
@@ -706,7 +717,7 @@
       if (state.busy || state.jobRunning || !state.authenticated) return;
       if (!name || ids.length < 2 || ids.length > 32) { toast('Enter a name and select 2–32 nodes or chains.', 'err'); return; }
       mutate('Create Load Balancer',async function() {
-        await call('POST','/api/load-balancers',{name:name,node_ids:ids});
+        await call('POST','/api/load-balancers',{name:name,node_ids:ids,strategy:$('balance-strategy').value});
         state.balanceMembers.clear();$('balance-form').reset();renderBalancePicker();toast('Load balancer saved','ok');
       });
     });
@@ -867,7 +878,8 @@
     var row = element('article','card routing-rule');
     ruleField(row,'Unique tag (custom-...)','tag',source.tag); ruleField(row,'HTTPS .srs URL','url',source.url);
     ruleField(row,'Enabled','enabled',source.enabled); ruleField(row,'Action','action',source.action,['direct','proxy','reject']);
-    [['Move up',function(){if(row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);}],['Move down',function(){if(row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row);}],['Delete',function(){row.remove();}]].forEach(function(item){var b=element('button','button subtle',item[0]);b.type='button';b.dataset.mutation='';b.addEventListener('click',function(){item[1]();state.rulesDirty=true;text($('rules-note'),'Unsaved changes');});row.appendChild(b);});
+    var controls = element('div', 'form-footer');
+    [['Move up',function(){if(row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);}],['Move down',function(){if(row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row);}],['Delete',function(){row.remove();}]].forEach(function(item){var b=element('button','button subtle',item[0]);b.type='button';b.dataset.mutation='';b.addEventListener('click',function(){item[1]();state.rulesDirty=true;text($('rules-note'),'Unsaved changes');});controls.appendChild(b);}); row.appendChild(controls);
     $('rule-source-list').appendChild(row); updateControls();
   }
   function byteCount(n) { var units=['B','KiB','MiB','GiB','TiB'];var i=0;while(n>=1024&&i<4){n/=1024;i++;}return n.toFixed(i?2:0)+' '+units[i]; }
@@ -1011,10 +1023,18 @@
     input.dataset.field = name;
     input.setAttribute('aria-label', label);
     if (choices) choices.forEach(function (choice) { var option = element('option', '', choice); option.value = choice; input.appendChild(option); });
-    if (name === 'enabled') { input.type = 'checkbox'; input.checked = value; }
-    else { input.value = Array.isArray(value) ? value.join('\n') : value; input.required = true; }
+    if (name === 'enabled') {
+      input.type = 'checkbox'; input.checked = value; input.setAttribute('role', 'switch');
+      caption.className = 'switch'; text(caption, ''); caption.appendChild(input);
+      var track = element('span', 'switch-track'); track.setAttribute('aria-hidden', 'true'); caption.appendChild(track); caption.appendChild(element('span', '', label));
+      wrap.appendChild(caption);
+    } else {
+      input.value = Array.isArray(value) ? value.join('\n') : value; input.required = true;
+      caption.className = 'rule-field-label'; caption.appendChild(input); wrap.appendChild(caption);
+    }
+    input.dataset.mutation = '';
     if (name === 'name') input.maxLength = 100;
-    caption.appendChild(input); wrap.appendChild(caption); row.appendChild(wrap);
+    row.appendChild(wrap);
     return input;
   }
   function addRoutingRule(rule) {
@@ -1067,7 +1087,7 @@
 
     $('source-add').addEventListener('click', function () { addRuleSource({tag:'custom-',url:'',enabled:true,action:'direct'}); state.rulesDirty = true; });
 
-    $('rules-form').addEventListener('input', function () { state.rulesDirty = true; text($('rules-note'), 'Unsaved changes'); });
+    $('rules-form').addEventListener('input', function (event) { if (event.target.id === 'iran-bypass') return; state.rulesDirty = true; text($('rules-note'), 'Unsaved changes'); });
     $('rules-schedule').addEventListener('change', function () { if (this.value !== 'custom') $('rules-days').value = this.value; });
     $('rules-add').addEventListener('click', function () { addRoutingRule({ name: '', enabled: true, match: 'domain_suffix', values: [], action: 'direct' }); state.rulesDirty = true; text($('rules-note'), 'Unsaved changes'); updateControls(); });
     $('rules-form').addEventListener('submit', function (event) {

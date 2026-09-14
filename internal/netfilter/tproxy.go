@@ -1,7 +1,7 @@
 package netfilter
 
 // Bare-metal TPROXY controller — NOT Docker.
-// The Go proxy-manager runs as a systemd unit on Raspberry Pi OS and owns the
+// The Go hoolan runs as a systemd unit on Raspberry Pi OS and owns the
 // nftables ruleset via scripts/tproxy/*.sh. This package is a thin os/exec
 // wrapper; all netlink/nft logic lives in the shell scripts so it can be
 // audited and tested without cgo or third-party Go nft libraries.
@@ -14,7 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"proxy-manager/internal/engine"
+	"hoolan/internal/engine"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,8 +47,8 @@ func New(dir string) (*Manager, error) {
 	if dir == "" {
 		// bare-metal systemd layout vs. dev checkout
 		candidates = []string{
-			"/opt/proxy-manager/scripts/tproxy",
-			"/etc/proxy-manager/tproxy",
+			"/opt/hoolan/scripts/tproxy",
+			"/etc/hoolan/tproxy",
 			"scripts/tproxy",
 			filepath.Join(findRepoRoot(), "scripts/tproxy"),
 		}

@@ -18,10 +18,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/netfilter"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/engine"
+	"hoolan/internal/netfilter"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 )
 
 const maxBackupBytes = 32 << 20

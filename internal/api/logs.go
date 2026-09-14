@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"proxy-manager/internal/logstream"
+	"hoolan/internal/logstream"
 )
 
 func (h *handlers) logs(w http.ResponseWriter, r *http.Request) {

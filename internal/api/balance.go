@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/engine"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 	"strings"
 	"time"
 )
@@ -17,6 +17,15 @@ import (
 // CreateLoadBalancer snapshots members and their complete detour paths. A
 // provider refresh can then prune originals without breaking saved groups.
 func (s *Service) CreateLoadBalancer(ctx context.Context, name string, ids []string) (string, error) {
+	return s.CreateLoadBalancerWithStrategy(ctx, name, ids, "hash")
+}
+func (s *Service) CreateLoadBalancerWithStrategy(ctx context.Context, name string, ids []string, strategy string) (string, error) {
+	if strategy == "" {
+		strategy = "hash"
+	}
+	if strategy != "hash" && strategy != "latency" {
+		return "", fmt.Errorf("%w: unknown balancing strategy", ErrInvalidInput)
+	}
 	name = strings.TrimSpace(name)
 	if !validEditName(name) || len(ids) < 2 || len(ids) > 32 {
 		return "", fmt.Errorf("%w: provide a name and 2–32 distinct nodes", ErrInvalidInput)
@@ -122,7 +131,7 @@ func (s *Service) CreateLoadBalancer(ctx context.Context, name string, ids []str
 		}
 		records = append(records, rec)
 	}
-	root := subscription.Node{Protocol: subscription.ProtoBalance, Tag: name, LocalVariant: group, BalanceMembers: members}
+	root := subscription.Node{Protocol: subscription.ProtoBalance, Tag: name, LocalVariant: group, BalanceMembers: members, BalanceStrategy: strategy}
 	id := store.NodeID(root)
 	records = append(records, store.Record{ID: id, Node: root, ChainID: group, Enabled: true, CreatedAt: now, UpdatedAt: now, LastLatencyMS: store.LatencyUnmeasured})
 	candidate := store.EnabledRecords(records)
@@ -164,14 +173,15 @@ func (s *Service) CreateLoadBalancer(ctx context.Context, name string, ids []str
 }
 func (h *handlers) createLoadBalancer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string   `json:"name"`
-		IDs  []string `json:"node_ids"`
+		Strategy string   `json:"strategy"`
+		Name     string   `json:"name"`
+		IDs      []string `json:"node_ids"`
 	}
 	if err := decodeBody(r, &req); err != nil {
 		writeError(w, 400, err.Error())
 		return
 	}
-	id, err := h.svc.CreateLoadBalancer(r.Context(), req.Name, req.IDs)
+	id, err := h.svc.CreateLoadBalancerWithStrategy(r.Context(), req.Name, req.IDs, req.Strategy)
 	if err != nil {
 		h.dashboardError(w, err)
 		return

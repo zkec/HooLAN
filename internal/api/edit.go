@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/engine"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 )
 
 // NodePatch deliberately excludes identity, ownership, protocol and detour fields.
@@ -255,6 +255,28 @@ type ChainHop struct {
 	Server string `json:"server"`
 }
 
+// Legacy snapshots did not retain source names. Recover by endpoint identity;
+// never use a generated hop label as though it were the provider's original name.
+func (s *Service) chainSourceName(rec store.Record) string {
+	if rec.SourceName != "" {
+		return rec.SourceName
+	}
+	if rec.ChainID == "" && !rec.Node.ChainInternal {
+		return rec.Node.Tag
+	}
+	endpoint := rec.Node
+	endpoint.LocalVariant = ""
+	id := store.NodeID(endpoint)
+	for _, candidate := range s.cfg.Store.All() {
+		n := candidate.Node
+		n.LocalVariant = ""
+		if candidate.ChainID == "" && !n.ChainInternal && store.NodeID(n) == id {
+			return n.Tag
+		}
+	}
+	return fmt.Sprintf("%s:%d (%s)", rec.Node.Server, rec.Node.Port, rec.Node.Protocol)
+}
+
 func (s *Service) chainRecords(id string) ([]store.Record, error) {
 	exit, err := s.cfg.Store.Get(id)
 	if err != nil {
@@ -334,7 +356,7 @@ func (s *Service) UpdateChain(ctx context.Context, id, name string, ids []string
 		if !n.ChainInternal {
 			n.Tag = name
 		}
-		r := store.Record{ID: store.NodeID(n), Node: n, ChainID: group, DetourID: previous, Enabled: true, CreatedAt: oldHops[len(oldHops)-1].CreatedAt, UpdatedAt: now, LastLatencyMS: store.LatencyUnmeasured}
+		r := store.Record{SourceName: s.chainSourceName(source), ID: store.NodeID(n), Node: n, ChainID: group, DetourID: previous, Enabled: true, CreatedAt: oldHops[len(oldHops)-1].CreatedAt, UpdatedAt: now, LastLatencyMS: store.LatencyUnmeasured}
 		after = append(after, r)
 		newIDs = append(newIDs, r.ID)
 		previous = r.ID
@@ -355,7 +377,7 @@ func (h *handlers) chains(w http.ResponseWriter, r *http.Request) {
 		}
 		hops := []ChainHop{}
 		for _, rec := range records {
-			hops = append(hops, ChainHop{rec.ID, rec.Node.Tag, rec.Node.Server})
+			hops = append(hops, ChainHop{rec.ID, h.svc.chainSourceName(rec), rec.Node.Server})
 		}
 		writeJSON(w, 200, map[string]any{"node_id": records[len(records)-1].ID, "name": records[len(records)-1].Node.Tag, "hops": hops})
 	case http.MethodPut:

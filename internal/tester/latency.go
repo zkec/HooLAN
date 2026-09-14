@@ -36,7 +36,7 @@ import (
 	"sync"
 	"time"
 
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 )
 
 // DefaultProbeURL is a 204-returning endpoint: no body to download, so the

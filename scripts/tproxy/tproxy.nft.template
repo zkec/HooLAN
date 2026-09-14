@@ -4,7 +4,7 @@
 # Source: scripts/tproxy/tproxy.nft.template + scripts/tproxy/tproxy.conf
 # Renderer: scripts/tproxy/apply.sh
 #
-# Smart Gateway TPROXY interception for sing-box, on a Pi that also hosts a
+# HooLAN TPROXY interception for sing-box, on a Pi that also hosts a
 # Docker stack (NPM / AdGuard Home / wg-easy / Jellyfin).
 #
 # IPv4 only. IPv6 LAN interception is a deliberate omission for now — clients
@@ -27,7 +27,7 @@
 add table inet proxy_tproxy
 delete table inet proxy_tproxy
 table inet proxy_tproxy {
-    comment "TPROXY interception for sing-box (smart gateway)"
+    comment "HooLAN TPROXY interception for sing-box"
 
     # The Pi's own LAN subnet(s), computed by apply.sh from live addresses on
     # LAN_IF (NOT a hardcoded /24). Traffic destined inside the Pi's own subnet

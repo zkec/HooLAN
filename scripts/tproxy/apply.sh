@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONF_FILE="${CONF_FILE:-$SCRIPT_DIR/tproxy.conf}"
-RUNTIME_DIR="${RUNTIME_DIR:-/run/proxy-manager}"
+RUNTIME_DIR="${RUNTIME_DIR:-/run/hoolan}"
 TEMPLATE="$SCRIPT_DIR/tproxy.nft.template"
 RENDERED="$RUNTIME_DIR/tproxy.nft"
 STATE_FILE="$RUNTIME_DIR/state.conf"

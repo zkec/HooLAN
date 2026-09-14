@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 )
 
 func fixedClock(t time.Time) func() time.Time {

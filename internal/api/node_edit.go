@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 )
 
 func (s *Service) DeleteManual(ctx context.Context, id string) error {

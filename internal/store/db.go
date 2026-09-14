@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 )
 
 // schemaVersion is bumped when the on-disk shape changes incompatibly.
@@ -39,8 +39,9 @@ var ErrNotFound = errors.New("store: node not found")
 // assigned locally and must survive a subscription refresh that re-delivers
 // the same node.
 type Record struct {
-	ChainID  string `json:"chain_id,omitempty"`
-	DetourID string `json:"detour_id,omitempty"`
+	SourceName string `json:"source_name,omitempty"`
+	ChainID    string `json:"chain_id,omitempty"`
+	DetourID   string `json:"detour_id,omitempty"`
 	// ID is a stable content-derived identity, NOT the tag. Providers rename
 	// nodes freely ("US-1" becoming "🇺🇸 US-1" between refreshes), which would
 	// otherwise orphan the latency history. See NodeID.

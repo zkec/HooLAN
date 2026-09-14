@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"time"
 
-	"proxy-manager/internal/engine"
+	"hoolan/internal/engine"
 )
 
 type ruleManager interface {

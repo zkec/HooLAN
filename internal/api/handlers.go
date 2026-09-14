@@ -23,9 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"proxy-manager/internal/logstream"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/logstream"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 )
 
 // RouterOptions configures the HTTP surface.
@@ -165,6 +165,7 @@ func (r *statusRecorder) Flush() { _ = r.FlushError() }
 // NodeView is one node as the API presents it. Credentials are omitted unless
 // RouterOptions.ExposeCredentials is set.
 type NodeView struct {
+	BalanceStrategy string   `json:"balance_strategy,omitempty"`
 	MemberCount     int      `json:"member_count,omitempty"`
 	ChainID         string   `json:"chain_id,omitempty"`
 	SubscriptionIDs []string `json:"subscription_ids"`
@@ -276,27 +277,28 @@ func (h *handlers) viewOf(rec store.Record, tagByID map[string]string, selectedI
 	n := rec.Node
 	effective := tagByID[rec.ID]
 	v := NodeView{
-		ID:            rec.ID,
-		MemberCount:   len(n.BalanceMembers),
-		ChainID:       rec.ChainID,
-		Tag:           displayTag(n),
-		Protocol:      string(n.Protocol),
-		Server:        n.Server,
-		Port:          n.Port,
-		Transport:     string(n.Transport),
-		Security:      string(n.Security),
-		SNI:           n.SNI,
-		Detour:        n.Detour,
-		DetourID:      rec.DetourID,
-		Enabled:       rec.Enabled,
-		LatencyMS:     rec.LastLatencyMS,
-		Healthy:       rec.Healthy(),
-		LastCheckedAt: rec.LastCheckedAt,
-		LastError:     rec.LastError,
-		Failures:      rec.ConsecutiveFailures,
-		Selected:      rec.ID == selectedID,
-		InConfig:      effective != "",
-		EffectiveTag:  effective,
+		ID:              rec.ID,
+		MemberCount:     len(n.BalanceMembers),
+		BalanceStrategy: n.BalanceStrategy,
+		ChainID:         rec.ChainID,
+		Tag:             displayTag(n),
+		Protocol:        string(n.Protocol),
+		Server:          n.Server,
+		Port:            n.Port,
+		Transport:       string(n.Transport),
+		Security:        string(n.Security),
+		SNI:             n.SNI,
+		Detour:          n.Detour,
+		DetourID:        rec.DetourID,
+		Enabled:         rec.Enabled,
+		LatencyMS:       rec.LastLatencyMS,
+		Healthy:         rec.Healthy(),
+		LastCheckedAt:   rec.LastCheckedAt,
+		LastError:       rec.LastError,
+		Failures:        rec.ConsecutiveFailures,
+		Selected:        rec.ID == selectedID,
+		InConfig:        effective != "",
+		EffectiveTag:    effective,
 	}
 	if h.opts.ExposeCredentials {
 		v.UUID, v.Password, v.Method = n.UUID, n.Password, n.Method

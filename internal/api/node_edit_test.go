@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 	"path/filepath"
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/engine"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 	"testing"
 	"time"
 )

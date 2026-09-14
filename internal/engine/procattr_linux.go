@@ -35,7 +35,7 @@ import (
 // Suggested unit:
 //
 //	[Service]
-//	ExecStart=/usr/local/bin/proxy-manager
+//	ExecStart=/usr/local/bin/hoolan
 //	KillMode=control-group
 //	Restart=on-failure
 //	AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW

@@ -6,10 +6,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/netfilter"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/engine"
+	"hoolan/internal/netfilter"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 	"reflect"
 	"testing"
 )
@@ -263,5 +263,28 @@ func TestLoadBalancerAndLimitsBackupRoundTrip(t *testing.T) {
 	})
 	if _, err := decodeBackup(bad, 7892); err == nil {
 		t.Fatal("missing group member accepted")
+	}
+}
+
+func TestLoadBalancerStrategyPersists(t *testing.T) {
+	h, fw := balanceHarness(t)
+	all := h.store.All()
+	router := NewRouter(h.svc, RouterOptions{Logger: quietLogger()})
+	raw, _ := json.Marshal(map[string]any{"name": "Latency group", "node_ids": []string{all[0].ID, all[1].ID}, "strategy": "latency"})
+	response := authRequest(router, "POST", "/api/load-balancers", string(raw), nil, "")
+	if response.Code != 201 {
+		t.Fatal(response.Body.String())
+	}
+	var result map[string]string
+	json.Unmarshal(response.Body.Bytes(), &result)
+	rec, err := h.store.Get(result["node_id"])
+	if err != nil || rec.Node.BalanceStrategy != "latency" {
+		t.Fatalf("strategy lost: %v", err)
+	}
+	if len(fw.groups) != 0 {
+		t.Fatal("latency group incorrectly installed hash dispatcher")
+	}
+	if _, err := h.svc.CreateLoadBalancerWithStrategy(context.Background(), "invalid", []string{all[0].ID, all[1].ID}, "least-load"); err == nil {
+		t.Fatal("unsupported strategy accepted")
 	}
 }

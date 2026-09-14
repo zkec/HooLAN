@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 	"strings"
 	"time"
 )
@@ -116,7 +116,7 @@ func measureEndpoint(ctx context.Context, client *http.Client, endpoint speedEnd
 	if err != nil {
 		return SpeedResult{}, err
 	}
-	req.Header.Set("User-Agent", "proxy-manager-speedtest/1.0")
+	req.Header.Set("User-Agent", "hoolan-speedtest/1.0")
 	req.Header.Set("Accept", "application/octet-stream, */*")
 	req.Header.Set("Accept-Encoding", "identity")
 	req.Header.Set("Cache-Control", "no-cache")

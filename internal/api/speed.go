@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
-	"proxy-manager/internal/tester"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
+	"hoolan/internal/tester"
 	"time"
 )
 

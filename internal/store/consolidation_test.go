@@ -3,7 +3,7 @@ package store
 import (
 	"errors"
 	"path/filepath"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 	"reflect"
 	"testing"
 	"time"

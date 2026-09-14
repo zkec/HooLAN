@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/logstream"
+	"hoolan/internal/logstream"
 )
 
 func nextLog(t *testing.T, reader *bufio.Reader) logstream.Entry {

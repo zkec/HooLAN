@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/engine"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 	"strings"
 	"time"
 )
@@ -213,7 +213,7 @@ func (s *Service) CreateChain(ctx context.Context, name string, ids []string) (s
 		if i == len(ids)-1 {
 			node.Tag = name
 		}
-		copy := store.Record{ID: store.NodeID(node), Node: node, DetourID: previous, ChainID: group, Enabled: true, CreatedAt: now, UpdatedAt: now, LastLatencyMS: store.LatencyUnmeasured}
+		copy := store.Record{SourceName: s.chainSourceName(r), ID: store.NodeID(node), Node: node, DetourID: previous, ChainID: group, Enabled: true, CreatedAt: now, UpdatedAt: now, LastLatencyMS: store.LatencyUnmeasured}
 		records = append(records, copy)
 		newIDs = append(newIDs, copy.ID)
 		previous = copy.ID

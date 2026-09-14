@@ -2,7 +2,7 @@ package store
 
 import (
 	"path/filepath"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 	"testing"
 )
 

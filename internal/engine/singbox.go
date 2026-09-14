@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 )
 
 // Defaults align with scripts/tproxy/tproxy.conf. TPROXY_PORT there must equal
@@ -68,7 +68,7 @@ type Options struct {
 	// BinaryPath is the sing-box executable. Default: resolved from PATH.
 	BinaryPath string
 	// ConfigPath is where config.json is written. Default:
-	// /etc/proxy-manager/singbox/config.json
+	// /etc/hoolan/singbox/config.json
 	ConfigPath string
 
 	TProxyPort int
@@ -167,7 +167,7 @@ func (o *Options) setDefaults() {
 		o.InboundTag = DefaultTag
 	}
 	if o.ConfigPath == "" {
-		o.ConfigPath = "/etc/proxy-manager/singbox/config.json"
+		o.ConfigPath = "/etc/hoolan/singbox/config.json"
 	}
 	if o.BinaryPath == "" {
 		o.BinaryPath = "sing-box"
@@ -583,6 +583,9 @@ func (m *Manager) buildOutbound(n subscription.Node) (any, error) {
 		tags := n.BalanceTags
 		if len(tags) == 0 {
 			tags = n.BalanceMembers
+		}
+		if n.BalanceStrategy == "latency" {
+			return &URLTestOutbound{Type: "urltest", Tag: n.Tag, Outbounds: tags, URL: m.opts.AutoSwitchURL, Interval: durationString(m.opts.AutoSwitchInterval), Tolerance: m.opts.AutoSwitchTolerance}, nil
 		}
 		return &SelectorOutbound{Type: "selector", Tag: n.Tag, Outbounds: tags, Default: tags[0]}, nil
 	case subscription.ProtoVLESS:

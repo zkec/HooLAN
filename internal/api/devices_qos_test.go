@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"proxy-manager/internal/netfilter"
+	"hoolan/internal/netfilter"
 	"reflect"
 	"testing"
 )

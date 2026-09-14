@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/logstream"
+	"hoolan/internal/logstream"
 )
 
 func TestBrowserFixture(t *testing.T) {
-	dir := os.Getenv("PROXY_MANAGER_BROWSER_FIXTURE")
+	dir := os.Getenv("HOOLAN_BROWSER_FIXTURE")
 	if dir == "" {
-		t.Skip("set PROXY_MANAGER_BROWSER_FIXTURE to serve a simulated gateway for browser checks")
+		t.Skip("set HOOLAN_BROWSER_FIXTURE to serve a simulated gateway for browser checks")
 	}
 	h := newHarness(t, nil, nil)
 	h.svc.cfg.Engine = &configurableTestEngine{fakeEngine: h.eng}

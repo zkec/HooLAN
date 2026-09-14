@@ -25,11 +25,11 @@ import (
 	"sync"
 	"time"
 
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/netfilter"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
-	"proxy-manager/internal/tester"
+	"hoolan/internal/engine"
+	"hoolan/internal/netfilter"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
+	"hoolan/internal/tester"
 )
 
 // ProxyEngine is the slice of engine.Manager the API depends on. An interface so
@@ -224,7 +224,7 @@ func New(cfg Config) (*Service, error) {
 		cfg.HTTPClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	if cfg.UserAgent == "" {
-		cfg.UserAgent = "proxy-manager/1.0 (sing-box)"
+		cfg.UserAgent = "hoolan/1.0 (sing-box)"
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,6 +1,6 @@
 package store
 
-import "proxy-manager/internal/subscription"
+import "hoolan/internal/subscription"
 
 // ResolveBalanceMembers keeps persistent membership tied to IDs across tag
 // deduplication. A missing member is retained as an invalid reference for the

@@ -77,7 +77,7 @@ run iptables -S FORWARD
 run iptables -t mangle -S
 run iptables -t nat -S
 run nstat -az IpInDiscards IpOutNoRoutes TcpExtIPReversePathFilter TcpExtListenDrops
-run systemctl show proxy-manager.service --property=MainPID --property=ActiveState --property=SubState --property=ExecMainStatus
+run systemctl show hoolan.service --property=MainPID --property=ActiveState --property=SubState --property=ExecMainStatus
 
 printf '\nInterpretation:\n'
 cat <<'GUIDE'

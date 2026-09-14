@@ -2,6 +2,18 @@
 (function () {
   "use strict";
   var fa = {
+  "Automatic selection (global)": "انتخاب خودکار سراسری",
+  "Choose the fastest reachable ordinary configuration globally. Activate a saved group to use its own strategy.": "سریع‌ترین پیکربندی معمولی در دسترس را به‌صورت سراسری انتخاب کنید. برای استفاده از راهبرد یک گروه ذخیره‌شده، همان گروه را فعال کنید.",
+  "Selection strategy": "راهبرد انتخاب",
+  "Distribute connections": "توزیع اتصال‌ها",
+  "Best latency": "بهترین تأخیر",
+  "Rule sets": "مجموعه‌قواعد",
+  "Iran preset": "پیش‌تنظیم ایران",
+  "Iran preset saved.": "پیش‌تنظیم ایران ذخیره شد.",
+  "Built-in GeoIP and geosite rules for Iran. Enable to apply the action below. This switch applies immediately.": "قواعد آمادهٔ GeoIP و geosite برای ایران. برای اعمال عملکرد انتخاب‌شده، فعال کنید. این کلید بلافاصله اعمال می‌شود.",
+  "Use the Iran preset or add compiled sing-box .srs sources. Custom rule sets are evaluated before the Iran preset.": "از پیش‌تنظیم ایران استفاده کنید یا منابع کامپایل‌شدهٔ sing-box با پسوند .srs اضافه کنید. مجموعه‌قواعد سفارشی پیش از پیش‌تنظیم ایران بررسی می‌شوند.",
+  "Select 2\u201332 nodes or chains and choose a strategy for the saved group. Connection distribution spreads flows across members; best latency selects one member using periodic URL tests. Neither mode bonds a single download or measures server load.": "۲ تا ۳۲ گره یا زنجیره و یک راهبرد برای گروه انتخاب کنید. توزیع اتصال‌ها، جریان‌ها را بین اعضا پخش می‌کند؛ بهترین تأخیر، یک عضو را با آزمون دوره‌ای URL انتخاب می‌کند. هیچ‌کدام سرعت یک دانلود را ترکیب نمی‌کنند و بار سرور را اندازه نمی‌گیرند.",
+
   "Reset limits": "بازنشانی محدودیت‌ها",
   "Telegram proxy configuration": "پیکربندی پروکسی تلگرام",
   "Unavailable node (delivery will fail)": "گره در دسترس نیست (ارسال ناموفق خواهد بود)",
@@ -327,7 +339,7 @@
   "Sign in to manage your network.": "برای مدیریت شبکه وارد شوید.",
   "JavaScript is required to sign in.": "برای ورود باید جاوااسکریپت فعال باشد.",
   "Access token": "توکن دسترسی",
-  "Use the token configured in PROXY_MANAGER_TOKEN.": "از توکن تنظیم‌شده در PROXY_MANAGER_TOKEN استفاده کنید.",
+  "Use the token configured in HOOLAN_TOKEN.": "از توکن تنظیم‌شده در HOOLAN_TOKEN استفاده کنید.",
   "Sign in": "ورود",
   "Signing in…": "در حال ورود…",
   "Checking session…": "بررسی نشست…",

@@ -2,8 +2,8 @@ package engine
 
 import (
 	"fmt"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 	"sort"
 )
 
@@ -42,6 +42,15 @@ func DistributionPlan(nodes []subscription.Node, basePort int) ([]DistributionGr
 		}
 		if len(g.BalanceTags) != len(g.BalanceMembers) {
 			return nil, fmt.Errorf("unresolved load balancer members")
+		}
+		// Latency groups use a native URLTest through the ordinary TPROXY listener.
+		if g.BalanceStrategy == "latency" {
+			for _, tag := range g.BalanceTags {
+				if n, ok := byTag[tag]; !ok || n.Protocol == subscription.ProtoBalance {
+					return nil, fmt.Errorf("missing or nested load balancer member")
+				}
+			}
+			continue
 		}
 		plan := DistributionGroup{ID: store.NodeID(g), Tag: g.Tag}
 		for i, tag := range g.BalanceTags {

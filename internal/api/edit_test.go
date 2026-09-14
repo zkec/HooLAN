@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
 	"strings"
 	"testing"
 )
@@ -240,5 +240,37 @@ func TestEditingHTTPRoutes(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{"node_id": exit, "name": "Edited chain", "node_ids": []string{chain.Hops[1].ID, chain.Hops[0].ID}})
 	if w := authRequest(router, "PUT", "/api/chains", string(body), cookie, session.CSRF); w.Code != 200 {
 		t.Fatalf("PUT chain: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChainKeepsSourceNamesAcrossEdit(t *testing.T) {
+	h := deviceHarness(t)
+	ctx := context.Background()
+	all := h.store.All()
+	id, err := h.svc.CreateChain(ctx, "My chain", []string{all[0].ID, all[1].ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hops, err := h.svc.chainRecords(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, hop := range hops {
+		if hop.SourceName != all[i].Node.Tag {
+			t.Fatal("source name not stored")
+		}
+		legacy := hop
+		legacy.SourceName = ""
+		if h.svc.chainSourceName(legacy) != all[i].Node.Tag {
+			t.Fatal("legacy name not recovered")
+		}
+	}
+	id, err = h.svc.UpdateChain(ctx, id, "Renamed", []string{hops[1].ID, hops[0].ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, _ := h.svc.chainRecords(id)
+	if current[0].SourceName != all[1].Node.Tag || current[1].SourceName != all[0].Node.Tag {
+		t.Fatal("reordering lost names")
 	}
 }

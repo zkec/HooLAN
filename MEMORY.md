@@ -1,6 +1,6 @@
-# MEMORY.md — proxy-manager project constraints
+# MEMORY.md — hoolan project constraints
 
-This file is the permanent record for the Smart Gateway project. Every session must respect these rules.
+This file is the permanent record for the HooLAN project. Every session must respect these rules.
 
 - Target Environment: Bare-metal Raspberry Pi OS. Do NOT use Docker for the Go backend.
 - Core Engines: Sing-box and Xray-core.

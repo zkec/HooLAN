@@ -234,7 +234,7 @@ func (m *Manager) qosFile(limits map[string]DeviceLimits) (string, func(), error
 	if err != nil {
 		return "", func() {}, err
 	}
-	f, err := os.CreateTemp("", "proxy-manager-qos-*.nft")
+	f, err := os.CreateTemp("", "hoolan-qos-*.nft")
 	if err != nil {
 		return "", func() {}, err
 	}

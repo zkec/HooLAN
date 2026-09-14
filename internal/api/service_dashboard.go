@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
-	"proxy-manager/internal/tester"
+	"hoolan/internal/engine"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
+	"hoolan/internal/tester"
 )
 
 // Subscription retains source membership separately from the deduplicated node

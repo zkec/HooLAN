@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Remove ONLY the table and route tuple owned by proxy-manager.
+# Remove ONLY the table and route tuple owned by hoolan.
 set -euo pipefail
-RUNTIME_DIR="${RUNTIME_DIR:-/run/proxy-manager}"
+RUNTIME_DIR="${RUNTIME_DIR:-/run/hoolan}"
 STATE_FILE="$RUNTIME_DIR/state.conf"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }; }
 for tool in nft ip flock; do need "$tool"; done

@@ -57,8 +57,9 @@ var ErrUnsupportedScheme = errors.New("subscription: unsupported scheme")
 // link" — renderers must omit rather than guess, so a node that carried no SNI
 // does not silently acquire one.
 type Node struct {
-	BalanceMembers []string `json:",omitempty"` // stable IDs of private member snapshots
-	BalanceTags    []string `json:"-"`          // resolved only for rendering
+	BalanceStrategy string   `json:",omitempty"`
+	BalanceMembers  []string `json:",omitempty"` // stable IDs of private member snapshots
+	BalanceTags     []string `json:"-"`          // resolved only for rendering
 	// LocalVariant separates saved chain snapshots from provider node identity.
 	LocalVariant  string `json:",omitempty"`
 	ChainInternal bool   `json:",omitempty"`
@@ -118,6 +119,9 @@ func (n Node) Addr() string {
 // obvious error.
 func (n Node) Validate() error {
 	if n.Protocol == ProtoBalance {
+		if n.BalanceStrategy != "" && n.BalanceStrategy != "hash" && n.BalanceStrategy != "latency" {
+			return errors.New("unknown load balancing strategy")
+		}
 		if n.LocalVariant == "" || len(n.BalanceMembers) < 2 || len(n.BalanceMembers) > 32 || n.Detour != "" || n.ChainInternal {
 			return errors.New("invalid load balanced configuration")
 		}

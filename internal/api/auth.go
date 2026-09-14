@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	sessionCookieName = "proxy_manager_session"
+	sessionCookieName = "hoolan_session"
 	sessionLifetime   = 12 * time.Hour
 	maxSessions       = 128
 	maxLoginClients   = 1024

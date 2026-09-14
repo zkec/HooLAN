@@ -22,23 +22,23 @@ net=ipaddress.ip_network(cidr,strict=True)
 if net.version!=4 or not net.is_private or net.prefixlen<16: raise SystemExit('Use the actual private IPv4 LAN subnet, /16 or narrower')
 p=pathlib.Path('/etc/ufw/before.rules')
 s=p.read_text()
-shutil.copy2(p,str(p)+'.proxy-manager-'+datetime.datetime.now().strftime('%Y%m%d%H%M%S')+'.bak')
+shutil.copy2(p,str(p)+'.hoolan-'+datetime.datetime.now().strftime('%Y%m%d%H%M%S')+'.bak')
 # Remove only our previous managed blocks on reinstallation.
-s=re.sub(r'(?ms)^# BEGIN proxy-manager router.*?^# END proxy-manager router\n','',s)
+s=re.sub(r'(?ms)^# BEGIN hoolan router.*?^# END hoolan router\n','',s)
 lines=s.splitlines(True);start=next(i for i,l in enumerate(lines) if l.strip()=='*filter')
 end=next(i for i in range(start+1,len(lines)) if lines[i].strip()=='COMMIT')
 insert=next(i for i in range(start+1,end) if lines[i].startswith('-A '))
-rules=f'''# BEGIN proxy-manager router filter
+rules=f'''# BEGIN hoolan router filter
 -A ufw-before-input -i {iface} -s {net} -p tcp -m mark --mark {mark}/0xffffffff -j ACCEPT
 -A ufw-before-input -i {iface} -s {net} -p udp -m mark --mark {mark}/0xffffffff -j ACCEPT
 -A ufw-before-forward -i {iface} -o {iface} -s {net} ! -d {net} -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
 -A ufw-before-forward -i {iface} -o {iface} -d {net} -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-# END proxy-manager router
+# END hoolan router
 '''
 lines.insert(insert,rules);s=''.join(lines)
-nat=f'''# BEGIN proxy-manager router nat
+nat=f'''# BEGIN hoolan router nat
 -A POSTROUTING -s {net} ! -d {net} -o {iface} -j MASQUERADE
-# END proxy-manager router
+# END hoolan router
 '''
 lines=s.splitlines(True)
 if any(l.strip()=='*nat' for l in lines):
@@ -52,14 +52,14 @@ net.ipv4.conf.{iface}.send_redirects = 0
 net.ipv4.conf.all.rp_filter = 0
 net.ipv4.conf.{iface}.rp_filter = 0
 '''
-pathlib.Path('/etc/sysctl.d/90-proxy-manager-router.conf').write_text(settings)
+pathlib.Path('/etc/sysctl.d/90-hoolan-router.conf').write_text(settings)
 ufw_sysctl=pathlib.Path('/etc/ufw/sysctl.conf')
 old=ufw_sysctl.read_text()
-shutil.copy2(ufw_sysctl,str(ufw_sysctl)+'.proxy-manager-'+datetime.datetime.now().strftime('%Y%m%d%H%M%S')+'.bak')
-old=re.sub(r'(?ms)^# BEGIN proxy-manager router.*?^# END proxy-manager router\n','',old)
-ufw_sysctl.write_text(old+'\n# BEGIN proxy-manager router sysctl\n'+settings+'# END proxy-manager router\n')
+shutil.copy2(ufw_sysctl,str(ufw_sysctl)+'.hoolan-'+datetime.datetime.now().strftime('%Y%m%d%H%M%S')+'.bak')
+old=re.sub(r'(?ms)^# BEGIN hoolan router.*?^# END hoolan router\n','',old)
+ufw_sysctl.write_text(old+'\n# BEGIN hoolan router sysctl\n'+settings+'# END hoolan router\n')
 PY
 ufw reload
-sysctl -p /etc/sysctl.d/90-proxy-manager-router.conf
+sysctl -p /etc/sysctl.d/90-hoolan-router.conf
 echo 'Persistent forwarding/NAT configured. Test a fresh connection with Proxy OFF, then ON.'
 echo 'Requires the Pi default route to use the upstream router, not the Pi itself.'

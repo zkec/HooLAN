@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"proxy-manager/internal/store"
+	"hoolan/internal/store"
 )
 
 func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {

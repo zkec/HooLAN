@@ -1,119 +1,57 @@
-# Dashboard and API
+# HooLAN dashboard
 
-> Feature implementation notes. For current installation, tabs and operational
-> behavior, start with [README](../README.md) ([فارسی](../README-fa.md));
-> the latest device limiter is documented in [four-way QoS](load-balancing-qos.md).
+[Home](../README.md) · [Documentation](../README.md#documentation)
 
-The dashboard is compiled into the Go binary. All HTML, CSS and vanilla JavaScript
-are local; it needs no CDN or frontend build step. Build with `go build ./cmd/server`.
-The default generated configuration targets sing-box 1.14.
+Sign in using `HOOLAN_TOKEN`. Browser authentication uses an HttpOnly session
+cookie and CSRF protection. The header provides engine ON/OFF, theme, language
+and sign-out controls. Status cards show the process, interception rules,
+configuration count and selected outbound.
 
-Manual selection removes the background URLTest group. Switching between Auto
-and manual briefly restarts sing-box with interception removed during restart;
-switching between manual nodes only updates the selector. Subscription refresh
-skips its automatic latency sweep in manual mode. Explicit single-node and
-subscription test buttons remain available in either mode.
+## Configurations
 
-## Browser access
+**Add & create** contains Add a configuration, Add a subscription, Chain Builder
+and Load balancing. Manual configurations and subscriptions use separate cards;
+subscription lists collapse from their headers. Row selections drive each
+card's Bulk Ping and Bulk Delete actions.
 
-Set `PROXY_MANAGER_TOKEN` in the service environment. Open the dashboard and sign
-in with that token. The browser receives an opaque HttpOnly, SameSite=Strict
-cookie, expiring after 12 hours. Sessions are kept in memory; a service restart
-requires signing in again. The token is never saved in browser local/session
-storage. Login is rate limited. Mutations require a per-session CSRF token and
-same-origin requests. Existing bearer-token API clients continue to work.
+The global automatic-selection switch lives in Load balancing. It selects an
+ordinary configuration by measured latency. Activate a saved group to use that
+group's strategy. Explicit manual selection stops the global background URLTest
+sweep; tests requested from the UI remain available.
 
-For remote access, use the existing HTTPS reverse proxy, preserve the public
-`Host` header, and add `-secure-cookies` to the Go service command. This explicitly
-marks cookies Secure when TLS terminates at the proxy. Do not enable that flag
-when intentionally accessing the site over plain HTTP. HTTP does not encrypt
-the login token or session in transit. Forwarded headers are not automatically
-trusted. With no configured token, the existing unauthenticated mode remains.
+See [configuration management](configurations.md) and [group strategies](load-balancing.md).
 
-## Controls
+## Usage
 
-- **Configurations:** add subscriptions and manual links, then use one combined
-  node list with checkboxes, Bulk Ping and Bulk Delete. Every successful source
-  refresh replaces its membership and prunes stale nodes; shared/manual nodes
-  remain. The Chain Builder saves independent ordered multi-hop copies. Usage
-  statistics are expandable in this tab. See [configuration workflow](configuration-workflow.md)
-  for batch API payloads, pruning details and chain semantics.
-- **Latency:** “Ping” measures an HTTP request through the actual proxy node,
-  not ICMP. Jobs are asynchronous and bounded by the existing probe concurrency
-  and refresh timeout. Selected-node tests retain detour dependencies without
-  testing unrelated nodes. One refresh or latency job runs at a time.
-- **Settings:** choose an engine DNS resolver (IP or IP:port; IPv6 ports use
-  `[address]:port`), or leave it blank for the system resolver. Toggle Iran
-  bypass on/off. The resolver remains available with Iran bypass disabled.
-  This controls the engine's resolution of outbound server names; intercepted
-  client DNS still goes through the selected outbound to its original resolver,
-  and local AdGuard traffic still bypasses interception.
-- **Live logs:** On opens an authenticated SSE connection; Off closes it while
-  preserving visible lines. Go and sing-box logs share the feed. The browser
-  holds at most 500 lines; the server retains 512 entries, limits subscribers,
-  redacts recognized credentials, replays recent entries on reconnect and drops
-  slow subscribers instead of blocking proxy processes. This is an in-process
-  feed, not historical journald access.
+Sort node and device rows by most downloaded or most uploaded. Nodes with zero
+usage stay hidden. A device's **Speed set** column shows its saved limits;
+**Settings** edits its alias, outbound and four limit fields. Reset limits clears
+all four inputs; Save device settings applies the reset.
 
-Subscriptions, source membership, manual-node identities, DNS and Iran settings
-are persisted in the existing `-state` file (0600). Credentials remain in the
-node store (0600). Refresh with pruning preserves manually added nodes and other
-sources. A partial source-fetch failure skips pruning.
+Counters are payload measurements from sing-box. Per-node, direct and per-device
+attribution is estimated from one-second connection samples, so short flows can
+be missed. [Device and usage details](devices.md).
 
-Adding a node or saving changed settings while the engine runs reloads it.
-Interception is removed before the restart and restored only after both IPv4
-TCP/UDP listeners are owned by the new engine PID. Existing connections can
-disconnect during this transition. Failed reloads leave interception off;
-failed settings are rolled back. Adding a subscription alone does not fetch it;
-use its Refresh button.
+## Settings
 
-## Routes
+The cards are Routing & DNS, Telegram notifications, then Backup & restore.
+Routing includes DNS, update scheduling, the Iran preset, custom rule sets and
+custom match rules. Telegram has separate notification and proxy-delivery
+switches, a proxy selector and an explicit test button. Error messages appear
+separately from field descriptions.
 
-JSON responses and errors use `Cache-Control: no-store`. GET `/api/auth/session`
-returns `{authenticated, auth_required, csrf_token}`; browser mutations send
-`X-CSRF-Token` plus the session cookie. Bearer clients do not need a CSRF token.
+## Live logs
 
-| Method | Route | Request / response |
-| --- | --- | --- |
-| POST | `/api/auth/login` | `{token}` → session metadata and cookie |
-| GET | `/api/auth/session` | Session metadata; unauthenticated discovery allowed |
-| POST | `/api/auth/logout` | Revokes the session and its open streams |
-| GET | `/api/subscriptions` | `{subscriptions: [{id,name,url,node_count}]}` |
-| POST | `/api/subscriptions` | `{name?,url}` → saved subscription |
-| POST | `/api/subscriptions/refresh` | `{subscription_id}` → 202 background job |
-| POST | `/api/subscriptions/test` | `{subscription_id}` → 202 latency job |
-| GET | `/api/nodes` | Existing response plus `manual` and `subscription_ids` |
-| POST | `/api/nodes` | `{link}` → `{node_id,message}` |
-| POST | `/api/nodes/test` | `{node_id}` → 202 latency job |
-| GET | `/api/settings` | `{dns_server,iran_bypass}` |
-| PUT | `/api/settings` | One or both settings → saved settings |
-| GET | `/api/logs` | SSE event `log`: `{id,time,level,source,message}` |
+Turn the SSE stream on to see recent and incoming service/engine logs. Turn it
+off to pause the browser stream. The view retains at most 500 lines; scrolling
+up pauses automatic scrolling. Clear view affects only the browser display.
+The service keeps a bounded replay buffer and supports Last-Event-ID reconnects.
+Use journald for persistent operational history.
 
-Existing toggle, selection, refresh-all, status and health endpoints remain.
-Poll `/api/status` → `refresh` for jobs; `kind` is `refresh` or `latency` and
-`state` is `running`, `succeeded` or `failed`. Probe failures are recorded on
-nodes and reflected in `reachable`; a completed sweep can have zero successes.
+## Appearance and accessibility
 
-SSE accepts `Last-Event-ID`, sends 15-second heartbeats and disables the ordinary
-HTTP write deadline only for streaming responses, with bounded individual writes.
-Set `proxy_buffering off` and a suitable `proxy_read_timeout` on the HTTPS proxy
-if needed; the server also sends `X-Accel-Buffering: no`. Closing sessions and
-service shutdown release SSE handlers.
-
-## Implementation map
-
-| Files | Responsibility |
-| --- | --- |
-| `internal/api/handlers.go`, `handlers_dashboard.go` | Routes, request validation, status codes, node provenance |
-| `internal/api/service.go`, `service_dashboard.go` | Persisted subscriptions/settings, async jobs, safe engine/firewall transitions |
-| `internal/api/auth.go`, `logs.go` | Browser sessions, CSRF, authenticated SSE |
-| `internal/api/readiness.go` | IPv4 TCP+UDP listener ownership checks using `/proc`, without dialing |
-| `internal/logstream/`, `cmd/server/main.go` | Bounded log feed and slog/journald integration |
-| `internal/engine/settings.go`, `singbox.go` | DNS rendering, dynamic Iran bypass, IPv4 inbound |
-| `internal/tester/latency.go` | Selective latency tests with complete detour context |
-| `internal/api/web/` | Login, tabs, forms, polling, log pause/resume, responsive local CSS |
-
-Run `go test ./...`, `go test -race ./...`, and `go vet ./...`. Tests requiring a
-real sing-box binary skip unless it is installed or `SINGBOX_BIN` is supplied.
-Firewall script tests use isolated command mocks; real packet delivery must be
-verified on the Pi using [the network guide](network-diagnostics.md).
+The red-accent UI supports dark/light themes, English/Persian text and RTL
+layout. The logo and browser-tab icon follow the theme. Preferences live in
+`hoolan-theme` and `hoolan-language` in browser storage. Node names and other
+user content are not translated. Keyboard focus outlines and reduced-motion
+preferences are supported.

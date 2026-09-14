@@ -6,11 +6,11 @@ Wants=network-online.target
 [Service]
 Type=exec
 User=root
-EnvironmentFile=/etc/proxy-manager/env
+EnvironmentFile=/etc/hoolan/env
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/opt/proxy-manager/proxy-manager -listen 127.0.0.1:8080 -scripts /opt/proxy-manager/scripts/tproxy -tproxy-port 7892
+ExecStart=/opt/hoolan/hoolan -listen 127.0.0.1:8080 -scripts /opt/hoolan/scripts/tproxy -tproxy-port 7892
 # Runs even following an abnormal termination; preserves router/NAT and QoS.
-ExecStopPost=/usr/bin/bash /opt/proxy-manager/scripts/tproxy/remove.sh
+ExecStopPost=/usr/bin/bash /opt/hoolan/scripts/tproxy/remove.sh
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=90s

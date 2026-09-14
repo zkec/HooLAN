@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 )
 
 func quietLogger() *slog.Logger {

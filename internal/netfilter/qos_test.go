@@ -4,7 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"proxy-manager/internal/engine"
+	"hoolan/internal/engine"
 	"strings"
 	"testing"
 )

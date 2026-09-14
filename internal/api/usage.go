@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
-	"proxy-manager/internal/netfilter"
+	"hoolan/internal/netfilter"
 	"strconv"
 	"strings"
 	"time"

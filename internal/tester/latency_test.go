@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/engine"
+	"hoolan/internal/subscription"
 )
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

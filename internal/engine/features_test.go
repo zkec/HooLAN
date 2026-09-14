@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/subscription"
+	"hoolan/internal/subscription"
 )
 
 func TestIranRuleSetsEmitted(t *testing.T) {

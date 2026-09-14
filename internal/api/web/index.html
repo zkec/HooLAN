@@ -72,7 +72,13 @@
             <button id="chain-save" type="submit" class="button primary" data-mutation data-job>Save as new configuration</button><button id="chain-cancel-edit" type="button" class="button subtle" hidden>Cancel editing</button></form>
           </section>
           <form id="balance-form" class="creation-item">
-            <h3>Load balancing</h3><p class="muted small">Select 2–32 nodes or chains using the checkboxes below. New connections are distributed across saved member copies; each connection stays on one member. This does not bond a single download or automatically remove failed members.</p>
+            <h3>Load balancing</h3>
+        <section class="selection routing-section" aria-labelledby="selection-heading">
+          <div><h3 id="selection-heading">Automatic selection (global)</h3><p class="muted small">Choose the fastest reachable ordinary configuration globally. Activate a saved group to use its own strategy.</p></div>
+          <label class="switch" for="auto-toggle"><input id="auto-toggle" type="checkbox" role="switch" disabled aria-label="Automatic node selection" /><span class="switch-track" aria-hidden="true"></span><span id="auto-toggle-label" class="switch-label">Manual</span></label>
+        </section>
+<p class="muted small">Select 2–32 nodes or chains and choose a strategy for the saved group. Connection distribution spreads flows across members; best latency selects one member using periodic URL tests. Neither mode bonds a single download or measures server load.</p>
+            <div class="field"><label for="balance-strategy">Selection strategy</label><select id="balance-strategy"><option value="hash">Distribute connections</option><option value="latency">Best latency</option></select></div>
             <div class="field"><label for="balance-search">Find configurations</label><input id="balance-search" type="search" autocomplete="off" placeholder="Search by name or server" /></div>
             <div id="balance-members" class="balance-members" role="group" aria-label="Load balancer members"></div>
             <div class="form-footer"><div class="field field-grow"><label for="balance-name">Load balancer name</label><input id="balance-name" required maxlength="100" placeholder="My load balancer" /></div><span id="balance-selected" class="muted small" role="status"></span><button id="balance-create" type="submit" class="button primary" data-mutation data-job>Create Load Balancer</button></div>
@@ -95,14 +101,11 @@
 
       <section class="card form-card" aria-labelledby="routing-heading">
         <h2 id="routing-heading">Routing &amp; DNS</h2>
-        <section class="selection routing-section" aria-labelledby="selection-heading">
-          <div><h3 id="selection-heading">Automatic selection</h3><p class="muted small">Choose the fastest reachable node automatically, or activate a config in Configurations to pin it.</p></div>
-          <label class="switch" for="auto-toggle"><input id="auto-toggle" type="checkbox" role="switch" disabled aria-label="Automatic node selection" /><span class="switch-track" aria-hidden="true"></span><span id="auto-toggle-label" class="switch-label">Manual</span></label>
-        </section>
+
       <form id="settings-form" class="routing-section">
         <p class="muted small">Changes are saved on the gateway and applied to the running engine.</p>
         <div class="setting"><div class="field"><label for="dns-server">DNS server</label><p id="dns-help" class="muted small">Resolver used by the proxy engine. Leave blank for the system resolver, or enter an IP address with an optional port, for example 1.1.1.1 or [2606:4700:4700::1111]:53. Local AdGuard DNS traffic still bypasses interception.</p><input id="dns-server" name="dns_server" type="text" spellcheck="false" autocomplete="off" aria-describedby="dns-help" placeholder="System resolver" /></div></div>
-        <div class="setting setting-row"><div><label for="iran-bypass">Iran bypass</label><p id="iran-help" class="muted small">Route Iranian destinations directly, outside the selected proxy.</p></div><label class="switch" for="iran-bypass"><input id="iran-bypass" type="checkbox" role="switch" aria-describedby="iran-help" /><span class="switch-track" aria-hidden="true"></span><span id="iran-label" class="switch-label">Off</span></label></div>
+
         <div class="form-footer"><span id="settings-note" class="muted small" role="status"></span><button class="button primary" type="submit" data-mutation>Save settings</button></div>
       </form>
       <form id="rules-form" class="routing-section">
@@ -118,12 +121,13 @@
           <button id="rules-update" type="button" class="button" data-mutation data-job>Update now</button>
         </div>
         <p id="rules-status" class="muted small" role="status"></p>
-        <h3>Iran rule</h3>
-        <p class="muted small">Enable or disable Iran matching with the Iran bypass switch in Settings. These sources must be compiled sing-box .srs files.</p>
+        <h3>Rule sets</h3><p class="muted small">Use the Iran preset or add compiled sing-box .srs sources. Custom rule sets are evaluated before the Iran preset.</p>
+        <section class="card routing-rule iran-preset">
+        <div class="setting setting-row"><div><label for="iran-bypass">Iran preset</label><p id="iran-help" class="muted small">Built-in GeoIP and geosite rules for Iran. Enable to apply the action below. This switch applies immediately.</p></div><label class="switch" for="iran-bypass"><input id="iran-bypass" data-mutation type="checkbox" role="switch" aria-describedby="iran-help" /><span class="switch-track" aria-hidden="true"></span><span id="iran-label" class="switch-label">Off</span></label></div>
         <div class="field"><label for="rules-geoip">GeoIP source URL</label><input id="rules-geoip" type="url" required maxlength="4096" /></div>
         <div class="field"><label for="rules-geosite">Geosite source URL</label><input id="rules-geosite" type="url" required maxlength="4096" /></div>
         <div class="field"><label for="rules-iran-action">When an Iran rule matches</label><select id="rules-iran-action"><option value="direct">Connect directly</option><option value="proxy">Use selected proxy</option><option value="reject">Reject</option></select></div>
-        <h3>Additional rule sets</h3><p class="muted small">Compiled sing-box .srs sources, evaluated in this order before Iran rules.</p><div id="rule-source-list"></div><button id="source-add" type="button" class="button" data-mutation>Add rule set</button><h3>Custom routing rules</h3>
+        </section><div id="rule-source-list"></div><button id="source-add" type="button" class="button" data-mutation>Add rule set</button><h3>Custom routing rules</h3>
         <p class="muted small">First matching rule wins. Custom rules run before Iran rules, after the gateway’s safety, DNS and private-network rules. Private/local traffic bypassed by nftables is unaffected. Enter one match value per line; use CIDR notation for IPs.</p>
         <div id="routing-rule-list"></div>
         <button id="rules-add" type="button" class="button" data-mutation>Add rule</button>

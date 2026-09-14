@@ -1375,3 +1375,16 @@ select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 .telegram-status { margin-top: 1.25rem; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
 .telegram-status:empty { display: none; }
 .telegram-status.is-error { color: var(--error); background: var(--error-bg); border-color: var(--error); }
+
+/* Rule fields stack their labels consistently in both themes and directions. */
+.routing-rule { display: grid; gap: 1rem; }
+.rule-field-label { display: flex; flex-direction: column; gap: .5rem; }
+.routing-rule .field input:not([type=checkbox]), .routing-rule select, .routing-rule textarea { width: 100%; }
+.routing-rule .form-footer { justify-content: flex-start; flex-wrap: wrap; gap: .75rem; padding-top: .25rem; }
+.iran-preset { padding: 1.25rem; }
+.iran-preset .setting { padding: 0 0 1rem; }
+.iran-preset > .field { margin: 0; }
+#balance-form > .selection { padding: 1rem 0; margin: 0 0 1rem; border-bottom: 1px solid var(--line); }
+#balance-form > .field { margin-top: 1rem; }
+.node-table th { background: var(--panel-raised); color: var(--muted); }
+.routing-rule textarea { background: var(--field-bg); border-color: var(--field-border); color: var(--text); }

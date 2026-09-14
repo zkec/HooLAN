@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/subscription"
-	"proxy-manager/internal/tester"
+	"hoolan/internal/store"
+	"hoolan/internal/subscription"
+	"hoolan/internal/tester"
 )
 
 const manualLink = "vless://aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa@manual.example:443?security=tls#Manual"

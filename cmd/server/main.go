@@ -1,4 +1,4 @@
-// Command server is the proxy-manager control plane: an HTTP API that owns the
+// Command server is the hoolan control plane: an HTTP API that owns the
 // sing-box process, the nftables TPROXY ruleset, and the node store.
 //
 // Runs as a systemd unit on bare-metal Raspberry Pi OS -- not in Docker. It
@@ -26,12 +26,12 @@ import (
 	"syscall"
 	"time"
 
-	"proxy-manager/internal/api"
-	"proxy-manager/internal/engine"
-	"proxy-manager/internal/logstream"
-	"proxy-manager/internal/netfilter"
-	"proxy-manager/internal/store"
-	"proxy-manager/internal/tester"
+	"hoolan/internal/api"
+	"hoolan/internal/engine"
+	"hoolan/internal/logstream"
+	"hoolan/internal/netfilter"
+	"hoolan/internal/store"
+	"hoolan/internal/tester"
 )
 
 // repeatable collects a flag given more than once (-sub a -sub b) and also
@@ -87,27 +87,27 @@ func main() {
 func parseFlags() config {
 	var cfg config
 	flag.StringVar(&cfg.listen, "listen", ":8080", "HTTP listen address for the API")
-	flag.StringVar(&cfg.token, "token", os.Getenv("PROXY_MANAGER_TOKEN"),
-		"API bearer token and browser login token (env PROXY_MANAGER_TOKEN); empty disables auth")
+	flag.StringVar(&cfg.token, "token", os.Getenv("HOOLAN_TOKEN"),
+		"API bearer token and browser login token (env HOOLAN_TOKEN); empty disables auth")
 	flag.BoolVar(&cfg.secureCookies, "secure-cookies", false,
 		"require HTTPS browser cookies behind a trusted HTTPS reverse proxy; preserve the public Host header")
-	flag.StringVar(&cfg.storePath, "store", "/var/lib/proxy-manager/nodes.json",
+	flag.StringVar(&cfg.storePath, "store", "/var/lib/hoolan/nodes.json",
 		"node store file")
-	flag.StringVar(&cfg.statePath, "state", "/var/lib/proxy-manager/state.json",
+	flag.StringVar(&cfg.statePath, "state", "/var/lib/hoolan/state.json",
 		"operator state file (proxy on/off, selected node)")
-	flag.StringVar(&cfg.configPath, "config", "/etc/proxy-manager/singbox/config.json",
+	flag.StringVar(&cfg.configPath, "config", "/etc/hoolan/singbox/config.json",
 		"generated sing-box config path")
-	flag.StringVar(&cfg.cachePath, "cache", "/var/lib/proxy-manager/cache.db",
+	flag.StringVar(&cfg.cachePath, "cache", "/var/lib/hoolan/cache.db",
 		"sing-box cache_file path; also persists the node selection across restarts")
 	flag.StringVar(&cfg.singBox, "sing-box", "sing-box", "sing-box binary path or name on PATH")
 	flag.StringVar(&cfg.scriptsDir, "scripts", "",
 		"directory holding apply.sh/remove.sh/tproxy.conf; empty probes standard locations")
 	flag.Var(&cfg.subs, "sub",
-		"subscription URL or file path; repeatable, or comma-separated (env PROXY_MANAGER_SUBS)")
+		"subscription URL or file path; repeatable, or comma-separated (env HOOLAN_SUBS)")
 	flag.StringVar(&cfg.clashAPI, "clash-api", "127.0.0.1:9090",
 		"sing-box Clash API listen address; required to switch nodes without a restart, empty disables")
-	flag.StringVar(&cfg.clashSecret, "clash-secret", os.Getenv("PROXY_MANAGER_CLASH_SECRET"),
-		"bearer token for the sing-box Clash API (env PROXY_MANAGER_CLASH_SECRET)")
+	flag.StringVar(&cfg.clashSecret, "clash-secret", os.Getenv("HOOLAN_CLASH_SECRET"),
+		"bearer token for the sing-box Clash API (env HOOLAN_CLASH_SECRET)")
 	flag.IntVar(&cfg.tproxyPort, "tproxy-port", engine.DefaultTProxyPort,
 		"TPROXY inbound port; must match TPROXY_PORT in tproxy.conf")
 	flag.StringVar(&cfg.logLevel, "log-level", "info", "debug|info|warn|error")
@@ -123,7 +123,7 @@ func parseFlags() config {
 	flag.Parse()
 
 	if len(cfg.subs) == 0 {
-		if env := os.Getenv("PROXY_MANAGER_SUBS"); env != "" {
+		if env := os.Getenv("HOOLAN_SUBS"); env != "" {
 			_ = cfg.subs.Set(env)
 		}
 	}
@@ -348,6 +348,6 @@ func warnIfExposed(cfg config, log *slog.Logger) {
 	}
 	log.Warn("API is listening off-host with NO authentication: anyone who can "+
 		"reach it can start/stop interception and read node metadata. "+
-		"Set -token (or PROXY_MANAGER_TOKEN), or bind 127.0.0.1 and front it with NPM.",
+		"Set -token (or HOOLAN_TOKEN), or bind 127.0.0.1 and front it with NPM.",
 		"listen", cfg.listen)
 }
