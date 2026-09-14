@@ -10,7 +10,7 @@
 
 [Quick start](#quick-start) · [Installation](docs/installation.md) · [Dashboard](docs/dashboard.md) · [Routing](docs/routing.md) · [Devices](docs/devices.md) · [Troubleshooting](docs/troubleshooting.md) · [فارسی](README-fa.md)
 
-HooLAN turns a Raspberry Pi into a transparent IPv4 proxy gateway. Manage
+HooLAN turns a Debian host into a transparent IPv4 proxy gateway. Manage
 subscriptions, build multi-hop connections, assign routes to devices and set
 speed limits from a lightweight dashboard. A single Go binary serves the UI
 and API, supervises sing-box and manages nftables interception.
@@ -41,8 +41,8 @@ browser library on demand; the rest of the dashboard's assets are embedded.
 
 ```mermaid
 flowchart LR
-  Client[LAN client] --> Pi[HooLAN gateway]
-  Pi --> Filter[nftables prerouting]
+  Client[LAN client] --> Gateway[HooLAN gateway]
+  Gateway --> Filter[nftables prerouting]
   Filter -->|Intercepted IPv4 TCP/UDP| Engine[sing-box]
   Filter -->|Bypassed traffic or engine OFF| Router[Linux forwarding]
   Engine -->|Selected proxy or direct route| WAN[Upstream router / internet]
@@ -60,30 +60,30 @@ its egress must not use the interception mark.
 
 ## Quick start
 
-Use Raspberry Pi OS or Debian Linux with a wired interface, a static LAN IPv4
+Use Debian Linux with a wired interface, a static LAN IPv4
 address and an upstream default route. Install an upstream sing-box build with
 Clash API support; the configuration targets sing-box 1.14. The module declares
 Go 1.21 as its language baseline; use a maintained Go toolchain to build.
 
-From the repository root, build a 64-bit Raspberry Pi executable:
+From the repository root, build an executable for your Debian host:
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64   go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
 ```
 
 Then follow the [installation guide](docs/installation.md) to install the
 service, configure authentication and establish forwarding. It includes exact
-commands for a single-interface Pi with an active UFW firewall and instructions
+commands for a single-interface Debian host with an active UFW firewall and instructions
 for accessing the loopback-bound dashboard.
 
 1. Install HooLAN and set `HOOLAN_TOKEN` and `HOOLAN_CLASH_SECRET`.
 2. Set the LAN interface and TPROXY values in `tproxy.conf`.
-3. Verify a test client can reach the internet through the Pi with the engine OFF.
+3. Verify a test client can reach the internet through the Debian host with the engine OFF.
 4. Start `hoolan.service`, sign in and add a configuration or subscription.
 5. Test/select an outbound, enable the engine, then configure DHCP clients to
-   use the Pi as their IPv4 gateway.
+   use the Debian host as their IPv4 gateway.
 
-Do not point the Pi's own default route back to itself. Reserve client addresses
+Do not point the Debian host's own default route back to itself. Reserve client addresses
 in DHCP for stable device routing and limits. IPv6 needs a separate policy.
 
 ## Documentation
@@ -120,7 +120,7 @@ timestamps appear in Settings. Backups contain secrets; store them privately.
 
 ## Scope
 
-HooLAN manages IPv4 traffic that crosses the Pi. Same-subnet traffic taking
+HooLAN manages IPv4 traffic that crosses the Debian host. Same-subnet traffic taking
 another path cannot be measured or limited. Device limits are packet-drop
 policers, not queued traffic shaping. Connection distribution cannot combine
 one download across proxies and does not measure remote server load. Usage

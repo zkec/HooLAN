@@ -19,7 +19,7 @@ manual ownership and subscription in the selector.
 | --- | --- |
 | Proxy Upload | Client data using a proxy outbound |
 | Proxy Download | Proxy-routed data sent to the client |
-| Direct Upload | Direct/bypassed client data crossing the Pi |
+| Direct Upload | Direct/bypassed client data crossing the Debian host |
 | Direct Download | Direct/bypassed data sent back to the client |
 
 Values are Mbps; blank or zero means unlimited. **Reset limits** clears all four
@@ -35,7 +35,7 @@ the applicable hooks.
 Proxy/direct classification uses the engine's sampled connection route. Until
 classification is available, the stricter nonzero limit applies. Short flows may
 keep that limit. Raw forwarded traffic uses Direct immediately, including with
-the engine OFF. Same-subnet traffic that avoids the Pi and access to the Pi's own
+the engine OFF. Same-subnet traffic that avoids the Debian host and access to the Debian host's own
 services are outside these device limit paths.
 
 ## Usage attribution
@@ -52,4 +52,4 @@ samples, process restarts and counter resets can limit attribution accuracy.
 
 `PUT /api/devices` supports partial top-level updates. An included `qos` object
 replaces all four values; `{}` clears them. Limits remain subject to the network
-path through this Pi. [API examples](api.md).
+path through this Debian host. [API examples](api.md).

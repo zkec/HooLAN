@@ -15,7 +15,7 @@ monitor checks the active configuration every five minutes and suppresses
 repeated failures until recovery. Notifications use a bounded queue and timeout;
 a delivery failure does not stop routing.
 
-**Send Telegram through proxy** OFF connects directly from the Pi and ignores
+**Send Telegram through proxy** OFF connects directly from the Debian host and ignores
 HTTP proxy environment variables. ON uses an isolated sing-box process with
 Global Default or a pinned configuration. Global Default follows the active
 choice, using a saved healthy candidate when automatic selection is offline.

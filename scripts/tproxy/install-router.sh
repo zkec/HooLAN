@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# One-time persistent single-interface IPv4 router setup for a UFW-managed Pi.
+# One-time persistent single-interface IPv4 router setup for a UFW-managed Debian host.
 # Does not run from apply/remove: normal forwarding must survive engine OFF.
 set -euo pipefail
 LAN_IF="${LAN_IF:-eth0}"
 LAN_CIDR="${LAN_CIDR:-192.168.3.0/24}"
 TPROXY_FWMARK="${TPROXY_FWMARK:-0x1}"
-[[ $(id -u) == 0 ]] || { echo 'Run with sudo on the gateway Pi.' >&2; exit 1; }
+[[ $(id -u) == 0 ]] || { echo 'Run with sudo on the gateway Debian host.' >&2; exit 1; }
 for tool in python3 ufw sysctl ip; do command -v "$tool" >/dev/null; done
 ip link show dev "$LAN_IF" >/dev/null
 UFW_STATUS="$(LC_ALL=C ufw status)"
@@ -62,4 +62,4 @@ PY
 ufw reload
 sysctl -p /etc/sysctl.d/90-hoolan-router.conf
 echo 'Persistent forwarding/NAT configured. Test a fresh connection with Proxy OFF, then ON.'
-echo 'Requires the Pi default route to use the upstream router, not the Pi itself.'
+echo 'Requires the Debian host default route to use the upstream router, not the Debian host itself.'

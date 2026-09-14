@@ -7,7 +7,7 @@
 Interception applies to eligible IPv4 TCP/UDP arriving on the configured LAN
 interface. Private/local destinations, source exclusions and the local Docker
 network `10.42.42.0/24` bypass interception. Local services on ports 80, 443 and
-53 remain accessible before Docker DNAT. The Pi's own output is not a LAN
+53 remain accessible before Docker DNAT. The Debian host's own output is not a LAN
 TPROXY client.
 
 Inside sing-box, safety and DNS/private-network handling precede custom routing

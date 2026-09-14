@@ -4,15 +4,15 @@
 
 ## Requirements and topology
 
-Use Raspberry Pi OS / Debian, systemd and root access for firewall management.
+Use Debian, systemd and root access for firewall management.
 Install Go and [sing-box with Clash API support](https://sing-box.sagernet.org/installation/package-manager/).
 HooLAN targets sing-box 1.14 configuration and owns its child engine process.
 Do not run a separate sing-box service on the same listeners.
 
-Examples use Pi `192.168.3.5`, upstream router `192.168.3.1`, LAN `192.168.3.0/24`,
+Examples use a Debian host `192.168.3.5`, upstream router `192.168.3.1`, LAN `192.168.3.0/24`,
 interface `eth0`, dashboard `8080`, TPROXY `7892` and Clash `127.0.0.1:9090`.
-Substitute your actual values. The Pi's default route must reach the upstream
-router. Give the Pi a stable address and reserve device addresses in DHCP.
+Substitute your actual values. The Debian host's default route must reach the upstream
+router. Give the Debian host a stable address and reserve device addresses in DHCP.
 
 ## Build
 
@@ -21,11 +21,11 @@ sudo apt-get update
 sudo apt-get install nftables iproute2 procps util-linux ca-certificates curl
 sing-box version
 ip -4 route show default
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-  go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
 ```
 
-For 32-bit Pi userland, use `GOARCH=arm GOARM=7`. There is no npm step and no
+The build targets the machine running Go. For cross-compilation, set `GOOS=linux`
+and `GOARCH=amd64` or `GOARCH=arm64` to match the target host. There is no npm step and no
 external Go module to download. If a standalone sing-box systemd unit is active,
 stop and disable it before letting HooLAN own the engine.
 
@@ -71,10 +71,10 @@ read from the live interface. Keep the template and helpers together.
 
 ## Establish routing before interception
 
-A LAN client using the Pi as its gateway needs IPv4 forwarding, an upstream
+A LAN client using the Debian host as its gateway needs IPv4 forwarding, an upstream
 route and a return route or scoped NAT, even with the proxy engine OFF.
 
-For a **single-interface Pi with UFW already active**, the supplied installer
+For a **single-interface Debian host with UFW already active**, the supplied installer
 requires Python 3 and writes backed-up UFW rules plus persistent sysctls:
 
 ```bash
@@ -102,12 +102,12 @@ sudo journalctl -u hoolan -n 80 --no-pager
 The supplied unit binds to loopback. From your workstation:
 
 ```bash
-ssh -N -L 8080:127.0.0.1:8080 pi@192.168.3.5
+ssh -N -L 8080:127.0.0.1:8080 user@192.168.3.5
 ```
 
 Open `http://127.0.0.1:8080/`, sign in with `HOOLAN_TOKEN`, add/test/select a
-configuration and enable the engine. Point DHCP's IPv4 gateway option at the Pi
-only after testing. Advertise the Pi as DNS only if a resolver listens there.
+configuration and enable the engine. Point DHCP's IPv4 gateway option at the Debian host
+only after testing. Advertise the Debian host as DNS only if a resolver listens there.
 Plan IPv6 RA/DHCPv6 separately.
 
 ## HTTPS access
@@ -126,7 +126,7 @@ proxy_read_timeout 75s;
 
 Add `-secure-cookies` to the service's `ExecStart` for HTTPS-only browser access.
 Reload systemd and restart after editing the unit. A proxy in a container needs
-a reachable host listener; its own loopback is not the Pi's loopback. Restrict
+a reachable host listener; its own loopback is not the Debian host's loopback. Restrict
 that listener to trusted sources. Keep Clash on loopback.
 
 ## Updating an installation

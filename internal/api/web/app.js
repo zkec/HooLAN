@@ -158,7 +158,7 @@
     if (previous && previous.state === 'running' && job.kind === 'restore' && job.state === 'succeeded') { state.settings = null; state.settingsDirty = false; state.rulesDirty = false; state.telegramLoaded = false; state.speedResults.clear(); }
     if (job.kind === 'telegram') telegramStatus( job.state === 'running' ? 'Sending test message…' : job.state === 'succeeded' ? 'Test message sent.' : job.error || 'Telegram test failed', job.state === 'failed');
     var parts = [];
-    if (state.jobRunning) parts.push(name + ' running. Testing nodes can take a few minutes on a Pi.');
+    if (state.jobRunning) parts.push(name + ' running. Testing nodes can take a few minutes on a Debian host.');
     if (job.state === 'succeeded') parts.push(name + ' completed ' + ago(job.finished_at) + '.');
     if (job.state === 'failed') parts.push(name + ' failed: ' + (job.error || 'Unknown error'));
     if (job.sources_total) parts.push((job.sources_ok || 0) + '/' + job.sources_total + ' sources');
@@ -499,7 +499,7 @@
           stopLogs();
           text($('log-status'), 'Log stream unavailable. Turn it on to retry.');
         }
-      } catch (ignored) { /* ordinary status polling reports a disconnected Pi */ }
+      } catch (ignored) { /* ordinary status polling reports a disconnected Debian host */ }
       state.logAuthCheck = false;
     };
   }

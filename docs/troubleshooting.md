@@ -12,8 +12,8 @@ sudo bash /opt/hoolan/scripts/tproxy/diagnose.sh 192.168.3.141
 
 ## Engine OFF and no internet
 
-Test IPv4 forwarding, the Pi's upstream default route, FORWARD rules and return
-routing/NAT. With clients using the Pi as gateway, turning interception off still
+Test IPv4 forwarding, the Debian host's upstream default route, FORWARD rules and return
+routing/NAT. With clients using the Debian host as gateway, turning interception off still
 requires a working router. HooLAN's removal script preserves routing/NAT and
 limits; it cannot invent missing host forwarding. See [installation](installation.md).
 
@@ -40,7 +40,7 @@ sudo ss -lntup '( sport = :7892 )'
 
 TPROXY preserves the original destination IP and port. Capturing only loopback
 or port 7892 can miss it; observe client ingress and node egress. A curl started
-on the Pi tests host output, not client interception. Established packets must
+on the Debian host tests host output, not client interception. Established packets must
 continue to reach their transparent socket rather than bypass interception.
 
 An ACCEPT in one nftables base chain does not override a later DROP. UFW's

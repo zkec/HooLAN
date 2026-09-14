@@ -53,7 +53,7 @@ func NewRouter(svc *Service, opts RouterOptions) http.Handler {
 
 	mux := http.NewServeMux()
 	// Explicit method guards rather than Go 1.22 method patterns: go.mod targets
-	// 1.21 so the Pi can build with the distro toolchain.
+	// 1.21 so the Debian host can build with the distro toolchain.
 	mux.Handle("/api/nodes", http.HandlerFunc(h.nodes))
 	mux.Handle("/api/nodes/refresh", only(http.MethodPost, h.refreshNodes))
 	mux.Handle("/api/proxy/toggle", only(http.MethodPost, h.toggleProxy))

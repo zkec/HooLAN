@@ -4,7 +4,7 @@
 // Why JSON and not SQLite: this store holds tens to low-hundreds of rows, is
 // written on subscription refresh and after latency sweeps, and is read on
 // startup. SQLite would add a cgo dependency (or a pure-Go driver plus its
-// own quirks) to a bare-metal Pi build for no gain at this size. The whole
+// own quirks) to a bare-metal Debian host build for no gain at this size. The whole
 // dataset fits comfortably in memory, so reads never touch disk.
 //
 // Durability model: every mutation rewrites the whole file via temp-file +

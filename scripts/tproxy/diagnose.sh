@@ -91,7 +91,7 @@ cat <<'GUIDE'
 * marked_output rises: check tcp_fwmark_accept and outbound routing_mark.
   Reusing the interception mark for replies/egress sends them to the local table.
 * INPUT/FORWARD default ACCEPT does not remove explicit drops in other chains.
-* Normal sing-box egress uses a new Pi-sourced socket. General forwarding NAT
+* Normal sing-box egress uses a new Debian host-sourced socket. General forwarding NAT
   matters for bypassed traffic, not this local socket's path.
 GUIDE
 if [[ -n "$CLIENT_IP" ]]; then

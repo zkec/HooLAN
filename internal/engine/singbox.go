@@ -1,5 +1,5 @@
 // Package engine renders proxy-engine configuration and supervises the engine
-// process. Bare-metal only: the Go binary runs as a systemd unit on the Pi and
+// process. Bare-metal only: the Go binary runs as a systemd unit on the Debian host and
 // owns sing-box as a child process.
 package engine
 
@@ -730,7 +730,7 @@ func (m *Manager) WriteConfig(cfg *Config) error {
 		tmp.Close()
 		return fmt.Errorf("engine: write temp: %w", err)
 	}
-	// fsync before rename: on a Pi with an SD card and sudden power loss, a
+	// fsync before rename: on a Debian host with an SD card and sudden power loss, a
 	// rename can otherwise land pointing at unflushed data.
 	if err := tmp.Sync(); err != nil {
 		tmp.Close()

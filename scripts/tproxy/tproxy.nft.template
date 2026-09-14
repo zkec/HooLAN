@@ -4,7 +4,7 @@
 # Source: scripts/tproxy/tproxy.nft.template + scripts/tproxy/tproxy.conf
 # Renderer: scripts/tproxy/apply.sh
 #
-# HooLAN TPROXY interception for sing-box, on a Pi that also hosts a
+# HooLAN TPROXY interception for sing-box, on a Debian host that also hosts a
 # Docker stack (NPM / AdGuard Home / wg-easy / Jellyfin).
 #
 # IPv4 only. IPv6 LAN interception is a deliberate omission for now — clients
@@ -29,8 +29,8 @@ delete table inet proxy_tproxy
 table inet proxy_tproxy {
     comment "HooLAN TPROXY interception for sing-box"
 
-    # The Pi's own LAN subnet(s), computed by apply.sh from live addresses on
-    # LAN_IF (NOT a hardcoded /24). Traffic destined inside the Pi's own subnet
+    # The Debian host's own LAN subnet(s), computed by apply.sh from live addresses on
+    # LAN_IF (NOT a hardcoded /24). Traffic destined inside the Debian host's own subnet
     # never leaves the LAN and must not be intercepted: Jellyfin on :8096,
     # aria2 on :6800, NPM healthchecks, mDNS, the lot.
     set lan_cidrs {
@@ -39,7 +39,7 @@ table inet proxy_tproxy {
         elements = { {{LAN_CIDR_LIST}} }
     }
 
-    # Source prefixes exempt from interception (the Pi's own outbound if you
+    # Source prefixes exempt from interception (the Debian host's own outbound if you
     # choose to proxy it later — see SELF_ORIGIN_NETS in tproxy.conf).
     set self_origin {
         type ipv4_addr
@@ -131,7 +131,7 @@ table inet proxy_tproxy {
         meta nfproto ipv4 meta mark {{TPROXY_FWMARK}} counter name marked_input
     }
 
-    # The Pi and sing-box generate ordinary outbound sockets; they must use
+    # The Debian host and sing-box generate ordinary outbound sockets; they must use
     # the host's main routing table. A nonzero count here calls for checking
     # outbound routing_mark, tcp_fwmark_accept, and other marking rules.
     chain output {

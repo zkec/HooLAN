@@ -1,7 +1,7 @@
 package netfilter
 
 // Bare-metal TPROXY controller — NOT Docker.
-// The Go hoolan runs as a systemd unit on Raspberry Pi OS and owns the
+// The Go hoolan runs as a systemd unit on Debian and owns the
 // nftables ruleset via scripts/tproxy/*.sh. This package is a thin os/exec
 // wrapper; all netlink/nft logic lives in the shell scripts so it can be
 // audited and tested without cgo or third-party Go nft libraries.

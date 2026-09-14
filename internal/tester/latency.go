@@ -68,7 +68,7 @@ type Options struct {
 	// Values above 1 reduce the effect of a single unlucky packet loss.
 	Attempts int
 	// Concurrency caps simultaneous probes. Default: 4. Each probe is its own
-	// engine process, so this bounds memory on a Pi -- do not set it to
+	// engine process, so this bounds memory on a Debian host -- do not set it to
 	// len(nodes) for a 200-node subscription.
 	Concurrency int
 	// WorkDir holds temporary configs. Default: os.TempDir().

@@ -125,7 +125,7 @@ func TestQoSIsolatedNamespace(t *testing.T) {
 	cmd.Env = append(os.Environ(), "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
 	output, err := cmd.CombinedOutput()
 	if err != nil && strings.Count(string(output), "Error:") == 2 && strings.Contains(string(output), "fib daddr type") && strings.Contains(string(output), "fib saddr type") && strings.Count(string(output), "No such file or directory") == 2 {
-		// Some development kernels omit nft_fib. Existing Pi interception already
+		// Some development kernels omit nft_fib. Existing Debian host interception already
 		// requires it. Validate all NEW expressions without loading host modules.
 		t.Log("kernel lacks nft_fib; omitting the two host-service guards in this isolated test only")
 		testRaw := strings.ReplaceAll(string(raw), "  fib daddr type { local, broadcast, multicast } return\n", "")

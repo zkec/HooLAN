@@ -63,7 +63,7 @@ func TestRootServesDashboard(t *testing.T) {
 	}
 }
 
-// A conditional reload must not resend the whole page: the Pi serves this over
+// A conditional reload must not resend the whole page: the Debian host serves this over
 // a LAN to a browser that polls, and there is no Last-Modified on embedded
 // files to fall back on.
 func TestStaticRevalidatesWithETag(t *testing.T) {

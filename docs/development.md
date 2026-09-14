@@ -33,8 +33,7 @@ go vet ./...
 node scripts/test-web.cjs
 node scripts/test-dashboard.cjs
 for script in scripts/tproxy/*.sh; do bash -n "$script"; done
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-  go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
 ```
 
 Node is optional for the development-only UI tests; it is not a runtime or build

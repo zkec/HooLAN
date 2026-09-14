@@ -211,7 +211,7 @@ func TestLoopBreakerIsFirstRule(t *testing.T) {
 		t.Errorf("rules[0].action = %q, want reject", got.Action)
 	}
 	if !got.IPIsPrivate {
-		t.Error("rules[0] must match ip_is_private so loopback and the Pi's LAN IP are both covered")
+		t.Error("rules[0] must match ip_is_private so loopback and the Debian host's LAN IP are both covered")
 	}
 	if len(got.Port) != 1 || got.Port[0] != port {
 		t.Errorf("rules[0].port = %v, want [%d]", got.Port, port)

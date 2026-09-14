@@ -3,7 +3,7 @@ package api
 // Static assets for the dashboard, compiled into the binary.
 //
 // Embedding rather than shipping a directory is deliberate: this runs as a
-// systemd unit on a Pi and is deployed by copying one file. A separate web root
+// systemd unit on a Debian host and is deployed by copying one file. A separate web root
 // would be one more path to get wrong in the unit file, and a missing asset
 // directory would leave an operator with a working API and a blank page.
 //
@@ -32,7 +32,7 @@ var webFS embed.FS
 
 // asset is one precomputed file. Content type and ETag are resolved once at
 // startup instead of per request: the bytes cannot change at runtime, and this
-// keeps the hot path a map lookup on a Pi's modest CPU.
+// keeps the hot path a map lookup on a Debian host's modest CPU.
 type asset struct {
 	body        []byte
 	contentType string

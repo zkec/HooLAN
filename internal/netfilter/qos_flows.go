@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// QoSFlow identifies the ORIGINAL LAN socket, never the Pi's outbound socket.
+// QoSFlow identifies the ORIGINAL LAN socket, never the Debian host's outbound socket.
 // The same tuple is matched in reverse for transparent return packets. These
 // short-lived observations intentionally do not overwrite conntrack marks.
 type QoSFlow struct {

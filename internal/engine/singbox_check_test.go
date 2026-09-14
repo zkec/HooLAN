@@ -81,7 +81,7 @@ func TestRealSingBoxRejectsTransparentField(t *testing.T) {
 
 // TestCheckAllProtocols validates every protocol the parser can emit, so an
 // unsupported field in a rarely-used outbound is caught here rather than at
-// 2am on the Pi.
+// 2am on the Debian host.
 func TestCheckAllProtocols(t *testing.T) {
 	bin := findSingBox(t)
 	nodes := allProtocolNodes()

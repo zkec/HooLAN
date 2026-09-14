@@ -1,7 +1,7 @@
 // Command server is the hoolan control plane: an HTTP API that owns the
 // sing-box process, the nftables TPROXY ruleset, and the node store.
 //
-// Runs as a systemd unit on bare-metal Raspberry Pi OS -- not in Docker. It
+// Runs as a systemd unit on bare-metal Debian -- not in Docker. It
 // needs CAP_NET_ADMIN to load the ruleset (AmbientCapabilities=CAP_NET_ADMIN or
 // User=root) and it manages sing-box as a child process.
 //
@@ -113,7 +113,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.logLevel, "log-level", "info", "debug|info|warn|error")
 	flag.StringVar(&cfg.probeURL, "probe-url", tester.DefaultProbeURL, "latency probe target")
 	flag.IntVar(&cfg.concurrency, "probe-concurrency", 4,
-		"parallel latency probes; each is its own sing-box process, so keep it low on a Pi")
+		"parallel latency probes; each is its own sing-box process, so keep it low on a Debian host")
 	flag.DurationVar(&cfg.timeout, "refresh-timeout", 10*time.Minute,
 		"budget for one refresh job: fetch, parse, latency sweep, engine reload")
 	flag.BoolVar(&cfg.exposeCreds, "expose-credentials", false,

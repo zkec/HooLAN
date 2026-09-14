@@ -46,7 +46,7 @@
   "Device settings saved and applied.": "تنظیمات دستگاه ذخیره و اعمال شد.",
   "Blank or 0 means unlimited. Limits apply separately to proxy and direct traffic in each direction.": "خالی یا صفر یعنی نامحدود. محدودیت‌ها برای ترافیک مستقیم و پروکسی در هر جهت جداگانه اعمال می‌شوند.",
   "Before sing-box reports a connection's route, the stricter nonzero limit applies. Short connections may keep that limit. Forwarded traffic uses Direct immediately, including when the engine is off.": "تا زمانی که sing-box مسیر اتصال را گزارش کند، محدودیت غیرصفر سخت‌گیرانه‌تر اعمال می‌شود. اتصال‌های کوتاه ممکن است با همان محدودیت باقی بمانند. ترافیک عبوری از مسیریاب، حتی هنگام خاموش بودن موتور، بلافاصله از محدودیت مستقیم استفاده می‌کند.",
-  "Limits cover IPv4 traffic crossing this Pi. Same-subnet traffic that bypasses the Pi and access to the Pi's own services are excluded. Keep device IPs stable with DHCP reservations.": "محدودیت‌ها شامل ترافیک IPv4 عبوری از این پای هستند. ترافیک داخلی که از پای عبور نمی‌کند و دسترسی به سرویس‌های خود پای مستثنی هستند. با رزرو DHCP نشانی دستگاه‌ها را ثابت نگه دارید.",
+  "Limits cover IPv4 traffic crossing this Debian host. Same-subnet traffic that bypasses the Debian host and access to the Debian host's own services are excluded. Keep device IPs stable with DHCP reservations.": "محدودیت‌ها شامل ترافیک IPv4 عبوری از این میزبان دبیان هستند. ترافیک داخلی که از میزبان دبیان عبور نمی‌کند و دسترسی به سرویس‌های خود میزبان دبیان مستثنی هستند. با رزرو DHCP نشانی دستگاه‌ها را ثابت نگه دارید.",
   "QoS classification unavailable; unclassified connections use the stricter limit.": "تشخیص مسیر برای کیفیت سرویس در دسترس نیست؛ اتصال‌های تشخیص‌داده‌نشده از محدودیت سخت‌گیرانه‌تر استفاده می‌کنند.",
 
   "Load balancing": "توزیع بار",
@@ -344,7 +344,7 @@
   "Signing in…": "در حال ورود…",
   "Checking session…": "بررسی نشست…",
   "Send Telegram through proxy": "ارسال تلگرام از طریق پروکسی",
-  "Off: connect directly from the Pi. On: use the active node; when automatic selection is offline, use the fastest saved healthy node. Proxy mode never falls back to direct.": "خاموش: اتصال مستقیم از رزبری‌پای. روشن: استفاده از گرهٔ فعال؛ وقتی انتخاب خودکار در دسترس نیست، سریع‌ترین گرهٔ سالم ذخیره‌شده استفاده می‌شود. در حالت پروکسی، اتصال مستقیم جایگزین نمی‌شود.",
+  "Off: connect directly from the Debian host. On: use the active node; when automatic selection is offline, use the fastest saved healthy node. Proxy mode never falls back to direct.": "خاموش: اتصال مستقیم از میزبان دبیان. روشن: استفاده از گرهٔ فعال؛ وقتی انتخاب خودکار در دسترس نیست، سریع‌ترین گرهٔ سالم ذخیره‌شده استفاده می‌شود. در حالت پروکسی، اتصال مستقیم جایگزین نمی‌شود.",
   "Save & send test message": "ذخیره و ارسال پیام آزمایشی",
   "Telegram test": "آزمایش تلگرام",
   "Sending test message…": "در حال ارسال پیام آزمایشی…",
@@ -416,7 +416,7 @@
       var key = messages[j];
       if (trimmed.startsWith(key + ': ')) return fa[key] + ': ' + trimmed.slice(key.length + 2);
       if (trimmed === key + ' complete.') return fa[key] + ' کامل شد.';
-      if (trimmed === key + ' running. Testing nodes can take a few minutes on a Pi.') return fa[key] + ' در حال اجرا است. آزمایش گره‌ها روی رزبری پای ممکن است چند دقیقه طول بکشد.';
+      if (trimmed === key + ' running. Testing nodes can take a few minutes on a Debian host.') return fa[key] + ' در حال اجرا است. آزمایش گره‌ها روی میزبان دبیان ممکن است چند دقیقه طول بکشد.';
       if (trimmed.startsWith(key + ' completed ')) return fa[key] + ' کامل شد: ' + translate(trimmed.slice(key.length + 11).replace(/\.$/, ''));
       if (trimmed.startsWith(key + ' failed: ')) return fa[key] + ' ناموفق بود: ' + trimmed.slice(key.length + 9);
     }

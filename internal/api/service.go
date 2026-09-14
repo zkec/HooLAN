@@ -608,7 +608,7 @@ func (s *Service) applyEngine(ctx context.Context, nodes []subscription.Node) er
 // accepted by the tproxy inbound as an ordinary client connection, and the
 // engine then routes it -- which, before the routing reject rule in
 // internal/engine existed, sent it to `direct`, dialling the same port again
-// and seeding an unbounded self-connection loop that saturated the Pi. Probing
+// and seeding an unbounded self-connection loop that saturated the Debian host. Probing
 // readiness by manufacturing the exact connection that must never exist is the
 // wrong contract even now that the reject rule makes it survivable. Reading the
 // kernel's socket table proves the listener is bound and creates no traffic.
@@ -980,7 +980,7 @@ func (s *Service) fetchSubscription(ctx context.Context, src string) (string, er
 		return "", fmt.Errorf("status %d", resp.StatusCode)
 	}
 	// Cap the read: a misconfigured URL pointing at something huge must not
-	// exhaust memory on a Pi.
+	// exhaust memory on a Debian host.
 	const maxBody = 4 << 20
 	buf, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
