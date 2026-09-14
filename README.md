@@ -8,7 +8,7 @@
 
 **Your LAN, with control over every connection.**
 
-[Quick start](#quick-start) · [Installation](docs/installation.md) · [Dashboard](docs/dashboard.md) · [Routing](docs/routing.md) · [Devices](docs/devices.md) · [Troubleshooting](docs/troubleshooting.md) · [فارسی](README-fa.md)
+[Quick start](#quick-start) · [Installation](docs/installation.md) · [Dashboard](docs/dashboard.md) · [Routing](docs/routing.md) · [FakeDNS](docs/fakedns.md) · [Devices](docs/devices.md) · [Troubleshooting](docs/troubleshooting.md) · [فارسی](README-fa.md)
 
 HooLAN turns a Debian host into a transparent IPv4 proxy gateway. Manage
 subscriptions, build multi-hop connections, assign routes to devices and set
@@ -27,6 +27,8 @@ and API, supervises sing-box and manages nftables interception.
   routing and separate proxy/direct upload/download limits.
 - **Routing & DNS:** configurable resolver, Iran preset, custom rule sets and
   routing rules, with interval, daily or weekly updates.
+- **FakeDNS:** opt-in synthetic IPv4 DNS, encrypted real lookups, persistent
+  mappings and integration with Docker AdGuard.
 - **Usage:** total, direct, per-node and per-device counters, sorted by upload
   or download. Attribution is estimated from connection samples.
 - **Operations:** live SSE logs, Telegram notifications with a selectable proxy,
@@ -53,6 +55,8 @@ HooLAN enables interception only after the engine owns the required TCP and UDP
 listeners. Disabling the engine removes interception while preserving the
 router's forwarding/NAT setup and device limits. Normal forwarding must be
 configured independently; an OFF toggle cannot create an upstream route.
+With FakeDNS enabled, restore real DNS and clear downstream caches before OFF;
+see the [FakeDNS shutdown procedure](docs/fakedns.md#cache-shutdown-and-recovery).
 
 TPROXY runs at prerouting priority `-150`. Marked packets use policy routing
 for local socket delivery. The proxy engine opens its own outbound connections;
@@ -94,6 +98,7 @@ in DHCP for stable device routing and limits. IPv6 needs a separate policy.
 | [Dashboard](docs/dashboard.md) | Navigation, controls, logs, themes and language |
 | [Configurations](docs/configurations.md) | Subscriptions, editing, chains and batch actions |
 | [Load balancing](docs/load-balancing.md) | Distribution versus best latency, behavior and limits |
+| [FakeDNS](docs/fakedns.md) | Synthetic DNS, AdGuard setup and cache recovery |
 | [Routing](docs/routing.md) | DNS, Iran preset, custom rules and update schedules |
 | [Devices](docs/devices.md) | Split tunneling, four-way speed limits and usage |
 | [Integrations](docs/integrations.md) | Telegram, backups, throughput tests and QR sharing |

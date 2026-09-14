@@ -11,10 +11,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"hoolan/internal/engine"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"hoolan/internal/engine"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +30,7 @@ const (
 // fast instead of at first Apply().
 type Manager struct {
 	qosMu           sync.Mutex
+	fakeDNS         bool
 	qosFlowsPresent bool
 	deviceLimits    map[string]DeviceLimits
 	distribution    []engine.DistributionGroup
@@ -104,6 +105,19 @@ func (m *Manager) Apply(ctx context.Context) error {
 			return fmt.Errorf("update apply.sh and tproxy.nft.template alongside the Go binary to enable distribution/QoS")
 		}
 	}
+	if m.fakeDNS {
+		template, err := os.ReadFile(filepath.Join(filepath.Dir(m.applyScript), "tproxy.nft.template"))
+		if err != nil {
+			return err
+		}
+		script, err := os.ReadFile(m.applyScript)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(template), "{{FAKEDNS_GUARD}}") || !strings.Contains(string(script), "HOOLAN_FAKEDNS") {
+			return fmt.Errorf("update apply.sh and tproxy.nft.template alongside the Go binary to enable FakeDNS")
+		}
+	}
 	path, cleanup, err := m.qosFile(m.deviceLimits)
 	if err != nil {
 		return err
@@ -114,7 +128,7 @@ func (m *Manager) Apply(ctx context.Context) error {
 		return err
 	}
 	defer balanceCleanup()
-	err = m.run(ctx, m.applyScript, "PROXY_QOS_FILE="+path, "PROXY_BALANCE_FILE="+balancePath)
+	err = m.run(ctx, m.applyScript, "PROXY_QOS_FILE="+path, "PROXY_BALANCE_FILE="+balancePath, "HOOLAN_FAKEDNS="+strconv.FormatBool(m.fakeDNS))
 	if err == nil {
 		m.qosFlowsPresent = false
 	}
@@ -227,4 +241,11 @@ func findRepoRoot() string {
 		return "."
 	}
 	return filepath.Dir(exe)
+}
+
+// ConfigureFakeDNS prepares the synthetic-address guard for the next atomic Apply.
+func (m *Manager) ConfigureFakeDNS(enabled bool) {
+	m.qosMu.Lock()
+	defer m.qosMu.Unlock()
+	m.fakeDNS = enabled
 }

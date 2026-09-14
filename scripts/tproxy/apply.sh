@@ -73,13 +73,30 @@ subst LAN_CIDR_LIST "$LAN_CIDR_LIST"
 subst SELF_ORIGIN_LIST "$SELF_ORIGIN_LIST"
 subst TPROXY_PORT "$TPROXY_PORT"
 subst TPROXY_FWMARK "$TPROXY_FWMARK"
+case "${HOOLAN_FAKEDNS:-false}" in
+  true|false) ;;
+  *) echo "invalid HOOLAN_FAKEDNS" >&2; exit 1 ;;
+esac
+# Keep the guard through OFF and standalone applies (which lack runtime state).
+# Reserving the FakeIP benchmark pool on a gateway that has used FakeDNS also
+# protects stale client caches after the feature is disabled.
+FAKEDNS_GUARD=""
+if [[ "${HOOLAN_FAKEDNS:-false}" == true ]]; then
+  FAKEDNS_GUARD='add table inet hoolan_fakedns
+ delete table inet hoolan_fakedns
+ table inet hoolan_fakedns {
+  chain forward { type filter hook forward priority -151; policy accept; ip daddr 198.18.0.0/15 counter drop; }
+  chain output { type filter hook output priority -151; policy accept; ip daddr 198.18.0.0/15 counter drop; }
+ }'
+fi
 # Only the Go manager supplies this mode-0600, generated fragment. Standalone
 # application leaves the independent QoS table unchanged.
 QOS_RENDER_TMP="$(mktemp "$RUNTIME_DIR/qos-render.XXXXXX")"
 for fragment in "${PROXY_QOS_FILE:-}" "${PROXY_BALANCE_FILE:-}"; do
   [[ -z "$fragment" || -f "$fragment" ]] || { echo "generated firewall fragment missing" >&2; rm -f "$QOS_RENDER_TMP"; exit 1; }
 done
-awk -v qos="${PROXY_QOS_FILE:-}" -v balance="${PROXY_BALANCE_FILE:-}" '
+awk -v fakeguard="$FAKEDNS_GUARD" -v qos="${PROXY_QOS_FILE:-}" -v balance="${PROXY_BALANCE_FILE:-}" '
+ /^[[:space:]]*{{FAKEDNS_GUARD}}$/ {print fakeguard; next}
  /^[[:space:]]*{{QOS_TABLE}}$/ { if (qos!="") {while ((getline line < qos)>0) print line; close(qos)}; next }
  /^[[:space:]]*{{BALANCE_CHAINS}}$/ { if (balance!="") {while ((getline line < balance)>0) print line; close(balance)} else {print "chain balance_dispatch {}"}; next }
  { print }

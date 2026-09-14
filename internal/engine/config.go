@@ -48,9 +48,8 @@ type TProxyInbound struct {
 	Transparent bool `json:"transparent,omitempty"`
 }
 
-// DNSOptions is emitted only when the caller supplies it. The DNS schema
-// changed shape in 1.12, so this package does not invent a default: an
-// unnecessary dns block is a common source of version-mismatch failures.
+// DNSOptions contains the modern typed DNS servers and rules used by the
+// ordinary resolver and optional FakeDNS. No legacy dns.fakeip block is emitted.
 type DNSOptions struct {
 	Servers  []any  `json:"servers,omitempty"`
 	Rules    []any  `json:"rules,omitempty"`
@@ -132,8 +131,9 @@ type ExperimentalOptions struct {
 // file means a pinned node silently reverts to the urltest group on every engine
 // restart, so BuildConfig warns about that combination.
 type CacheFileOptions struct {
-	Enabled bool   `json:"enabled"`
-	Path    string `json:"path,omitempty"`
+	StoreFakeIP bool   `json:"store_fakeip,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	Path        string `json:"path,omitempty"`
 }
 
 // ClashAPIOptions enables the Clash-compatible control API.

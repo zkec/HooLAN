@@ -158,6 +158,7 @@ type State struct {
 	RuleError          string                            `json:"rule_error,omitempty"`
 	Subscriptions      []Subscription                    `json:"subscriptions,omitempty"`
 	ManualNodeIDs      map[string]bool                   `json:"manual_node_ids,omitempty"`
+	FakeDNS            engine.FakeDNSOptions             `json:"fake_dns"`
 	DNSServer          string                            `json:"dns_server,omitempty"`
 	IranBypass         *bool                             `json:"iran_bypass,omitempty"`
 	ProxyEnabled       bool                              `json:"proxy_enabled"`
@@ -643,12 +644,22 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 		if !listening {
 			port = pendingPort
 		}
+		fakeDNS := s.Settings().FakeDNS
+		if listening && fakeDNS.Enabled {
+			listening, err = fakeDNSSocketsReady(s.cfg.Engine.Pid(), fakeDNS.Listen, engine.FakeDNSPort)
+			if err != nil {
+				return err
+			}
+			if !listening {
+				port = engine.FakeDNSPort
+			}
+		}
 		if listening {
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("api: sing-box PID %d did not own both IPv4 TCP and UDP wildcard listeners on port %d: %w", s.cfg.Engine.Pid(), port, ctx.Err())
+			return fmt.Errorf("api: sing-box PID %d did not own both required IPv4 TCP and UDP listeners on port %d: %w", s.cfg.Engine.Pid(), port, ctx.Err())
 		case <-ticker.C:
 		}
 	}

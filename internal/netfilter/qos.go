@@ -144,6 +144,9 @@ func renderDeviceLimits(lan, mark string, limits map[string]DeviceLimits) ([]byt
 		return []byte(b.String()), nil
 	}
 	b.WriteString("table inet proxy_qos {\n")
+	// Only limited devices reach the update rules below. Bound kernel memory
+	// and retain original FakeIP tuples when Clash exposes only a domain.
+	b.WriteString(" set fakedns_flows { type ipv4_addr . inet_proto . inet_service . ipv4_addr . inet_service; flags dynamic,timeout; timeout 5s; size 8192; }\n")
 	for _, class := range []string{"proxy", "direct"} {
 		fmt.Fprintf(&b, " set %s_flows {\n  type ipv4_addr . inet_proto . inet_service . ipv4_addr . inet_service; flags timeout; timeout 3s; size 8192;\n }\n", class)
 	}
@@ -195,6 +198,11 @@ func renderDeviceLimits(lan, mark string, limits map[string]DeviceLimits) ([]byt
 				fallback = "direct"
 			}
 			fmt.Fprintf(&b, " chain %s {\n  %s goto %s_direct\n", prefix, d.forwarded, prefix)
+			fakeAddress := "ip daddr"
+			if d.name == "down" {
+				fakeAddress = "ip saddr"
+			}
+			fmt.Fprintf(&b, "  %s 198.18.0.0/15 meta l4proto { tcp, udp } update @fakedns_flows { %s timeout 5s }\n", fakeAddress, d.tuple)
 			for _, class := range []string{"direct", "proxy"} {
 				fmt.Fprintf(&b, "  meta l4proto { tcp, udp } %s @%s_flows goto %s_%s\n", d.tuple, class, prefix, class)
 			}

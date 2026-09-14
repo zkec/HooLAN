@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hoolan/internal/netfilter"
 	"net/http"
 	"net/netip"
-	"hoolan/internal/netfilter"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +27,7 @@ type Usage struct {
 	Previous   Bytes            `json:"previous"`
 }
 type connectionMetadata struct {
+	Host            string `json:"host"`
 	SourceIP        string `json:"sourceIP"`
 	DestinationIP   string `json:"destinationIP"`
 	SourcePort      string `json:"sourcePort"`
@@ -80,7 +81,7 @@ func (s *Service) sampleUsage(ctx context.Context) {
 			SyncQoSFlows(context.Context, []netfilter.QoSFlow) error
 		}); ok {
 			s.mu.RLock()
-			flows := classifyQoSFlows(snap.Connections, s.state.DeviceLimits, s.tagByID)
+			flows := classifyQoSFlows(snap.Connections, s.state.DeviceLimits, s.tagByID, s.state.FakeDNS.Enabled)
 			s.mu.RUnlock()
 			qosErr = firewall.SyncQoSFlows(ctx, flows)
 		}
@@ -228,7 +229,7 @@ func supportsTraffic(v any) bool {
 
 // Upstream Clash reports the final leaf first in chains. Never infer the class
 // from the device's assignment: DNS/custom/Iran routing can override it.
-func classifyQoSFlows(connections []connectionSample, limits map[string]netfilter.DeviceLimits, tags map[string]string) []netfilter.QoSFlow {
+func classifyQoSFlows(connections []connectionSample, limits map[string]netfilter.DeviceLimits, tags map[string]string, fakeDNS ...bool) []netfilter.QoSFlow {
 	known := make(map[string]bool, len(tags))
 	for _, tag := range tags {
 		known[tag] = true
@@ -244,7 +245,8 @@ func classifyQoSFlows(connections []connectionSample, limits map[string]netfilte
 			continue
 		}
 		dst, err := netip.ParseAddr(m.DestinationIP)
-		if err != nil || !dst.Unmap().Is4() || dst.IsUnspecified() || dst.IsMulticast() {
+		missingFake := len(fakeDNS) > 0 && fakeDNS[0] && m.DestinationIP == "" && m.Host != ""
+		if !missingFake && (err != nil || !dst.Unmap().Is4() || dst.IsUnspecified() || dst.IsMulticast()) {
 			continue
 		}
 		sport, srcErr := strconv.ParseUint(m.SourcePort, 10, 16)
@@ -256,7 +258,11 @@ func classifyQoSFlows(connections []connectionSample, limits map[string]netfilte
 		if leaf != "direct" && !known[leaf] {
 			continue
 		}
-		flows = append(flows, netfilter.QoSFlow{SourceIP: ip, DestinationIP: dst.Unmap().String(), Network: m.Network, SourcePort: uint16(sport), DestinationPort: uint16(dport), Direct: leaf == "direct"})
+		destination := m.DestinationIP
+		if !missingFake {
+			destination = dst.Unmap().String()
+		}
+		flows = append(flows, netfilter.QoSFlow{SourceIP: ip, DestinationIP: destination, Network: m.Network, SourcePort: uint16(sport), DestinationPort: uint16(dport), Direct: leaf == "direct"})
 	}
 	return flows
 }

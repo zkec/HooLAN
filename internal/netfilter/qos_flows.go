@@ -72,8 +72,23 @@ func (m *Manager) SyncQoSFlows(ctx context.Context, flows []QoSFlow) error {
 	if len(m.deviceLimits) == 0 {
 		return nil
 	}
+	var recoveryErr error
+	if m.fakeDNS {
+		missing := false
+		for _, f := range flows {
+			if f.DestinationIP == "" {
+				missing = true
+				break
+			}
+		}
+		if missing {
+			observed, err := readFakeDNSFlows(ctx)
+			recoveryErr = err
+			flows = recoverFakeDNSFlows(flows, observed)
+		}
+	}
 	if len(flows) == 0 && !m.qosFlowsPresent {
-		return nil
+		return recoveryErr
 	}
 	raw, err := renderQoSFlows(flows, m.deviceLimits)
 	if err != nil {
@@ -87,5 +102,5 @@ func (m *Manager) SyncQoSFlows(ctx context.Context, flows []QoSFlow) error {
 		return fmt.Errorf("QoS classification: nft failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	m.qosFlowsPresent = len(flows) != 0
-	return nil
+	return recoveryErr
 }

@@ -63,3 +63,24 @@ public responses or logs. Record names separately from generated engine tags.
 
 Build output `hoolan`, JSON stores and cache databases are ignored by Git.
 Runtime artifacts do not belong in `internal/api/web/`, which is embedded whole.
+
+FakeDNS integration checks can run offline with a real engine:
+
+```bash
+SINGBOX_BIN=/path/to/sing-box go test ./internal/engine -run FakeDNS -v
+```
+
+They check the production schema, then use ordinary loopback inbounds and a
+local hosts resolver to verify TCP/UDP answers, IPv6/address-hint suppression,
+mapping persistence and recovered-domain routing without root or WAN access.
+Real nftables TPROXY delivery still needs a test client on the Debian gateway.
+
+To validate FakeDNS QoS tuple rules and nft JSON in a fresh network namespace:
+
+```bash
+HOOLAN_CHECK_NFT=1 go test ./internal/netfilter -run FakeDNSQoSIsolatedNftCheck -v
+```
+
+This optional Linux check requires `unshare` and `/usr/sbin/nft`. It never writes
+the host firewall. It omits the existing fib service exclusions because some
+development kernels lack `nft_fib_inet`; production rules keep those exclusions.

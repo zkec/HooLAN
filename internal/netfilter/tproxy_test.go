@@ -211,3 +211,21 @@ case "$name $*" in
   *) : ;;
 esac
 `
+
+func TestFakeDNSGuardRenderedAtomicallyAndPreservedOnRemove(t *testing.T) {
+	f := newScriptFixture(t)
+	f.env = append(f.env, "HOOLAN_FAKEDNS=true")
+	f.run(t, "apply.sh", false)
+	active := f.read(t, "active.nft")
+	if strings.Count(active, "ip daddr 198.18.0.0/15 counter drop") != 2 || !strings.Contains(active, "table inet hoolan_fakedns") {
+		t.Fatal("synthetic-address forward/output guards missing")
+	}
+	// Local DNS remains before TPROXY, so Docker AdGuard still owns port 53.
+	if strings.Index(active, "fib daddr type") > strings.Index(active, "jump balance_dispatch") {
+		t.Fatal("local service bypass moved after interception")
+	}
+	f.run(t, "remove.sh", false)
+	if strings.Contains(f.read(t, "calls"), "delete table inet hoolan_fakedns") {
+		t.Fatal("OFF removed stale FakeIP protection")
+	}
+}

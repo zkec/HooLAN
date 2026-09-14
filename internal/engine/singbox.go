@@ -82,6 +82,7 @@ type Options struct {
 	// DNSServer is an optional IP or IP:port for the engine's UDP resolver.
 	// Empty uses the system resolver. It does not reconfigure local AdGuard.
 	DNSServer string
+	FakeDNS   FakeDNSOptions
 
 	LogLevel string
 	// DNS is emitted verbatim when non-nil. Left nil by default: the DNS schema
@@ -462,6 +463,14 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		// rules themselves are internally ordered (ads reject before bypass).
 		rules = append(rules, iranRules(m.opts.BlockIranAds)...)
 	}
+	if m.opts.FakeDNS.Enabled {
+		var err error
+		dns, rules, err = m.buildFakeDNS(inboundTags, rules)
+		if err != nil {
+			return nil, err
+		}
+		inbounds = append(inbounds, map[string]any{"type": "direct", "tag": FakeDNSInbound, "listen": m.opts.FakeDNS.Listen, "listen_port": FakeDNSPort})
+	}
 	route.Rules = rules
 	m.applyRulePolicy(route)
 	// nftables selects a member only for devices/global intent using this group.
@@ -519,8 +528,9 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		// Enabling cache_file also makes the selector's current pick survive a
 		// restart; see CacheFileOptions for why there is no explicit flag.
 		cfg.Experimental.CacheFile = &CacheFileOptions{
-			Enabled: true,
-			Path:    m.opts.CacheFilePath,
+			Enabled:     true,
+			StoreFakeIP: m.opts.FakeDNS.Enabled,
+			Path:        m.opts.CacheFilePath,
 		}
 	}
 	if m.opts.ClashAPIListen != "" {

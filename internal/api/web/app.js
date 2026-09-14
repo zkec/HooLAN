@@ -310,10 +310,21 @@
     }
   }
 
+  function updateFakeDNSControls() {
+    var enabled = $('fakedns-enabled').checked;
+    text($('fakedns-label'), enabled ? 'On' : 'Off');
+    $('dns-server').disabled = enabled;
+    $('fakedns-listen').disabled = !enabled;
+  }
+
   function renderSettings(settings) {
     state.settings = settings;
     if (state.settingsDirty) return;
     $('dns-server').value = settings.dns_server || '';
+    var fake = settings.fake_dns || {};
+    $('fakedns-enabled').checked = !!fake.enabled;
+    $('fakedns-listen').value = fake.listen || '127.0.0.1';
+    updateFakeDNSControls();
     $('iran-bypass').checked = !!settings.iran_bypass;
     text($('iran-label'), settings.iran_bypass ? 'On' : 'Off');
   }
@@ -579,12 +590,13 @@
     });
     $('settings-form').addEventListener('input', function () {
       state.settingsDirty = true;
+      updateFakeDNSControls();
       text($('settings-note'), 'Unsaved changes');
       text($('iran-label'), $('iran-bypass').checked ? 'On' : 'Off');
     });
     $('settings-form').addEventListener('submit', function (event) {
       event.preventDefault();
-      var settings = { dns_server: $('dns-server').value.trim(), iran_bypass: $('iran-bypass').checked };
+      var settings = { dns_server: $('dns-server').value.trim(), iran_bypass: $('iran-bypass').checked, fake_dns: {enabled: $('fakedns-enabled').checked, listen: $('fakedns-listen').value.trim()} };
       mutate('Save settings', async function () {
         var response = await call('PUT', '/api/settings', settings);
         state.settingsDirty = false;

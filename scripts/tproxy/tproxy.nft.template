@@ -152,3 +152,7 @@ table inet proxy_tproxy {
 # direct/Iran versus proxy decisions arrive via expiring Clash tuple sets.
 # Download policing runs at postrouting 99 (before SNAT), matching client daddr.
 {{QOS_TABLE}}
+
+# Synthetic destinations have meaning only inside the engine. This independent
+# guard survives remove.sh so cached FakeIP answers cannot leak while OFF.
+{{FAKEDNS_GUARD}}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"hoolan/internal/engine"
 	"net/http"
 
 	"hoolan/internal/store"
@@ -130,18 +131,22 @@ func (h *handlers) settings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, h.svc.Settings())
 	case http.MethodPut:
 		var req struct {
-			DNSServer  *string `json:"dns_server"`
-			IranBypass *bool   `json:"iran_bypass"`
+			FakeDNS    *engine.FakeDNSOptions `json:"fake_dns"`
+			DNSServer  *string                `json:"dns_server"`
+			IranBypass *bool                  `json:"iran_bypass"`
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if req.DNSServer == nil && req.IranBypass == nil {
-			writeError(w, http.StatusBadRequest, "provide dns_server or iran_bypass")
+		if req.DNSServer == nil && req.IranBypass == nil && req.FakeDNS == nil {
+			writeError(w, http.StatusBadRequest, "provide dns_server, iran_bypass or fake_dns")
 			return
 		}
 		settings := h.svc.Settings()
+		if req.FakeDNS != nil {
+			settings.FakeDNS = *req.FakeDNS
+		}
 		if req.DNSServer != nil {
 			settings.DNSServer = *req.DNSServer
 		}

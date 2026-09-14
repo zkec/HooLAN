@@ -106,6 +106,12 @@
         <p class="muted small">Changes are saved on the gateway and applied to the running engine.</p>
         <div class="setting"><div class="field"><label for="dns-server">DNS server</label><p id="dns-help" class="muted small">Resolver used by the proxy engine. Leave blank for the system resolver, or enter an IP address with an optional port, for example 1.1.1.1 or [2606:4700:4700::1111]:53. Local AdGuard DNS traffic still bypasses interception.</p><input id="dns-server" name="dns_server" type="text" spellcheck="false" autocomplete="off" aria-describedby="dns-help" placeholder="System resolver" /></div></div>
 
+        <section class="routing-section" aria-labelledby="fakedns-heading">
+          <div class="setting setting-row"><div><h3 id="fakedns-heading">FakeDNS</h3><p id="fakedns-help" class="muted small">Return synthetic IPv4 addresses to LAN clients and recover domains inside sing-box. Requires the proxy engine to stay on. Encrypted DNS is used for real lookups; the ordinary DNS server setting is ignored in this mode.</p></div><label class="switch" for="fakedns-enabled"><input id="fakedns-enabled" type="checkbox" role="switch" aria-describedby="fakedns-help" data-mutation /><span class="switch-track" aria-hidden="true"></span><span id="fakedns-label" class="switch-label">Off</span></label></div>
+          <div class="field"><label for="fakedns-listen">FakeDNS listen address</label><input id="fakedns-listen" type="text" inputmode="decimal" value="127.0.0.1" placeholder="127.0.0.1" autocomplete="off" spellcheck="false" aria-describedby="fakedns-setup" /><p class="muted small">TCP/UDP port 1053 · FakeIP pool 198.18.0.0/15</p></div>
+          <p class="muted small">Keep the Debian host and Docker workloads on real DNS. Only LAN clients intercepted by HooLAN should receive FakeIP answers.</p>
+          <p id="fakedns-setup" class="muted small">For Docker AdGuard, bind to a private address on the Debian host that the container can reach, then set AdGuard upstream to that address on port 1053. Keep local DNS rewrites in AdGuard. Restore its normal upstream and clear AdGuard/client DNS caches before turning the engine or FakeDNS off.</p>
+        </section>
         <div class="form-footer"><span id="settings-note" class="muted small" role="status"></span><button class="button primary" type="submit" data-mutation>Save settings</button></div>
       </form>
       <form id="rules-form" class="routing-section">

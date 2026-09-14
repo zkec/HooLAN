@@ -13,9 +13,10 @@ TPROXY client.
 Inside sing-box, safety and DNS/private-network handling precede custom routing
 rules, custom rule sets, the Iran preset, device assignments and the global
 outbound. More specific device assignments therefore do not override the
-preceding bypass policies. External client DNS is routed through the proxy;
-local resolver traffic remains bypassed. HooLAN does not treat this as a generic
-DNS-hijack action.
+preceding bypass policies. With FakeDNS OFF, external client DNS is forwarded
+through the proxy to its original resolver. With FakeDNS ON, intercepted DNS
+is handled by sing-box. Local resolver traffic remains bypassed in both modes;
+connect AdGuard explicitly to the FakeDNS listener.
 
 ## DNS
 
@@ -23,6 +24,9 @@ Set the engine resolver in Routing & DNS. An empty value uses the system
 resolver. An address may include a port, for example `1.1.1.1` or
 `[2606:4700:4700::1111]:53`. This does not advertise DNS via DHCP or install a LAN
 resolver. Save settings applies the engine resolver.
+
+For synthetic client answers with encrypted real lookups, see [FakeDNS](fakedns.md)
+and its Docker AdGuard / OpenWrt SmartDNS setup. It is disabled by default.
 
 ## Iran preset
 

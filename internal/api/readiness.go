@@ -2,9 +2,11 @@ package api
 
 import (
 	"bufio"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +24,9 @@ func tproxySocketsReady(pid, port int) (bool, error) {
 // Read descriptors and each protocol table once per readiness poll, regardless
 // of how many load-balancer listeners exist.
 func tproxyPortsReady(pid int, ports []int) (bool, int, error) {
+	return ipv4PortsReady(pid, ports, "00000000")
+}
+func ipv4PortsReady(pid int, ports []int, address string) (bool, int, error) {
 	if len(ports) == 0 {
 		return true, 0, nil
 	}
@@ -52,7 +57,7 @@ func tproxyPortsReady(pid int, ports []int) (bool, int, error) {
 		if err != nil {
 			return false, port, err
 		}
-		ready, scanErr := scanOwnedIPv4Sockets(f, ports, table.state, owned)
+		ready, scanErr := scanOwnedIPv4BoundSockets(f, ports, table.state, owned, address)
 		f.Close()
 		if scanErr != nil {
 			return false, port, scanErr
@@ -71,9 +76,12 @@ func scanOwnedIPv4Socket(r io.Reader, port int, state string, owned map[string]b
 	return ready[port], err
 }
 func scanOwnedIPv4Sockets(r io.Reader, ports []int, state string, owned map[string]bool) (map[int]bool, error) {
+	return scanOwnedIPv4BoundSockets(r, ports, state, owned, "00000000")
+}
+func scanOwnedIPv4BoundSockets(r io.Reader, ports []int, state string, owned map[string]bool, address string) (map[int]bool, error) {
 	wanted := make(map[string]int, len(ports))
 	for _, port := range ports {
-		wanted[fmt.Sprintf("00000000:%04X", port)] = port
+		wanted[fmt.Sprintf("%s:%04X", address, port)] = port
 	}
 	ready := make(map[int]bool, len(ports))
 	scan := bufio.NewScanner(r)
@@ -87,4 +95,15 @@ func scanOwnedIPv4Sockets(r io.Reader, ports []int, state string, owned map[stri
 		}
 	}
 	return ready, scan.Err()
+}
+
+func fakeDNSSocketsReady(pid int, listen string, port int) (bool, error) {
+	ip, err := netip.ParseAddr(listen)
+	if err != nil || !ip.Is4() {
+		return false, fmt.Errorf("invalid FakeDNS listener address")
+	}
+	raw := ip.As4()
+	address := fmt.Sprintf("%08X", binary.NativeEndian.Uint32(raw[:]))
+	ready, _, err := ipv4PortsReady(pid, []int{port}, address)
+	return ready, err
 }

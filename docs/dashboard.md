@@ -36,7 +36,11 @@ be missed. [Device and usage details](devices.md).
 
 The cards are Routing & DNS, Telegram notifications, then Backup & restore.
 Routing includes DNS, update scheduling, the Iran preset, custom rule sets and
-custom match rules. Telegram has separate notification and proxy-delivery
+custom match rules. The opt-in [FakeDNS](fakedns.md) switch and private listen
+address configure a TCP/UDP DNS listener on port 1053 for AdGuard upstream use.
+Save settings applies these edits; the normal DNS field is disabled while
+FakeDNS is selected. Follow the guide before changing AdGuard or turning the
+engine off. Telegram has separate notification and proxy-delivery
 switches, a proxy selector and an explicit test button. Error messages appear
 separately from field descriptions.
 

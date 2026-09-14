@@ -97,3 +97,19 @@ func TestQoSClashClassificationUsesActualLeafAndOriginalTuple(t *testing.T) {
 		}
 	}
 }
+
+func TestFakeDNSQoSRequestsKernelTupleRecovery(t *testing.T) {
+	c := connectionSample{Metadata: connectionMetadata{SourceIP: "192.168.3.141", Host: "mapped.example", SourcePort: "2000", DestinationPort: "443", Type: "tproxy/tproxy-in", Network: "tcp"}, Chains: []string{"direct"}}
+	limits := map[string]netfilter.DeviceLimits{"192.168.3.141": netfilter.UniformLimits(1)}
+	if got := classifyQoSFlows([]connectionSample{c}, limits, nil); len(got) != 0 {
+		t.Fatal("legacy mode accepted missing destination")
+	}
+	got := classifyQoSFlows([]connectionSample{c}, limits, nil, true)
+	if len(got) != 1 || got[0].DestinationIP != "" || !got[0].Direct {
+		t.Fatal("FakeDNS missing-IP flow lost actual class")
+	}
+	c.Metadata.Host = ""
+	if got := classifyQoSFlows([]connectionSample{c}, limits, nil, true); len(got) != 0 {
+		t.Fatal("malformed metadata eligible for FakeDNS recovery")
+	}
+}

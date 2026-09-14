@@ -69,6 +69,8 @@ for iface in all default "$LAN_IF"; do
   run sysctl "net.ipv4.conf.$iface.rp_filter" "net.ipv4.conf.$iface.src_valid_mark" "net.ipv4.conf.$iface.accept_local" "net.ipv4.conf.$iface.send_redirects"
 done
 run nft -a list table inet proxy_tproxy
+run nft -a list table inet hoolan_fakedns
+run ss -lntup "( sport = :1053 )"
 # All base chains matter: accept in one chain does not overrule a later drop.
 run nft -a list ruleset
 run iptables --version

@@ -2,6 +2,13 @@
 (function () {
   "use strict";
   var fa = {
+  "Keep the Debian host and Docker workloads on real DNS. Only LAN clients intercepted by HooLAN should receive FakeIP answers.": "خود میزبان Debian و برنامه‌های Docker باید DNS واقعی دریافت کنند. فقط کاربران LAN که اتصالشان در HooLAN رهگیری می‌شود باید پاسخ FakeIP بگیرند.",
+  "FakeDNS": "DNS ساختگی (FakeDNS)",
+  "FakeDNS listen address": "نشانی گوش‌دادن FakeDNS",
+  "TCP/UDP port 1053 · FakeIP pool 198.18.0.0/15": "درگاه TCP/UDP برابر 1053 · محدودهٔ FakeIP برابر 198.18.0.0/15",
+  "Return synthetic IPv4 addresses to LAN clients and recover domains inside sing-box. Requires the proxy engine to stay on. Encrypted DNS is used for real lookups; the ordinary DNS server setting is ignored in this mode.": "به دستگاه‌های شبکهٔ محلی نشانی IPv4 ساختگی می‌دهد و نام دامنه را در sing-box بازیابی می‌کند. موتور پروکسی باید روشن بماند. جست‌وجوی نشانی‌های واقعی با DNS رمزگذاری‌شده انجام می‌شود؛ تنظیم سرور DNS معمولی در این حالت نادیده گرفته می‌شود.",
+  "For Docker AdGuard, bind to a private address on the Debian host that the container can reach, then set AdGuard upstream to that address on port 1053. Keep local DNS rewrites in AdGuard. Restore its normal upstream and clear AdGuard/client DNS caches before turning the engine or FakeDNS off.": "برای AdGuard در Docker، یک نشانی خصوصی میزبان Debian را که کانتینر به آن دسترسی دارد وارد کنید؛ سپس upstream در AdGuard را روی همان نشانی با درگاه 1053 بگذارید. بازنویسی‌های DNS محلی را در AdGuard نگه دارید. پیش از خاموش‌کردن موتور یا FakeDNS، upstream معمولی را برگردانید و حافظهٔ نهان DNS در AdGuard و دستگاه‌ها را پاک کنید.",
+
   "Automatic selection (global)": "انتخاب خودکار سراسری",
   "Choose the fastest reachable ordinary configuration globally. Activate a saved group to use its own strategy.": "سریع‌ترین پیکربندی معمولی در دسترس را به‌صورت سراسری انتخاب کنید. برای استفاده از راهبرد یک گروه ذخیره‌شده، همان گروه را فعال کنید.",
   "Selection strategy": "راهبرد انتخاب",

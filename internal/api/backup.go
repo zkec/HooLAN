@@ -253,6 +253,9 @@ func decodeBackup(raw []byte, port int) (backupBundle, error) {
 	if _, err := engine.NormalizeDNSServer(state.DNSServer); err != nil {
 		return out, err
 	}
+	if _, err := engine.NormalizeFakeDNS(state.FakeDNS); err != nil {
+		return out, err
+	}
 	if state.RulePolicy != nil {
 		if err := engine.ValidateRulePolicy(*state.RulePolicy); err != nil {
 			return out, err

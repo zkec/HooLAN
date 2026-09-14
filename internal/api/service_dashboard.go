@@ -33,8 +33,9 @@ type SubscriptionView struct {
 }
 
 type Settings struct {
-	DNSServer  string `json:"dns_server"`
-	IranBypass bool   `json:"iran_bypass"`
+	FakeDNS    engine.FakeDNSOptions `json:"fake_dns"`
+	DNSServer  string                `json:"dns_server"`
+	IranBypass bool                  `json:"iran_bypass"`
 }
 
 var ErrInvalidInput = errors.New("api: invalid input")
@@ -183,7 +184,10 @@ func (s *Service) AddManualNode(ctx context.Context, link string) (string, error
 func (s *Service) Settings() Settings {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	settings := Settings{DNSServer: s.state.DNSServer, IranBypass: true}
+	settings := Settings{DNSServer: s.state.DNSServer, IranBypass: true, FakeDNS: s.state.FakeDNS}
+	if settings.FakeDNS.Listen == "" {
+		settings.FakeDNS.Listen = "127.0.0.1"
+	}
 	if s.state.IranBypass != nil {
 		settings.IranBypass = *s.state.IranBypass
 	}
@@ -213,6 +217,20 @@ func (s *Service) configureEngineRouting() error {
 		configurable.ConfigureDeviceRoutes(routes)
 	}
 	settings := s.Settings()
+	if configurable, ok := s.cfg.Engine.(interface {
+		ConfigureFakeDNS(engine.FakeDNSOptions) error
+	}); ok {
+		if err := configurable.ConfigureFakeDNS(settings.FakeDNS); err != nil {
+			return err
+		}
+	} else if settings.FakeDNS.Enabled {
+		return errors.New("engine does not support FakeDNS")
+	}
+	if configurable, ok := s.cfg.Firewall.(interface{ ConfigureFakeDNS(bool) }); ok {
+		configurable.ConfigureFakeDNS(settings.FakeDNS.Enabled)
+	} else if settings.FakeDNS.Enabled {
+		return errors.New("firewall does not support FakeDNS")
+	}
 	if configurable, ok := s.cfg.Engine.(interface{ ConfigureRouting(string, bool) error }); ok {
 		return configurable.ConfigureRouting(settings.DNSServer, settings.IranBypass)
 	}
@@ -221,6 +239,10 @@ func (s *Service) configureEngineRouting() error {
 
 func (s *Service) UpdateSettings(ctx context.Context, settings Settings) (Settings, error) {
 	value, err := engine.NormalizeDNSServer(settings.DNSServer)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	settings.FakeDNS, err = engine.NormalizeFakeDNS(settings.FakeDNS)
 	if err != nil {
 		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
@@ -239,9 +261,12 @@ func (s *Service) UpdateSettings(ctx context.Context, settings Settings) (Settin
 		s.mu.Unlock()
 		return previous, errors.New("api: shutting down")
 	}
+	oldFakeDNS := s.state.FakeDNS
+	s.state.FakeDNS = settings.FakeDNS
 	oldDNS, oldIran := s.state.DNSServer, s.state.IranBypass
 	s.state.DNSServer, s.state.IranBypass = settings.DNSServer, &settings.IranBypass
 	if err := s.saveState(); err != nil {
+		s.state.FakeDNS = oldFakeDNS
 		s.state.DNSServer, s.state.IranBypass = oldDNS, oldIran
 		s.mu.Unlock()
 		return previous, err
@@ -253,6 +278,7 @@ func (s *Service) UpdateSettings(ctx context.Context, settings Settings) (Settin
 	}
 	if err != nil {
 		s.mu.Lock()
+		s.state.FakeDNS = oldFakeDNS
 		s.state.DNSServer, s.state.IranBypass = oldDNS, oldIran
 		saveErr := s.saveState()
 		s.mu.Unlock()
