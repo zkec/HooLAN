@@ -84,3 +84,13 @@ HOOLAN_CHECK_NFT=1 go test ./internal/netfilter -run FakeDNSQoSIsolatedNftCheck 
 This optional Linux check requires `unshare` and `/usr/sbin/nft`. It never writes
 the host firewall. It omits the existing fib service exclusions because some
 development kernels lack `nft_fib_inet`; production rules keep those exclusions.
+
+Split-DNS integration checks use local UDP, HTTPS DoH and HTTP CONNECT fixtures:
+
+```bash
+SINGBOX_BIN=/path/to/sing-box go test ./internal/engine -run SplitDNS -v
+```
+
+They verify direct/local and Iran matches, custom proxy exceptions, actual DoH
+proxy transport, GeoIP response routing, FakeDNS coexistence and no direct
+fallback after a DoH failure. They require localhost sockets, not WAN DNS.

@@ -131,16 +131,18 @@ func (h *handlers) settings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, h.svc.Settings())
 	case http.MethodPut:
 		var req struct {
-			FakeDNS    *engine.FakeDNSOptions `json:"fake_dns"`
-			DNSServer  *string                `json:"dns_server"`
-			IranBypass *bool                  `json:"iran_bypass"`
+			FakeDNS     *engine.FakeDNSOptions `json:"fake_dns"`
+			TunneledDoH *string                `json:"tunneled_doh"`
+			DirectDNS   *string                `json:"direct_dns"`
+			DNSServer   *string                `json:"dns_server"`
+			IranBypass  *bool                  `json:"iran_bypass"`
 		}
 		if err := decodeBody(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if req.DNSServer == nil && req.IranBypass == nil && req.FakeDNS == nil {
-			writeError(w, http.StatusBadRequest, "provide dns_server, iran_bypass or fake_dns")
+		if req.TunneledDoH == nil && req.DirectDNS == nil && req.DNSServer == nil && req.IranBypass == nil && req.FakeDNS == nil {
+			writeError(w, http.StatusBadRequest, "provide tunneled_doh, direct_dns, iran_bypass or fake_dns")
 			return
 		}
 		settings := h.svc.Settings()
@@ -149,6 +151,13 @@ func (h *handlers) settings(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.DNSServer != nil {
 			settings.DNSServer = *req.DNSServer
+			settings.DirectDNS = *req.DNSServer
+		}
+		if req.TunneledDoH != nil {
+			settings.TunneledDoH = *req.TunneledDoH
+		}
+		if req.DirectDNS != nil {
+			settings.DirectDNS = *req.DirectDNS
 		}
 		if req.IranBypass != nil {
 			settings.IranBypass = *req.IranBypass

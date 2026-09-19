@@ -135,3 +135,10 @@ Download a backup, build a new executable, stop `hoolan`, replace the executable
 and firewall helpers/template, then start it again. Preserve the live `env`,
 `tproxy.conf` and state files. If the unit changes, install it and run
 `systemctl daemon-reload`. Test OFF forwarding and ON interception afterward.
+
+## AdGuard and split DNS
+
+For AdGuard Home on port 53 (including Docker), follow the
+[split-DNS setup guide](split-dns.md) to forward to HooLAN on port 1053.
+Set your actual router IP as Direct DNS, configure tunneled DoH, and use a
+container-reachable private host address when Docker does not share host networking.

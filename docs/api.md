@@ -19,7 +19,7 @@ must match the public origin. `/healthz` is public liveness, not a routing test.
 | `GET/POST/PUT /api/chains` | Ordered chain read/create/edit |
 | `POST /api/load-balancers` | Snapshot a group and its strategy |
 | `GET /api/usage`, `PUT /api/devices` | Usage, device alias/route/limits |
-| `GET/PUT /api/settings` | Resolver, FakeDNS and Iran preset activation |
+| `GET/PUT /api/settings` | Tunneled DoH, Direct DNS, listener, FakeDNS and Iran preset |
 | `GET/PUT /api/rules`, `POST /api/rules/update` | Rule policy and schedules |
 | `GET /api/logs` | SSE logs, Last-Event-ID replay |
 | `GET/PUT /api/telegram`, `POST /api/telegram/test` | Notifications and delivery tests |
@@ -79,12 +79,16 @@ job's error rather than as a browser-origin decision.
 The route handlers in `internal/api/handlers.go` and `handlers_dashboard.go`
 define the complete interface. Sensitive endpoints use no-store responses.
 
-## FakeDNS settings
+## Split DNS and FakeDNS settings
 
-`PUT /api/settings` accepts an optional `fake_dns` object:
+`PUT /api/settings` accepts partial updates:
 
 ```json
-{"fake_dns":{"enabled":true,"listen":"192.168.3.5"}}
+{
+  "tunneled_doh":"https://1.1.1.1/dns-query",
+  "direct_dns":"192.168.3.1",
+  "fake_dns":{"enabled":false,"listen":"192.168.3.5"}
+}
 ```
 
 Use a private IPv4 address actually assigned to the Debian host. A missing/blank
@@ -94,4 +98,7 @@ FakeDNS. A supplied `fake_dns` object replaces that object. `GET /api/settings`
 returns the normalized object. Values persist in `state.json` and backups.
 Changes restart a running engine using the existing firewall teardown/readiness
 sequence. Invalid values are rejected; apply failures restore the old settings.
-See [FakeDNS](fakedns.md) before pointing AdGuard at this listener.
+The listener runs even with FakeDNS disabled. The legacy `dns_server` field is
+accepted as a Direct DNS input alias; existing state inherits it when
+`direct_dns` is absent. Blank resolver fields use the documented defaults.
+See [split DNS](split-dns.md) before pointing AdGuard at this listener.

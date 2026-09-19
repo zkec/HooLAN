@@ -8,7 +8,7 @@
 
 **Your LAN, with control over every connection.**
 
-[Quick start](#quick-start) · [Installation](docs/installation.md) · [Dashboard](docs/dashboard.md) · [Routing](docs/routing.md) · [FakeDNS](docs/fakedns.md) · [Devices](docs/devices.md) · [Troubleshooting](docs/troubleshooting.md) · [فارسی](README-fa.md)
+[Quick start](#quick-start) · [Installation](docs/installation.md) · [Dashboard](docs/dashboard.md) · [Routing](docs/routing.md) · [Split DNS](docs/split-dns.md) · [FakeDNS](docs/fakedns.md) · [Devices](docs/devices.md) · [Troubleshooting](docs/troubleshooting.md) · [فارسی](README-fa.md)
 
 HooLAN turns a Debian host into a transparent IPv4 proxy gateway. Manage
 subscriptions, build multi-hop connections, assign routes to devices and set
@@ -27,6 +27,8 @@ and API, supervises sing-box and manages nftables interception.
   routing and separate proxy/direct upload/download limits.
 - **Routing & DNS:** configurable resolver, Iran preset, custom rule sets and
   routing rules, with interval, daily or weekly updates.
+- **Split DNS:** AdGuard upstream on port 1053, direct DNS for bypass rules and
+  HTTPS DNS through the active proxy for other queries.
 - **FakeDNS:** opt-in synthetic IPv4 DNS, encrypted real lookups, persistent
   mappings and integration with Docker AdGuard.
 - **Usage:** total, direct, per-node and per-device counters, sorted by upload
@@ -55,6 +57,7 @@ HooLAN enables interception only after the engine owns the required TCP and UDP
 listeners. Disabling the engine removes interception while preserving the
 router's forwarding/NAT setup and device limits. Normal forwarding must be
 configured independently; an OFF toggle cannot create an upstream route.
+If AdGuard uses HooLAN on port 1053, restore its normal upstream before OFF.
 With FakeDNS enabled, restore real DNS and clear downstream caches before OFF;
 see the [FakeDNS shutdown procedure](docs/fakedns.md#cache-shutdown-and-recovery).
 
@@ -98,6 +101,7 @@ in DHCP for stable device routing and limits. IPv6 needs a separate policy.
 | [Dashboard](docs/dashboard.md) | Navigation, controls, logs, themes and language |
 | [Configurations](docs/configurations.md) | Subscriptions, editing, chains and batch actions |
 | [Load balancing](docs/load-balancing.md) | Distribution versus best latency, behavior and limits |
+| [Split DNS](docs/split-dns.md) | AdGuard, direct SmartDNS and tunneled DoH |
 | [FakeDNS](docs/fakedns.md) | Synthetic DNS, AdGuard setup and cache recovery |
 | [Routing](docs/routing.md) | DNS, Iran preset, custom rules and update schedules |
 | [Devices](docs/devices.md) | Split tunneling, four-way speed limits and usage |

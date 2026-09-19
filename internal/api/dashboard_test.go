@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"hoolan/internal/engine"
 	"hoolan/internal/store"
 	"hoolan/internal/subscription"
 	"hoolan/internal/tester"
@@ -304,5 +305,49 @@ func TestRefreshDoesNotPruneManualAddedDuringFetch(t *testing.T) {
 	h.waitForJob(t, "succeeded")
 	if _, err := h.store.Get(id); errors.Is(err, store.ErrNotFound) {
 		t.Fatal("concurrent manual addition pruned")
+	}
+}
+
+func TestSplitDNSSettingsPersistPartialAndValidate(t *testing.T) {
+	h := newHarness(t, testNodes(), nil)
+	h.svc.cfg.Engine = &configurableTestEngine{fakeEngine: h.eng}
+	code, response := h.do(http.MethodPut, "/api/settings", `{"tunneled_doh":"https://dns.example.org/dns-query","direct_dns":"192.168.3.1:5353"}`)
+	if code != 200 {
+		t.Fatal(code, response)
+	}
+	if got := h.svc.Settings(); got.TunneledDoH != "https://dns.example.org/dns-query" || got.DirectDNS != "192.168.3.1:5353" {
+		t.Fatal(got)
+	}
+	code, response = h.do(http.MethodPut, "/api/settings", `{"iran_bypass":false}`)
+	if code != 200 {
+		t.Fatal(code, response)
+	}
+	previous := h.svc.Settings()
+	if previous.TunneledDoH != "https://dns.example.org/dns-query" || previous.DirectDNS != "192.168.3.1:5353" {
+		t.Fatal("partial update cleared DNS")
+	}
+	for _, body := range []string{`{"tunneled_doh":"http://1.1.1.1/dns-query"}`, `{"direct_dns":"smartdns.local"}`, `{"direct_dns":"127.0.0.1:1053"}`} {
+		if code, _ = h.do(http.MethodPut, "/api/settings", body); code != 400 {
+			t.Fatal("invalid settings accepted", code)
+		}
+		if h.svc.Settings() != previous {
+			t.Fatal("failed validation mutated state")
+		}
+	}
+	reloaded, err := New(h.svc.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reloaded.jobCancel()
+	if reloaded.Settings() != previous {
+		t.Fatal("split DNS settings not persisted")
+	}
+	h.svc.mu.Lock()
+	h.svc.state.DirectDNS = ""
+	h.svc.state.TunneledDoH = ""
+	h.svc.state.DNSServer = "10.1.1.1"
+	h.svc.mu.Unlock()
+	if got := h.svc.Settings(); got.DirectDNS != "10.1.1.1" || got.TunneledDoH != engine.DefaultTunneledDoH {
+		t.Fatal("legacy migration", got)
 	}
 }

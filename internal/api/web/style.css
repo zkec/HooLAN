@@ -1278,7 +1278,7 @@ select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 [dir=rtl] .header-inner, [dir=rtl] .page-heading, [dir=rtl] .subscription-heading { direction: rtl; }
 [dir=rtl] .brand-icon { margin-inline-end: .5rem; }
 [dir=rtl] .chain-hops { padding-right: 1.5rem; padding-left: 0; }
-[dir=rtl] .log-lines, [dir=rtl] .node-server, input[type=url], input[type=password], input[type=number], #node-link, #dns-server, #edit-server, #edit-sni, #edit-public_key, #edit-short_id { direction: ltr; unicode-bidi: isolate; }
+[dir=rtl] .log-lines, [dir=rtl] .node-server, input[type=url], input[type=password], input[type=number], #node-link, #tunneled-doh, #direct-dns, #fakedns-listen, #edit-server, #edit-sni, #edit-public_key, #edit-short_id { direction: ltr; unicode-bidi: isolate; }
 [dir=rtl] .log-lines { text-align: left; }
 @media (max-width: 640px) { .edit-grid { grid-template-columns: 1fr; } .header-actions { gap: .4rem; } #theme-toggle, #language-toggle { padding: .4rem .6rem; } }
 @media (prefers-reduced-motion: reduce) { .config-group > summary::after { transition: none; } }

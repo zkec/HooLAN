@@ -313,14 +313,14 @@
   function updateFakeDNSControls() {
     var enabled = $('fakedns-enabled').checked;
     text($('fakedns-label'), enabled ? 'On' : 'Off');
-    $('dns-server').disabled = enabled;
-    $('fakedns-listen').disabled = !enabled;
+
   }
 
   function renderSettings(settings) {
     state.settings = settings;
     if (state.settingsDirty) return;
-    $('dns-server').value = settings.dns_server || '';
+    $('tunneled-doh').value = settings.tunneled_doh || 'https://1.1.1.1/dns-query';
+    $('direct-dns').value = settings.direct_dns || settings.dns_server || '192.168.3.1';
     var fake = settings.fake_dns || {};
     $('fakedns-enabled').checked = !!fake.enabled;
     $('fakedns-listen').value = fake.listen || '127.0.0.1';
@@ -583,7 +583,7 @@
       text($('iran-label'), enabled ? 'On' : 'Off');
       mutate('Iran preset', async function () {
         var saved = await call('GET', '/api/settings');
-        try { saved = await call('PUT', '/api/settings', {dns_server:saved.dns_server, iran_bypass:enabled}); }
+        try { saved = await call('PUT', '/api/settings', {iran_bypass:enabled}); }
         catch (error) { $('iran-bypass').checked = saved.iran_bypass; text($('iran-label'), saved.iran_bypass ? 'On' : 'Off'); throw error; }
         state.settings = saved; toast('Iran preset saved.', 'ok');
       });
@@ -596,7 +596,7 @@
     });
     $('settings-form').addEventListener('submit', function (event) {
       event.preventDefault();
-      var settings = { dns_server: $('dns-server').value.trim(), iran_bypass: $('iran-bypass').checked, fake_dns: {enabled: $('fakedns-enabled').checked, listen: $('fakedns-listen').value.trim()} };
+      var settings = { tunneled_doh: $('tunneled-doh').value.trim(), direct_dns: $('direct-dns').value.trim(), iran_bypass: $('iran-bypass').checked, fake_dns: {enabled: $('fakedns-enabled').checked, listen: $('fakedns-listen').value.trim()} };
       mutate('Save settings', async function () {
         var response = await call('PUT', '/api/settings', settings);
         state.settingsDirty = false;

@@ -3,10 +3,11 @@
 [Home](../README.md) · [Routing](routing.md) · [Troubleshooting](troubleshooting.md) · [فارسی](fakedns-fa.md)
 
 FakeDNS is opt-in under **Settings → Routing & DNS**. It uses sing-box 1.14's
-FakeIP DNS server: client A queries receive addresses from `198.18.0.0/15`.
+FakeIP DNS server: non-bypass client A queries receive addresses from `198.18.0.0/15`.
 When a client connects, sing-box recovers the domain from its mapping store,
 resolves it through encrypted DNS and evaluates the usual routing rules.
-A poisoned plaintext A response is not used on this path.
+Bypassed domains retain real answers from Direct DNS. Configure both resolvers
+using the [split-DNS guide](split-dns.md).
 
 ```mermaid
 flowchart LR
@@ -87,20 +88,15 @@ by the host or Docker workloads. Do not solve this by NATing synthetic IPs.
 - Public TCP/UDP port 53 intercepted from LAN clients uses `hijack-dns` before
   sniffing or routing. DNS to local/private services still bypasses nftables;
   AdGuard must explicitly use the FakeDNS upstream.
-- Client real lookups, including resolution before IP/GeoIP policy matching,
-  use Cloudflare DoH at `1.1.1.1:443`, with TLS verification for
-  `cloudflare-dns.com`, through the global selected proxy. This does not use a
-  device's assigned outbound. Hash groups use their selector for these locally
-  initiated requests, not nftables distribution.
-- Proxy endpoint and remote rule-set bootstrap use the same verified DoH
-  endpoint directly, without resolving its address first. If direct DoH is
-  blocked, hostname-based proxy endpoints may fail to bootstrap; use an IP
-  endpoint with the correct TLS server name. There is no plaintext fallback.
-  A usable global proxy is required for client real resolution, including
-  destinations that ultimately match a direct bypass.
-- The ordinary **DNS server** setting is retained but ignored while FakeDNS is
-  enabled. Direct/private, custom, Iran and device rules keep their precedence;
-  real resolution happens before IP-based rules.
+- Known direct domains use the configured Direct DNS server. Non-bypass answers
+  and real lookups for synthetic destinations use Tunneled DoH through the global
+  selected proxy. Device assignments do not change that DNS transport.
+- Proxy endpoint and rule-set bootstrap use Direct DNS to avoid recursive proxy
+  dependencies. Use IP-based proxy endpoints with correct TLS SNI when bootstrap
+  DNS is untrusted. Tunneled DoH never falls back to direct transport.
+- Both resolver fields remain active in FakeDNS mode. GeoIP/address criteria
+  evaluate an encrypted real answer before selecting Direct DNS. See
+  [matching and bootstrap](split-dns.md#matching-and-bootstrap).
 - IPv4 only: AAAA and HTTPS/SVCB queries receive empty successful answers to
   avoid IPv6/address-hint escapes. This can disable some client optimizations.
   It does not disable IPv6 on the LAN or intercept application DoH/DoT. Configure
@@ -125,7 +121,7 @@ Fake A answers have a 60-second TTL, although client applications may cache long
 The cache is not part of the backup ZIP; clear downstream caches after restoring
 to another host, deleting the cache or recovering from mapping loss.
 
-**Before turning the proxy engine or FakeDNS OFF**, return AdGuard's protected
+**Before turning the proxy engine OFF**, return AdGuard's protected
 clients to their normal real upstream, clear its DNS cache, then flush client
 DNS/reconnect applications. The DNS listener stops with the engine. HooLAN
 cannot remotely clear AdGuard or client caches, and cached fake addresses cannot
@@ -145,3 +141,6 @@ The generated configuration follows sing-box's [FakeIP server](https://sing-box.
 [DNS rule actions](https://sing-box.sagernet.org/configuration/dns/rule_action/),
 [HTTPS DNS](https://sing-box.sagernet.org/configuration/dns/server/https/) and
 [persistent cache](https://sing-box.sagernet.org/configuration/experimental/cache-file/) documentation.
+
+Disabling only FakeDNS keeps split DNS on port 1053 running; clear cached
+synthetic answers. Stopping the engine always stops this listener.

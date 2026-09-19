@@ -81,8 +81,10 @@ type Options struct {
 	RoutingMark int
 	// DNSServer is an optional IP or IP:port for the engine's UDP resolver.
 	// Empty uses the system resolver. It does not reconfigure local AdGuard.
-	DNSServer string
-	FakeDNS   FakeDNSOptions
+	DNSServer   string
+	TunneledDoH string
+	DirectDNS   string
+	FakeDNS     FakeDNSOptions
 
 	LogLevel string
 	// DNS is emitted verbatim when non-nil. Left nil by default: the DNS schema
@@ -473,6 +475,29 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	}
 	route.Rules = rules
 	m.applyRulePolicy(route)
+	if m.opts.TunneledDoH != "" || m.opts.DirectDNS != "" {
+		var err error
+		dns, err = m.buildSplitDNS(route, inboundTags)
+		if err != nil {
+			return nil, err
+		}
+		if !m.opts.FakeDNS.Enabled {
+			o, err := NormalizeFakeDNS(m.opts.FakeDNS)
+			if err != nil {
+				return nil, err
+			}
+			inbounds = append(inbounds, map[string]any{"type": "direct", "tag": FakeDNSInbound, "listen": o.Listen, "listen_port": FakeDNSPort})
+			prefix := []RouteRule{{Inbound: []string{FakeDNSInbound}, Action: "hijack-dns"}, {Inbound: inboundTags, Port: []int{53}, Action: "hijack-dns"}}
+			for _, r := range route.Rules {
+				if len(r.Protocol) == 1 && r.Protocol[0] == "dns" {
+					r.Action = "hijack-dns"
+					r.Outbound = ""
+				}
+				prefix = append(prefix, r)
+			}
+			route.Rules = prefix
+		}
+	}
 	// nftables selects a member only for devices/global intent using this group.
 	// DNS, private and configured bypass rules retain their existing precedence.
 	for _, group := range distribution {

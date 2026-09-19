@@ -12,6 +12,10 @@ sudo bash /opt/hoolan/scripts/tproxy/diagnose.sh 192.168.3.141
 
 ## Engine OFF and no internet
 
+If AdGuard uses HooLAN port 1053, restore its normal upstream before stopping
+the engine; this DNS listener stops even when FakeDNS is disabled. See
+[split DNS](split-dns.md).
+
 If FakeDNS was enabled, restore AdGuard's real upstream and clear its and the
 clients' caches first. Port 1053 stops with the engine; cached `198.18.0.0/15`
 destinations cannot use raw forwarding. See [FakeDNS recovery](fakedns.md#cache-shutdown-and-recovery).

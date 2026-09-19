@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-const FakeDNSInbound = "hoolan-fakedns"
+const FakeDNSInbound = "dns-in"
 const FakeDNSPort = 1053
 const FakeDNSRange = "198.18.0.0/15"
 const fakeIPServer = "hoolan-fakeip"
-const secureDNSServer = "hoolan-doh"
+const secureDNSServer = "dns-remote"
 
 // FakeDNSOptions is persisted with routing settings. Bind only a specific
 // private host address; Docker users choose the host's bridge or LAN address.

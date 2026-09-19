@@ -13,20 +13,20 @@ TPROXY client.
 Inside sing-box, safety and DNS/private-network handling precede custom routing
 rules, custom rule sets, the Iran preset, device assignments and the global
 outbound. More specific device assignments therefore do not override the
-preceding bypass policies. With FakeDNS OFF, external client DNS is forwarded
-through the proxy to its original resolver. With FakeDNS ON, intercepted DNS
-is handled by sing-box. Local resolver traffic remains bypassed in both modes;
-connect AdGuard explicitly to the FakeDNS listener.
+preceding bypass policies. Eligible intercepted DNS is handled by sing-box using
+split DNS. Local resolver traffic still bypasses interception; connect AdGuard
+explicitly to the DNS listener on port 1053.
 
 ## DNS
 
-Set the engine resolver in Routing & DNS. An empty value uses the system
-resolver. An address may include a port, for example `1.1.1.1` or
-`[2606:4700:4700::1111]:53`. This does not advertise DNS via DHCP or install a LAN
-resolver. Save settings applies the engine resolver.
+Routing & DNS has separate **Tunneled DoH Server** and **Direct DNS Server**
+fields. The former uses HTTPS through the active proxy; the latter sends local
+and bypass queries directly to SmartDNS. A configurable private/loopback DNS
+listener lets AdGuard retain port 53. This works with FakeDNS off or on.
 
-For synthetic client answers with encrypted real lookups, see [FakeDNS](fakedns.md)
-and its Docker AdGuard / OpenWrt SmartDNS setup. It is disabled by default.
+Follow the [split-DNS setup guide](split-dns.md) for Docker AdGuard, rule order,
+GeoIP response matching, bootstrap exceptions and engine-OFF handling. For
+optional synthetic client answers, see [FakeDNS](fakedns.md).
 
 ## Iran preset
 

@@ -159,6 +159,8 @@ type State struct {
 	Subscriptions      []Subscription                    `json:"subscriptions,omitempty"`
 	ManualNodeIDs      map[string]bool                   `json:"manual_node_ids,omitempty"`
 	FakeDNS            engine.FakeDNSOptions             `json:"fake_dns"`
+	TunneledDoH        string                            `json:"tunneled_doh"`
+	DirectDNS          string                            `json:"direct_dns"`
 	DNSServer          string                            `json:"dns_server,omitempty"`
 	IranBypass         *bool                             `json:"iran_bypass,omitempty"`
 	ProxyEnabled       bool                              `json:"proxy_enabled"`
@@ -645,7 +647,12 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 			port = pendingPort
 		}
 		fakeDNS := s.Settings().FakeDNS
-		if listening && fakeDNS.Enabled {
+		dnsReadyRequired := fakeDNS.Enabled
+		if provider, ok := s.cfg.Engine.(interface{ DNSListener() (string, int) }); ok {
+			_, dnsPort := provider.DNSListener()
+			dnsReadyRequired = dnsPort > 0
+		}
+		if listening && dnsReadyRequired {
 			listening, err = fakeDNSSocketsReady(s.cfg.Engine.Pid(), fakeDNS.Listen, engine.FakeDNSPort)
 			if err != nil {
 				return err

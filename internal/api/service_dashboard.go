@@ -33,9 +33,11 @@ type SubscriptionView struct {
 }
 
 type Settings struct {
-	FakeDNS    engine.FakeDNSOptions `json:"fake_dns"`
-	DNSServer  string                `json:"dns_server"`
-	IranBypass bool                  `json:"iran_bypass"`
+	FakeDNS     engine.FakeDNSOptions `json:"fake_dns"`
+	TunneledDoH string                `json:"tunneled_doh"`
+	DirectDNS   string                `json:"direct_dns"`
+	DNSServer   string                `json:"dns_server,omitempty"`
+	IranBypass  bool                  `json:"iran_bypass"`
 }
 
 var ErrInvalidInput = errors.New("api: invalid input")
@@ -184,7 +186,16 @@ func (s *Service) AddManualNode(ctx context.Context, link string) (string, error
 func (s *Service) Settings() Settings {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	settings := Settings{DNSServer: s.state.DNSServer, IranBypass: true, FakeDNS: s.state.FakeDNS}
+	settings := Settings{TunneledDoH: s.state.TunneledDoH, DirectDNS: s.state.DirectDNS, DNSServer: s.state.DNSServer, IranBypass: true, FakeDNS: s.state.FakeDNS}
+	if settings.DirectDNS == "" {
+		settings.DirectDNS = settings.DNSServer
+	}
+	if settings.DirectDNS == "" {
+		settings.DirectDNS = engine.DefaultDirectDNS
+	}
+	if settings.TunneledDoH == "" {
+		settings.TunneledDoH = engine.DefaultTunneledDoH
+	}
 	if settings.FakeDNS.Listen == "" {
 		settings.FakeDNS.Listen = "127.0.0.1"
 	}
@@ -231,6 +242,11 @@ func (s *Service) configureEngineRouting() error {
 	} else if settings.FakeDNS.Enabled {
 		return errors.New("firewall does not support FakeDNS")
 	}
+	if configurable, ok := s.cfg.Engine.(interface{ ConfigureSplitDNS(string, string) error }); ok {
+		if err := configurable.ConfigureSplitDNS(settings.TunneledDoH, settings.DirectDNS); err != nil {
+			return err
+		}
+	}
 	if configurable, ok := s.cfg.Engine.(interface{ ConfigureRouting(string, bool) error }); ok {
 		return configurable.ConfigureRouting(settings.DNSServer, settings.IranBypass)
 	}
@@ -247,6 +263,16 @@ func (s *Service) UpdateSettings(ctx context.Context, settings Settings) (Settin
 		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	settings.DNSServer = value
+	if settings.DirectDNS == "" {
+		settings.DirectDNS = value
+	}
+	settings.TunneledDoH, settings.DirectDNS, err = engine.NormalizeSplitDNS(settings.TunneledDoH, settings.DirectDNS)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if err := engine.ValidateDNSListener(settings.DirectDNS, settings.FakeDNS.Listen); err != nil {
+		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	previous := s.Settings()
@@ -263,9 +289,12 @@ func (s *Service) UpdateSettings(ctx context.Context, settings Settings) (Settin
 	}
 	oldFakeDNS := s.state.FakeDNS
 	s.state.FakeDNS = settings.FakeDNS
+	oldDoH, oldDirect := s.state.TunneledDoH, s.state.DirectDNS
+	s.state.TunneledDoH, s.state.DirectDNS = settings.TunneledDoH, settings.DirectDNS
 	oldDNS, oldIran := s.state.DNSServer, s.state.IranBypass
 	s.state.DNSServer, s.state.IranBypass = settings.DNSServer, &settings.IranBypass
 	if err := s.saveState(); err != nil {
+		s.state.TunneledDoH, s.state.DirectDNS = oldDoH, oldDirect
 		s.state.FakeDNS = oldFakeDNS
 		s.state.DNSServer, s.state.IranBypass = oldDNS, oldIran
 		s.mu.Unlock()
@@ -278,6 +307,7 @@ func (s *Service) UpdateSettings(ctx context.Context, settings Settings) (Settin
 	}
 	if err != nil {
 		s.mu.Lock()
+		s.state.TunneledDoH, s.state.DirectDNS = oldDoH, oldDirect
 		s.state.FakeDNS = oldFakeDNS
 		s.state.DNSServer, s.state.IranBypass = oldDNS, oldIran
 		saveErr := s.saveState()
