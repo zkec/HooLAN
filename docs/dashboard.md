@@ -12,7 +12,9 @@ configuration count and selected outbound.
 **Add & create** contains Add a configuration, Add a subscription, Chain Builder
 and Load balancing. Manual configurations and subscriptions use separate cards;
 subscription lists collapse from their headers. Row selections drive each
-card's Bulk Ping and Bulk Delete actions.
+card's Bulk Ping and Bulk Delete actions. Click Configuration, Protocol, Server,
+Latency or Checked to sort that card; click again to reverse. Untested latency
+and missing timestamps stay at the bottom.
 
 The global automatic-selection switch lives in Load balancing. It selects an
 ordinary configuration by measured latency. Activate a saved group to use that
@@ -23,8 +25,10 @@ See [configuration management](configurations.md) and [group strategies](load-ba
 
 ## Usage
 
-Sort node and device rows by most downloaded or most uploaded. Nodes with zero
-usage stay hidden. A device's **Speed set** column shows its saved limits;
+Click a column heading to sort; click it again to reverse the direction. The
+arrow shows the current order, which is kept during automatic refreshes. Node
+and device tables support names, upload and download; device tables also support
+IP address, route and speed limits. Nodes with zero usage stay hidden. A device's **Speed set** column shows its saved limits;
 **Settings** edits its alias, outbound and four limit fields. Reset limits clears
 all four inputs; Save device settings applies the reset.
 
@@ -39,7 +43,10 @@ Routing includes DNS, update scheduling, the Iran preset, custom rule sets and
 custom match rules. Configure **Tunneled DoH Server**, **Direct DNS Server** and
 **DNS listen address** using the [split-DNS guide](split-dns.md). The TCP/UDP
 listener on port 1053 works independently of the opt-in [FakeDNS](fakedns.md)
-switch. Both resolver fields remain editable in either mode. Save settings
+switch. The listen-address controls are shown only when FakeDNS is switched on;
+hiding them does not clear the saved address or stop split DNS. To change this
+address while keeping FakeDNS off, switch it on in the form, edit the address,
+switch it off again, then save. Both resolver fields remain editable in either mode. Save settings
 applies these edits; follow the guide before changing AdGuard or turning the
 engine off. Telegram has separate notification and proxy-delivery
 switches, a proxy selector and an explicit test button. Error messages appear

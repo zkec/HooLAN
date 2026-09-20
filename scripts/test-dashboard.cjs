@@ -9,12 +9,12 @@ function checkDashboard(source) {
     querySelectorAll() { return []; }, addEventListener(name, fn) { this.events[name] = fn; }
   };
   class Element {
-    constructor(tag, value = '') { this.tag = tag; this.children = []; this.dataset = {}; this.events = {}; this.value = ''; this.scrollTop = 0; this._text = value; }
+    constructor(tag, value = '') { this.tag = tag; this.children = []; this.dataset = {}; this.events = {}; this.value = ''; this.scrollTop = 0; this._text = value; this.attrs = {}; }
     set textContent(value) { this._text = value; this.children = []; }
     get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
     get rows() { return this.children.flatMap(c => c.tag === 'tr' ? [c] : c.rows); }
-    appendChild(child) { this.children.push(child); child.parentNode = this; return child; }
-    setAttribute() {}
+    appendChild(child) { if(child.parentNode) child.parentNode.children = child.parentNode.children.filter(c => c !== child); this.children.push(child); child.parentNode = this; return child; }
+    setAttribute(name, value) { this.attrs[name] = value; }
     addEventListener(name, fn) { this.events[name] = fn; }
     focus() { document.activeElement = this; }
     contains(node) { return node === this || this.children.some(c => c.contains(node)); }
@@ -27,7 +27,7 @@ function checkDashboard(source) {
   const window = {};
   const entry = '  init();\n}());';
   assert(source.includes(entry), 'dashboard entry point changed; update fixture');
-  eval(source.replace(entry, '  window.test = {state:state, sort:sortUsageKeys, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls};\n}());'));
+  eval(source.replace(entry, '  window.test = {state:state, nodeTable:makeNodeTable, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls};\n}());'));
   const app = window.test, state = app.state;
   app.settings({dns_server:'9.9.9.9', iran_bypass:true, fake_dns:{enabled:true,listen:'192.168.3.5'}});
   assert(document.getElementById('fakedns-enabled').checked && !document.getElementById('direct-dns').disabled, 'FakeDNS form not rendered');
@@ -43,8 +43,7 @@ function checkDashboard(source) {
   app.settings({});
   assert(!document.getElementById('direct-dns').disabled && !document.getElementById('fakedns-listen').disabled, 'legacy settings did not disable FakeDNS');
   const counters = {a:{upload:200,download:2}, b:{upload:20,download:10000}, c:{download:2}};
-  assert(app.sort(['c','a','b'], counters, 'download').join() === 'b,a,c', 'download order or stable tie');
-  assert(app.sort(['c','a','b'], counters, 'upload').join() === 'a,b,c', 'upload order or missing counters');
+
   state.authenticated = true;
   state.nodes = [
     {id:'a',tag:'Alpha',server:'one.example',enabled:true,manual:true},
@@ -80,24 +79,61 @@ function checkDashboard(source) {
   const response = {supported:true, usage:{total:{upload:220,download:10002},outbounds:counters,
     devices:{'192.168.3.2':{upload:5,download:200},'192.168.3.10':{upload:600,download:1}}},
     device_limits:{'192.168.3.2':{proxy_upload_mbps:2,direct_download_mbps:10}}};
-  document.getElementById('usage-sort').value = 'download';
-  document.getElementById('devices-sort').value = 'download'; app.usage(response);
+  app.usage(response);
   let table = document.getElementById('usage-nodes').children[0];
   assert(table.rows[1].children[0].textContent === 'Beta chain', 'rendered node download order');
   assert(!table.textContent.includes('No traffic'), 'zero usage node shown');
   let devices = document.getElementById('usage-devices').children[0];
   assert(devices.rows[1].children[0].textContent === '192.168.3.2', 'rendered device download order');
-  assert(devices.rows[0].children[5].textContent === 'Speed set', 'speed column heading missing');
+  assert(devices.rows[0].children[5].children[0].children[0].textContent === 'Speed set', 'speed column heading missing');
   assert(devices.rows[1].children[5].textContent.includes('2 Mbps') && devices.rows[1].children[6].textContent === 'Settings', 'settings must follow speed in a separate column');
   assert(devices.rows[1].textContent.includes('Settings') && devices.rows[1].textContent.includes('2 Mbps'), 'settings/limits missing');
-  document.getElementById('devices-sort').value = 'upload';
-  document.getElementById('devices-sort').events.change();
+  devices.rows[0].children[2].children[0].events.click();
   devices = document.getElementById('usage-devices').children[0];
   assert(devices.rows[1].children[0].textContent === '192.168.3.10', 'device upload sort event');
-  document.getElementById('usage-sort').value = 'upload';
-  document.getElementById('usage-sort').events.change();
+  table.rows[0].children[1].children[0].events.click();
   table = document.getElementById('usage-nodes').children[0];
   assert(table.rows[1].children[0].textContent === 'Alpha', 'node upload sort event');
+  assert(table.rows[0].children[1].attrs['aria-sort'] === 'descending', 'header sort direction missing');
+  table.rows[0].children[1].children[0].events.click();
+  assert(table.rows[0].children[1].attrs['aria-sort'] === 'ascending', 'repeat click did not reverse order');
+  assert(table.rows[1].children[0].textContent === 'c', 'raw zero upload not sorted first');
+  app.usage(response); table = document.getElementById('usage-nodes').children[0];
+  assert(table.rows[1].children[0].textContent === 'c', 'poll reset selected sort');
+  devices = document.getElementById('usage-devices').children[0];
+  devices.rows[0].children[0].children[0].events.click();
+  assert(devices.rows[1].children[0].textContent === '192.168.3.2', 'IP addresses sorted lexically');
+  devices.rows[0].children[0].children[0].events.click();
+  assert(devices.rows[1].children[0].textContent === '192.168.3.10', 'IP descending sort');
+  const named = {...response, device_aliases:{'192.168.3.2':'Zulu','192.168.3.10':'Alpha'}};
+  app.devices(named,true); devices = document.getElementById('usage-devices').children[0];
+  devices.rows[0].children[1].children[0].events.click();
+  assert(devices.rows[1].children[1].textContent === 'Alpha', 'alias sort');
+  devices.rows[0].children[5].children[0].events.click();
+  assert(devices.rows[1].children[0].textContent === '192.168.3.2', 'limited speed should sort before unlimited');
+  app.settings({fake_dns:{enabled:true,listen:'192.168.3.5'}});
+  assert(!document.getElementById('fakedns-details').hidden, 'enabled FakeDNS details hidden');
+  document.getElementById('fakedns-enabled').checked = false; app.fakeControls();
+  assert(document.getElementById('fakedns-details').hidden, 'disabled FakeDNS details visible');
+  assert(document.getElementById('fakedns-listen').value === '192.168.3.5', 'hiding listener changed saved address');
+  document.getElementById('fakedns-enabled').checked = true; app.fakeControls();
+  assert(!document.getElementById('fakedns-details').hidden, 'FakeDNS details did not reappear');
+  const configs = [
+    {id:'slow',tag:'Node 10',protocol:'trojan',server:'10.0.0.10',port:443,latency_ms:200,last_checked_at:'2026-01-01T01:00:00Z'},
+    {id:'fast',tag:'Node 2',protocol:'vless',server:'10.0.0.2',port:443,latency_ms:20,last_checked_at:'2026-02-01T01:00:00Z'},
+    {id:'unknown',tag:'Untested',protocol:'vmess',server:'10.0.0.3',port:443,latency_ms:-1}
+  ];
+  let configTable = app.nodeTable(configs,'','test').children[0];
+  configTable.rows[0].children[4].children[0].events.click();
+  assert(configTable.rows[1].sortKey === 'fast' && configTable.rows[3].sortKey === 'unknown', 'latency numeric order/missing');
+  configTable.rows[0].children[4].children[0].events.click();
+  assert(configTable.rows[1].sortKey === 'slow' && configTable.rows[3].sortKey === 'unknown', 'latency reverse/missing');
+  configTable = app.nodeTable(configs,'','test').children[0];
+  assert(configTable.rows[1].sortKey === 'slow', 'configuration sort reset on poll');
+  configTable.rows[0].children[1].children[0].events.click();
+  assert(configTable.rows[1].sortKey === 'fast', 'natural configuration name sort');
+  configTable.rows[0].children[5].children[0].events.click();
+  assert(configTable.rows[1].sortKey === 'fast', 'checked timestamp sort');
   assert(app.limits({}).textContent === 'Unlimited', 'zero limits must be unlimited');
   const limits = app.limits({proxy_download_mbps:12.5,direct_upload_mbps:1});
   assert(limits.children.length === 4 && limits.textContent.includes('12.5 Mbps'), 'four-way fractional limits');

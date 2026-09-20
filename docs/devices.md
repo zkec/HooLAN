@@ -45,7 +45,10 @@ direct attribution is estimated from one-second connection samples; short flows
 can be missed. Device entries include original client IPs for traffic sing-box
 routes directly. Raw forwarding with the engine OFF is excluded from these totals.
 
-Sort by most downloaded/uploaded. Zero-byte nodes are hidden. Direct/bypass has
+Click a column heading to sort, and click again to reverse the order. Upload
+and download use byte counts; IP addresses use numeric ordering. The speed
+column compares proxy upload, proxy download, direct upload, then direct download,
+with unlimited above any finite value (so it comes last in ascending order). Zero-byte nodes are hidden. Direct/bypass has
 its own row. Chains are attributed to their visible exit configuration; groups
 to their visible group, rather than counting each hop again. Closed flows between
 samples, process restarts and counter resets can limit attribution accuracy.

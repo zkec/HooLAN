@@ -8,7 +8,7 @@
   var POLL_BACKOFF = 15000;
   var MAX_LOG_LINES = 500;
   var state = {
-    balanceMembers: new Set(), usageSnapshot: null, speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
+    tableSorts: new Map(), balanceMembers: new Set(), usageSnapshot: null, speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
     deviceSnapshot: null, inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
@@ -47,7 +47,7 @@
 
   function clearPrivateView() {
     stopLogs();
-    state.balanceMembers.clear(); state.usageSnapshot = null; state.deviceSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
+    state.tableSorts.clear(); state.balanceMembers.clear(); state.usageSnapshot = null; state.deviceSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
     state.nodes = [];
     state.subscriptions = [];
     state.status = null;
@@ -214,6 +214,11 @@
       var pinned = !state.selection.auto && (node.selected || state.selection.node_id === node.id);
       var active = !!activeTag && (node.tag === activeTag || node.effective_tag === activeTag);
       var row = element('tr', pinned || active ? 'selected' : '');
+      row.sortKey = node.id;
+      row.sortValues = [null, node.tag || node.server || '', node.protocol + (node.transport ? ' / ' + node.transport : ''),
+        node.protocol === 'loadbalance' ? [Number(node.member_count) || 0, 'members'] : [node.server || '', Number(node.port) || 0],
+        typeof node.latency_ms === 'number' && node.latency_ms >= 0 ? node.latency_ms : null,
+        Date.parse(node.last_checked_at) > 0 ? Date.parse(node.last_checked_at) : null];
       var checkCell = element('td'); var check = document.createElement('input'); check.type = 'checkbox'; check.dataset.selectNode = node.id; check.dataset.group = group; check.checked = groupSelection(group).has(node.id); check.disabled = state.busy; check.setAttribute('aria-label', 'Select ' + (node.tag || node.server)); checkCell.appendChild(check); row.appendChild(checkCell);
       var name = element('td', 'node-name'); var nodeName = element('span', '', node.tag || node.server); nodeName.dataset.noI18n = ''; name.appendChild(nodeName);
       if (pinned || active) name.appendChild(element('span', 'pill good', pinned ? 'Pinned' : 'Active'));
@@ -250,6 +255,7 @@
       body.appendChild(row);
     });
     table.appendChild(body);
+    sortableTable(headingRow, body, 'nodes:' + group, [null, 'asc', 'asc', 'asc', 'asc', 'desc', null]);
     wrapper.appendChild(table);
     return wrapper;
   }
@@ -293,7 +299,7 @@
     var key = JSON.stringify([state.nodes, state.subscriptions, state.selection, state.status && state.status.engine_running, Array.from(state.speedResults.entries())]);
     if (key === state.inventoryKey) { updateControls(); return; }
     state.inventoryKey = key;
-    var focused = document.activeElement, focusAction = focused && focused.dataset.action, focusID = focused && focused.dataset.id;
+    var focused = document.activeElement, focusSort = focused && focused.dataset.sortTable, focusColumn = focused && focused.dataset.sortColumn, focusAction = focused && focused.dataset.action, focusID = focused && focused.dataset.id;
     text($('manual-group'), ''); $('manual-group').appendChild(makeConfigGroup('manual', 'Manual configurations'));
     text($('subscriptions-list'), ''); text($('subscription-count'), String(state.subscriptions.length));
     $('subscriptions-empty').hidden = !!state.subscriptions.length;
@@ -304,6 +310,10 @@
       if (group !== 'manual' && !state.subscriptions.some(function (s) { return s.id === group; })) state.groupSelections.delete(group);
     });
     renderChainBuilder(); renderBalancePicker(); renderTelegramRoute(); updateControls();
+    if (focusSort) {
+      var sortedHeader = Array.from(document.querySelectorAll('[data-sort-table]')).find(function (button) { return button.dataset.sortTable === focusSort && button.dataset.sortColumn === focusColumn; });
+      if (sortedHeader) sortedHeader.focus({ preventScroll: true });
+    }
     if (focusAction && focusID) {
       var replacement = Array.from(document.querySelectorAll('[data-action]')).find(function (button) { return button.dataset.action === focusAction && button.dataset.id === focusID; });
       if (replacement && !replacement.disabled) replacement.focus({ preventScroll: true });
@@ -313,7 +323,7 @@
   function updateFakeDNSControls() {
     var enabled = $('fakedns-enabled').checked;
     text($('fakedns-label'), enabled ? 'On' : 'Off');
-
+    $('fakedns-details').hidden = !enabled;
   }
 
   function renderSettings(settings) {
@@ -895,12 +905,52 @@
     $('rule-source-list').appendChild(row); updateControls();
   }
   function byteCount(n) { var units=['B','KiB','MiB','GiB','TiB'];var i=0;while(n>=1024&&i<4){n/=1024;i++;}return n.toFixed(i?2:0)+' '+units[i]; }
-  // Sort raw byte counters, never formatted strings; ties stay stable across polls.
-  function sortUsageKeys(keys, values, direction) {
-    var field = direction === 'upload' ? 'upload' : 'download';
-    return keys.sort(function (a, b) {
-      return (Number((values[b] || {})[field]) || 0) - (Number((values[a] || {})[field]) || 0) || a.localeCompare(b, undefined, {numeric: true});
+  // One sorter for every data table. Keep raw values separate from formatted
+  // bytes/dates and sort DOM rows without changing selections or API data.
+  function sortableTable(header, body, id, columns, initial) {
+    var order = state.tableSorts.get(id) || initial;
+    if (order) state.tableSorts.set(id, order);
+    function compare(a, b) {
+      if (Array.isArray(a) && Array.isArray(b)) {
+        for (var i = 0; i < a.length; i++) { var difference = compare(a[i], b[i]); if (difference) return difference; }
+        return 0;
+      }
+      if (typeof a === 'number' && typeof b === 'number') return a === b ? 0 : a < b ? -1 : 1;
+      return String(a).localeCompare(String(b), document.documentElement && document.documentElement.lang || 'en', {numeric: true, sensitivity: 'base'});
+    }
+    var controls = [];
+    function apply() {
+      controls.forEach(function (control) {
+        var active = order && order.column === control.index;
+        control.th.setAttribute('aria-sort', active ? order.descending ? 'descending' : 'ascending' : 'none');
+        control.icon.textContent = active ? order.descending ? '↓' : '↑' : '↕';
+        control.button.title = (active ? !order.descending : control.descending) ? 'Sort descending' : 'Sort ascending';
+      });
+      if (!order) return;
+      Array.from(body.children).sort(function (a, b) {
+        var av = a.sortValues[order.column], bv = b.sortValues[order.column];
+        // Untested latency / missing dates stay last in either direction.
+        if (av == null || bv == null) { if (av !== bv) return av == null ? 1 : -1; }
+        var value = av == null ? 0 : compare(av, bv);
+        return (order.descending ? -value : value) || compare(a.sortKey, b.sortKey);
+      }).forEach(function (row) { body.appendChild(row); });
+    }
+    columns.forEach(function (column, index) {
+      if (!column) return; // Selection and action controls are not data columns.
+      var th = header.children[index], label = th.textContent;
+      text(th, ''); th.scope = 'col';
+      var button = element('button', 'table-sort-button'); button.type = 'button';
+      button.dataset.sortTable = id; button.dataset.sortColumn = String(index);
+      button.appendChild(element('span', '', label));
+      var icon = element('span', 'table-sort-icon'); icon.setAttribute('aria-hidden', 'true'); icon.dataset.noI18n = '';
+      button.appendChild(icon); th.appendChild(button);
+      button.addEventListener('click', function () {
+        order = {column: index, descending: order && order.column === index ? !order.descending : column === 'desc'};
+        state.tableSorts.set(id, order); apply();
+      });
+      controls.push({index: index, descending: column === 'desc', th: th, button: button, icon: icon});
     });
+    apply();
   }
   function renderUsage(response) {
     state.usageSnapshot = response;
@@ -908,10 +958,25 @@
     var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
     text($('usage-total'),'Upload '+byteCount(total.upload||0)+' · Download '+byteCount(total.download||0)+' · Total '+byteCount((total.upload||0)+(total.download||0)));
     text($('usage-status'),'Last sample: '+ago(u.last_sample)+(u.error?' · '+u.error:'')+(!response.supported?' · Clash statistics unavailable':''));
-    var list=$('usage-nodes');text(list,'');var table=element('table','node-table');var head=element('tr');['Configuration / route (estimated)','Upload','Download'].forEach(function(label){head.appendChild(element('th','',label));});table.appendChild(head);
-    var values=u.outbounds||{};var keys=Array.from(new Set(['direct'].concat(state.nodes.map(function(n){return n.id;}),Object.keys(values))));
-    sortUsageKeys(keys, values, $('usage-sort').value).filter(function(key){var v=values[key]||{};return (v.upload||0)>0 || (v.download||0)>0;}).forEach(function(key){var n=nodesByID.get(key);var value=values[key]||{};var row=element('tr');var caption=element('td','',key==='direct'?'Direct / bypass':n?n.tag:key);if(key!=='direct')caption.dataset.noI18n='';row.appendChild(caption);row.appendChild(element('td','',byteCount(value.upload||0)));row.appendChild(element('td','',byteCount(value.download||0)));table.appendChild(row);});list.appendChild(table);
-    if (table.rows.length === 1) list.appendChild(element('p', 'muted', 'No configuration has recorded traffic yet.'));
+    var list = $('usage-nodes');
+    // Keep focused header controls usable while a background poll completes.
+    if (!list.contains(document.activeElement)) {
+      text(list, '');
+      var table = element('table', 'node-table'), head = element('thead'), header = element('tr'), body = element('tbody');
+      ['Configuration / route (estimated)', 'Upload', 'Download'].forEach(function (label) { header.appendChild(element('th', '', label)); });
+      head.appendChild(header); table.appendChild(head); table.appendChild(body);
+      var values = u.outbounds || {};
+      Object.keys(values).filter(function (key) { var v = values[key] || {}; return (v.upload || 0) > 0 || (v.download || 0) > 0; }).forEach(function (key) {
+        var node = nodesByID.get(key), value = values[key] || {}, row = element('tr');
+        var name = key === 'direct' ? 'Direct / bypass' : node ? node.tag : key;
+        var caption = element('td', '', name); if (key !== 'direct') caption.dataset.noI18n = '';
+        row.sortKey = key; row.sortValues = [name, Number(value.upload) || 0, Number(value.download) || 0];
+        row.appendChild(caption); row.appendChild(element('td', '', byteCount(value.upload || 0))); row.appendChild(element('td', '', byteCount(value.download || 0))); body.appendChild(row);
+      });
+      sortableTable(header, body, 'usage', ['asc', 'desc', 'desc'], {column: 2, descending: true});
+      list.appendChild(table);
+      if (!body.children.length) list.appendChild(element('p', 'muted', 'No configuration has recorded traffic yet.'));
+    }
     renderDevices(response, false);
   }
 
@@ -952,8 +1017,6 @@
   }
   function wireDeviceSettings() {
     $('device-reset-limits').addEventListener('click', function () { qosFields.forEach(function (field) { $('device-' + field).value = ''; }); });
-    $('usage-sort').addEventListener('change', function () { if (state.usageSnapshot) renderUsage(state.usageSnapshot); });
-    $('devices-sort').addEventListener('change', function () { if (state.deviceSnapshot) renderDevices(state.deviceSnapshot, true); });
     $('usage-devices').addEventListener('click', function (event) {
       var button = event.target.closest('[data-device-settings]');
       if (button && !button.disabled && state.deviceSnapshot) openDeviceSettings(button.dataset.deviceSettings, state.deviceSnapshot);
@@ -1006,7 +1069,6 @@
     text($('device-qos-status'), response.usage.qos_error ? 'QoS classification unavailable; unclassified connections use the stricter limit.' : '');
     var values = response.usage.devices || {}, aliases = response.device_aliases || {}, routes = response.device_routes || {}, limits = response.device_limits || {};
     var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits))));
-    sortUsageKeys(ips, values, $('devices-sort').value);
     if (!ips.length) { list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
     var table = element('table', 'node-table device-table'), header = element('tr'), head = element('thead'), body = element('tbody');
     ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'Speed set', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
@@ -1023,8 +1085,12 @@
       var speed = element('td', 'device-speed'); speed.appendChild(deviceLimitSummary(limits[ip] || {})); row.appendChild(speed);
       var actions = element('td', 'device-actions'), button = element('button', 'button subtle', 'Settings');
       button.type = 'button'; button.dataset.mutation = ''; button.dataset.job = ''; button.dataset.deviceSettings = ip;
+      row.sortKey = ip;
+      row.sortValues = [ip, aliases[ip] || null, Number(value.upload) || 0, Number(value.download) || 0, route.textContent,
+        ['proxy_upload_mbps', 'proxy_download_mbps', 'direct_upload_mbps', 'direct_download_mbps'].map(function (key) { return Number((limits[ip] || {})[key]) > 0 ? Number(limits[ip][key]) : Infinity; })];
       actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
     });
+    sortableTable(header, body, 'devices', ['asc', 'asc', 'desc', 'desc', 'asc', 'asc', null], {column: 3, descending: true});
     list.appendChild(table); updateControls();
   }
 

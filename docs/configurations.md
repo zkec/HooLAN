@@ -17,6 +17,13 @@ Manual configurations remain distinct from provider-managed entries. Use their
 Edit action to update supported endpoint and transport settings. Credential
 fields left blank preserve the saved value.
 
+## Sort configurations
+
+Click Configuration, Protocol, Server, Latency or Checked in a card’s table
+header. Click again to reverse the order. Each card keeps its own sort order
+during refreshes. Sorting preserves checked rows and does not change the active
+configuration. Untested latency and missing check times stay at the bottom.
+
 ## Batch actions
 
 Select rows within a card, then use Bulk Ping or Bulk Delete. Tests are bounded

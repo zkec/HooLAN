@@ -93,9 +93,9 @@
     </section>
     <section id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" tabindex="0" hidden>
 
-      <div class="card form-card"><div class="usage-heading"><h2>Internet usage</h2><div class="usage-sort"><label for="usage-sort">Sort by</label><select id="usage-sort"><option value="download">Most downloaded</option><option value="upload">Most uploaded</option></select></div></div><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-device, per-node and direct attribution is estimated from one-second connection samples; short flows can be missed.</p><div id="usage-nodes" class="table-wrap"></div></div>
+      <div class="card form-card"><div class="usage-heading"><h2>Internet usage</h2></div><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-device, per-node and direct attribution is estimated from one-second connection samples; short flows can be missed.</p><div id="usage-nodes" class="table-wrap"></div></div>
 
-      <div class="card form-card"><div class="usage-heading"><h2>LAN devices</h2><div class="usage-sort"><label for="devices-sort">Sort by</label><select id="devices-sort"><option value="download">Most downloaded</option><option value="upload">Most uploaded</option></select></div></div><p class="muted small">Estimated usage by original client IP, including traffic sing-box routes directly.</p><p id="device-qos-status" class="muted small" role="status"></p><div id="usage-devices" class="table-wrap"></div></div>
+      <div class="card form-card"><div class="usage-heading"><h2>LAN devices</h2></div><p class="muted small">Estimated usage by original client IP, including traffic sing-box routes directly.</p><p id="device-qos-status" class="muted small" role="status"></p><div id="usage-devices" class="table-wrap"></div></div>
     </section>
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
 
@@ -108,13 +108,15 @@
           <div class="field"><label for="tunneled-doh">Tunneled DoH Server</label><input id="tunneled-doh" name="tunneled_doh" type="url" placeholder="https://1.1.1.1/dns-query" autocomplete="off" spellcheck="false" aria-describedby="dns-help" /></div>
           <div class="field"><label for="direct-dns">Direct DNS Server</label><input id="direct-dns" name="direct_dns" type="text" placeholder="192.168.3.1" autocomplete="off" spellcheck="false" aria-describedby="dns-help" /></div>
         </div>
-        <p id="dns-help" class="muted small">Local and bypassed domains use Direct DNS (IP or IP:port). Other queries use HTTPS through the active proxy, without direct fallback. Point AdGuard upstream to the DNS listener below; Direct DNS must not forward back to AdGuard or this listener.</p>
+        <p id="dns-help" class="muted small">Local and bypassed domains use Direct DNS (IP or IP:port). Other queries use HTTPS through the active proxy, without direct fallback. Point AdGuard upstream to the saved DNS listen address on port 1053; Direct DNS must not forward back to AdGuard or this listener.</p>
 
         <section class="routing-section" aria-labelledby="fakedns-heading">
           <div class="setting setting-row"><div><h3 id="fakedns-heading">FakeDNS</h3><p id="fakedns-help" class="muted small">Optionally return synthetic IPv4 addresses for proxied domains. Bypassed domains keep real answers from Direct DNS. Split DNS also works with FakeDNS off; the engine must stay on.</p></div><label class="switch" for="fakedns-enabled"><input id="fakedns-enabled" type="checkbox" role="switch" aria-describedby="fakedns-help" data-mutation /><span class="switch-track" aria-hidden="true"></span><span id="fakedns-label" class="switch-label">Off</span></label></div>
+          <div id="fakedns-details" class="dns-details" hidden>
           <div class="field"><label for="fakedns-listen">DNS listen address</label><input id="fakedns-listen" type="text" inputmode="decimal" value="127.0.0.1" placeholder="127.0.0.1" autocomplete="off" spellcheck="false" aria-describedby="fakedns-setup" /><p class="muted small">TCP/UDP port 1053 · FakeIP pool 198.18.0.0/15</p></div>
           <p class="muted small">Keep the Debian host and Docker workloads on real DNS. Only LAN clients intercepted by HooLAN should receive FakeIP answers.</p>
           <p id="fakedns-setup" class="muted small">AdGuard on the host can use 127.0.0.1:1053. Docker AdGuard needs a reachable private host address. Keep local rewrites in AdGuard. Before stopping the engine, restore AdGuard’s normal upstream. Clear DNS caches when switching FakeDNS on or off.</p>
+          </div>
         </section>
         <div class="form-footer"><span id="settings-note" class="muted small" role="status"></span><button class="button primary" type="submit" data-mutation>Save settings</button></div>
       </form>

@@ -1,22 +1,20 @@
 <div dir="rtl">
 
-# HooLAN
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="internal/api/web/hoo-logo-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="internal/api/web/hoo-logo-light.svg" />
-  <img src="internal/api/web/hoo-logo-light.svg" alt="HooLAN" width="100" height="100" />
-</picture>
-
-**شبکهٔ محلی شما، با کنترل مسیر هر اتصال.**
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="internal/api/web/hoo-logo-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="internal/api/web/hoo-logo-light.svg" />
+    <img src="internal/api/web/hoo-logo-light.svg" alt="HooLAN logo" width="240" height="240" />
+  </picture>
+</p>
+<h1 align="center">HooLAN</h1>
 
 [شروع سریع](#شروع-سریع) · [نصب](docs/installation.md) · [داشبورد](docs/dashboard.md) · [مسیریابی](docs/routing.md) · [تفکیک DNS](docs/split-dns-fa.md) · [دستگاه‌ها](docs/devices.md) · [عیب‌یابی](docs/troubleshooting.md) · [English](README.md)
 
-HooLAN میزبان دبیان را به یک دروازهٔ شفاف پروکسی برای IPv4 تبدیل می‌کند. اشتراک‌ها
-را مدیریت کنید، زنجیره‌های چندمرحله‌ای بسازید و برای هر دستگاه مسیر خروجی و
-محدودیت سرعت تعیین کنید؛ همه از یک داشبورد سبک. یک فایل اجرایی Go، رابط وب و API
-را ارائه می‌کند، فرایند sing-box را زیر نظر دارد و رهگیری ترافیک با nftables را
-مدیریت می‌کند.
+HooLAN یک داشبورد وب برای مدیریت دروازهٔ پروکسی شفاف روی Debian است.
+اشتراک اضافه کنید، مسیر اتصال هر دستگاه را انتخاب کنید، محدودیت سرعت بگذارید
+و مصرف اینترنت را ببینید؛ همه از یک پنل. برنامه با یک فایل اجرایی Go و با کمک
+sing-box و nftables اجرا می‌شود و رابط وب به مرحلهٔ ساخت جداگانه نیاز ندارد.
 
 ## امکانات
 
@@ -34,11 +32,11 @@ HooLAN میزبان دبیان را به یک دروازهٔ شفاف پروکس
   مستثنا و DoH از پروکسی فعال برای سایر درخواست‌ها. [راهنما](docs/split-dns-fa.md).
 - **FakeDNS:** پاسخ IPv4 ساختگی، جست‌وجوی واقعی با DNS رمزگذاری‌شده، نگاشت پایدار
   و اتصال به AdGuard داخل Docker؛ [راهنمای فارسی](docs/fakedns-fa.md).
-- **آمار مصرف:** مجموع مصرف و سهم مستقیم، گره‌ها و دستگاه‌ها، با مرتب‌سازی بر اساس
-  ارسال یا دریافت. سهم‌ها از نمونه‌برداری اتصال‌ها تخمین زده می‌شوند.
+- **آمار مصرف:** مجموع مصرف و سهم مستقیم، گره‌ها و دستگاه‌ها، با مرتب‌سازی از طریق
+  کلیک روی عنوان ستون‌ها. سهم‌ها از نمونه‌برداری اتصال‌ها تخمین زده می‌شوند.
 - **عملیات:** لاگ زنده با SSE، اعلان تلگرام با پروکسی قابل انتخاب، پشتیبان‌گیری و
   بازیابی ZIP و اجرای سرویس با systemd.
-- **رابط کاربری:** ورود با توکن، رنگ قرمز، حالت روشن/تاریک، فارسی و انگلیسی و
+- **رابط کاربری:** ورود با توکن، حالت روشن/تاریک، فارسی و انگلیسی و
   چیدمان راست‌به‌چپ؛ بدون نیاز به ساخت جداگانهٔ فرانت‌اند.
 
 بک‌اند فقط از کتابخانهٔ استاندارد Go استفاده می‌کند. کتابخانهٔ نمایش QR هنگام نیاز

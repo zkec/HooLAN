@@ -1,19 +1,18 @@
-# HooLAN
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="internal/api/web/hoo-logo-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="internal/api/web/hoo-logo-light.svg" />
-  <img src="internal/api/web/hoo-logo-light.svg" alt="HooLAN" width="100" height="100" />
-</picture>
-
-**Your LAN, with control over every connection.**
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="internal/api/web/hoo-logo-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="internal/api/web/hoo-logo-light.svg" />
+    <img src="internal/api/web/hoo-logo-light.svg" alt="HooLAN logo" width="240" height="240" />
+  </picture>
+</p>
+<h1 align="center">HooLAN</h1>
 
 [Quick start](#quick-start) · [Installation](docs/installation.md) · [Dashboard](docs/dashboard.md) · [Routing](docs/routing.md) · [Split DNS](docs/split-dns.md) · [FakeDNS](docs/fakedns.md) · [Devices](docs/devices.md) · [Troubleshooting](docs/troubleshooting.md) · [فارسی](README-fa.md)
 
-HooLAN turns a Debian host into a transparent IPv4 proxy gateway. Manage
-subscriptions, build multi-hop connections, assign routes to devices and set
-speed limits from a lightweight dashboard. A single Go binary serves the UI
-and API, supervises sing-box and manages nftables interception.
+HooLAN is a web dashboard for managing a transparent proxy gateway on Debian.
+Add proxy subscriptions, choose a route for each device, set speed limits and
+monitor usage from one place. It runs as a single Go binary with sing-box and
+nftables, with no frontend build step.
 
 ## Features
 
@@ -25,17 +24,16 @@ and API, supervises sing-box and manages nftables interception.
   the best measured latency with sing-box URLTest.
 - **Device control:** persistent aliases, Global Default/Direct/node/chain/group
   routing and separate proxy/direct upload/download limits.
-- **Routing & DNS:** configurable resolver, Iran preset, custom rule sets and
+- **Routing & DNS:** split DNS, Iran preset, custom rule sets and
   routing rules, with interval, daily or weekly updates.
 - **Split DNS:** AdGuard upstream on port 1053, direct DNS for bypass rules and
   HTTPS DNS through the active proxy for other queries.
 - **FakeDNS:** opt-in synthetic IPv4 DNS, encrypted real lookups, persistent
   mappings and integration with Docker AdGuard.
-- **Usage:** total, direct, per-node and per-device counters, sorted by upload
-  or download. Attribution is estimated from connection samples.
+- **Usage:** total, direct, per-node and per-device counters with clickable column headers for sorting. Attribution is estimated from connection samples.
 - **Operations:** live SSE logs, Telegram notifications with a selectable proxy,
   ZIP backup/restore and systemd supervision.
-- **Interface:** token login, red accents, dark/light themes and English/Persian
+- **Interface:** token login, dark/light themes and English/Persian
   localization with RTL layout. No frontend build step.
 
 The backend uses only the Go standard library. QR rendering loads a pinned
@@ -60,10 +58,6 @@ configured independently; an OFF toggle cannot create an upstream route.
 If AdGuard uses HooLAN on port 1053, restore its normal upstream before OFF.
 With FakeDNS enabled, restore real DNS and clear downstream caches before OFF;
 see the [FakeDNS shutdown procedure](docs/fakedns.md#cache-shutdown-and-recovery).
-
-TPROXY runs at prerouting priority `-150`. Marked packets use policy routing
-for local socket delivery. The proxy engine opens its own outbound connections;
-its egress must not use the interception mark.
 
 ## Quick start
 

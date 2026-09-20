@@ -22,7 +22,10 @@ flowchart LR
    `https://1.1.1.1/dns-query`, and **Direct DNS Server**, for example
    `192.168.3.1` (your OpenWrt router). Direct DNS accepts an IP with an optional
    port. These defaults are examples, not automatic router discovery.
-2. Set **DNS listen address**. AdGuard sharing the Debian host's network can
+2. Set **DNS listen address**. The field appears when the FakeDNS switch is on.
+   To keep FakeDNS disabled, switch it on in the form, edit the address, then
+   switch it off again before saving. Hiding the field retains its value.
+   AdGuard sharing the Debian host's network can
    use the default `127.0.0.1`. For a normal Docker container, use a specific
    private address assigned to the Debian host that the container can reach,
    such as its Docker bridge or LAN address. A container's loopback is not the

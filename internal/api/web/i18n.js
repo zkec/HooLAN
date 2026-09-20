@@ -2,10 +2,12 @@
 (function () {
   "use strict";
   var fa = {
+  "Sort ascending": "مرتب‌سازی صعودی",
+  "Sort descending": "مرتب‌سازی نزولی",
   "Tunneled DoH Server": "سرور DoH از مسیر پروکسی",
   "Direct DNS Server": "سرور DNS مستقیم",
   "DNS listen address": "نشانی شنود DNS",
-  "Local and bypassed domains use Direct DNS (IP or IP:port). Other queries use HTTPS through the active proxy, without direct fallback. Point AdGuard upstream to the DNS listener below; Direct DNS must not forward back to AdGuard or this listener.": "دامنه‌های محلی و مستثنا از DNS مستقیم استفاده می‌کنند (IP یا IP:port). سایر درخواست‌ها با HTTPS از پروکسی فعال عبور می‌کنند و در صورت خطا به مسیر مستقیم برنمی‌گردند. upstream در AdGuard را روی شنوندهٔ DNS زیر قرار دهید؛ DNS مستقیم نباید درخواست را به AdGuard یا همین شنونده برگرداند.",
+  "Local and bypassed domains use Direct DNS (IP or IP:port). Other queries use HTTPS through the active proxy, without direct fallback. Point AdGuard upstream to the saved DNS listen address on port 1053; Direct DNS must not forward back to AdGuard or this listener.": "دامنه‌های محلی و مستثنا از DNS مستقیم استفاده می‌کنند (IP یا IP:port). سایر درخواست‌ها با HTTPS از پروکسی فعال عبور می‌کنند و در صورت خطا به مسیر مستقیم برنمی‌گردند. upstream در AdGuard را روی نشانی ذخیره‌شدهٔ شنود DNS با درگاه 1053 قرار دهید؛ DNS مستقیم نباید درخواست را به AdGuard یا همین شنونده برگرداند.",
   "Optionally return synthetic IPv4 addresses for proxied domains. Bypassed domains keep real answers from Direct DNS. Split DNS also works with FakeDNS off; the engine must stay on.": "در صورت فعال‌سازی، دامنه‌های پروکسی‌شده نشانی IPv4 ساختگی می‌گیرند. دامنه‌های مستثنا پاسخ واقعی DNS مستقیم را دریافت می‌کنند. تفکیک DNS با FakeDNS خاموش هم کار می‌کند؛ موتور باید روشن بماند.",
   "AdGuard on the host can use 127.0.0.1:1053. Docker AdGuard needs a reachable private host address. Keep local rewrites in AdGuard. Before stopping the engine, restore AdGuard’s normal upstream. Clear DNS caches when switching FakeDNS on or off.": "AdGuard روی میزبان می‌تواند از 127.0.0.1:1053 استفاده کند. AdGuard در Docker به نشانی خصوصی قابل دسترس میزبان نیاز دارد. بازنویسی‌های محلی را در AdGuard نگه دارید. پیش از توقف موتور، upstream معمولی AdGuard را برگردانید. هنگام روشن یا خاموش کردن FakeDNS حافظهٔ نهان DNS را پاک کنید.",
 
