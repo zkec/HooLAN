@@ -41,13 +41,13 @@ be missed. [Device and usage details](devices.md).
 The cards are Routing & DNS, Telegram notifications, then Backup & restore.
 Routing includes DNS, update scheduling, the Iran preset, custom rule sets and
 custom match rules. Configure **Tunneled DoH Server**, **Direct DNS Server** and
-**DNS listen address** using the [split-DNS guide](split-dns.md). The TCP/UDP
-listener on port 1053 works independently of the opt-in [FakeDNS](fakedns.md)
+**DNS listen address** using the [DNS & FakeDNS guide](dns.md). The TCP/UDP
+listener on port 1053 works independently of the FakeDNS
 switch. The listen-address controls are shown only when FakeDNS is switched on;
 hiding them does not clear the saved address or stop split DNS. To change this
 address while keeping FakeDNS off, switch it on in the form, edit the address,
 switch it off again, then save. Both resolver fields remain editable in either mode. Save settings
-applies these edits; follow the guide before changing AdGuard or turning the
+applies these edits; follow the guide before changing DNS clients or turning the
 engine off. Telegram has separate notification and proxy-delivery
 switches, a proxy selector and an explicit test button. Error messages appear
 separately from field descriptions.

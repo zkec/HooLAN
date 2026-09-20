@@ -7,7 +7,9 @@
 </p>
 <h1 align="center">HooLAN</h1>
 
-[Quick start](#quick-start) · [Installation](docs/installation.md) · [Dashboard](docs/dashboard.md) · [Routing](docs/routing.md) · [Split DNS](docs/split-dns.md) · [FakeDNS](docs/fakedns.md) · [Devices](docs/devices.md) · [Troubleshooting](docs/troubleshooting.md) · [فارسی](README-fa.md)
+<p align="center">
+  <a href="#quick-start">Quick start</a> · <a href="docs/installation.md">Installation</a> · <a href="docs/dashboard.md">Dashboard</a> · <a href="docs/routing.md">Routing</a> · <a href="docs/dns.md">DNS &amp; FakeDNS</a> · <a href="docs/devices.md">Devices</a> · <a href="docs/troubleshooting.md">Troubleshooting</a> · <a href="README-fa.md">فارسی</a>
+</p>
 
 HooLAN is a web dashboard for managing a transparent proxy gateway on Debian.
 Add proxy subscriptions, choose a route for each device, set speed limits and
@@ -26,10 +28,8 @@ nftables, with no frontend build step.
   routing and separate proxy/direct upload/download limits.
 - **Routing & DNS:** split DNS, Iran preset, custom rule sets and
   routing rules, with interval, daily or weekly updates.
-- **Split DNS:** AdGuard upstream on port 1053, direct DNS for bypass rules and
-  HTTPS DNS through the active proxy for other queries.
-- **FakeDNS:** opt-in synthetic IPv4 DNS, encrypted real lookups, persistent
-  mappings and integration with Docker AdGuard.
+- **DNS & FakeDNS:** separate direct and encrypted DNS, with optional virtual
+  IPv4 addresses and persistent domain mappings. Listens on port 1053.
 - **Usage:** total, direct, per-node and per-device counters with clickable column headers for sorting. Attribution is estimated from connection samples.
 - **Operations:** live SSE logs, Telegram notifications with a selectable proxy,
   ZIP backup/restore and systemd supervision.
@@ -55,9 +55,9 @@ HooLAN enables interception only after the engine owns the required TCP and UDP
 listeners. Disabling the engine removes interception while preserving the
 router's forwarding/NAT setup and device limits. Normal forwarding must be
 configured independently; an OFF toggle cannot create an upstream route.
-If AdGuard uses HooLAN on port 1053, restore its normal upstream before OFF.
+If clients use HooLAN DNS on port 1053, switch them to a working resolver before OFF.
 With FakeDNS enabled, restore real DNS and clear downstream caches before OFF;
-see the [FakeDNS shutdown procedure](docs/fakedns.md#cache-shutdown-and-recovery).
+see the [FakeDNS shutdown procedure](docs/dns.md#cache-shutdown-and-recovery).
 
 ## Quick start
 
@@ -95,8 +95,7 @@ in DHCP for stable device routing and limits. IPv6 needs a separate policy.
 | [Dashboard](docs/dashboard.md) | Navigation, controls, logs, themes and language |
 | [Configurations](docs/configurations.md) | Subscriptions, editing, chains and batch actions |
 | [Load balancing](docs/load-balancing.md) | Distribution versus best latency, behavior and limits |
-| [Split DNS](docs/split-dns.md) | AdGuard, direct SmartDNS and tunneled DoH |
-| [FakeDNS](docs/fakedns.md) | Synthetic DNS, AdGuard setup and cache recovery |
+| [DNS & FakeDNS](docs/dns.md) | DNS servers, virtual addresses, setup and recovery |
 | [Routing](docs/routing.md) | DNS, Iran preset, custom rules and update schedules |
 | [Devices](docs/devices.md) | Split tunneling, four-way speed limits and usage |
 | [Integrations](docs/integrations.md) | Telegram, backups, throughput tests and QR sharing |

@@ -14,19 +14,17 @@ Inside sing-box, safety and DNS/private-network handling precede custom routing
 rules, custom rule sets, the Iran preset, device assignments and the global
 outbound. More specific device assignments therefore do not override the
 preceding bypass policies. Eligible intercepted DNS is handled by sing-box using
-split DNS. Local resolver traffic still bypasses interception; connect AdGuard
-explicitly to the DNS listener on port 1053.
+split DNS. Local resolver traffic still bypasses interception; DNS callers
+can connect to the listener on port 1053.
 
 ## DNS
 
 Routing & DNS has separate **Tunneled DoH Server** and **Direct DNS Server**
-fields. The former uses HTTPS through the active proxy; the latter sends local
-and bypass queries directly to SmartDNS. A configurable private/loopback DNS
-listener lets AdGuard retain port 53. This works with FakeDNS off or on.
+fields. The former uses HTTPS through the active proxy; the latter handles local
+and bypass queries. HooLAN listens on TCP/UDP port 1053 with FakeDNS off or on.
 
-Follow the [split-DNS setup guide](split-dns.md) for Docker AdGuard, rule order,
-GeoIP response matching, bootstrap exceptions and engine-OFF handling. For
-optional synthetic client answers, see [FakeDNS](fakedns.md).
+See [DNS & FakeDNS](dns.md) for setup, virtual addresses, rule matching and
+cache recovery.
 
 ## Iran preset
 

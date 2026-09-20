@@ -139,6 +139,6 @@ and firewall helpers/template, then start it again. Preserve the live `env`,
 ## AdGuard and split DNS
 
 For AdGuard Home on port 53 (including Docker), follow the
-[split-DNS setup guide](split-dns.md) to forward to HooLAN on port 1053.
+[split-DNS setup guide](dns.md) to forward to HooLAN on port 1053.
 Set your actual router IP as Direct DNS, configure tunneled DoH, and use a
 container-reachable private host address when Docker does not share host networking.

@@ -2,21 +2,16 @@
 (function () {
   "use strict";
   var fa = {
+  "DNS listens on port 1053 (TCP/UDP).": "DNS روی درگاه ۱۰۵۳ با TCP و UDP پاسخ می‌دهد.",
+  "Use virtual IP addresses for proxied domains.": "برای دامنه‌های پروکسی‌شده از نشانی IP مجازی استفاده کنید.",
   "Sort ascending": "مرتب‌سازی صعودی",
   "Sort descending": "مرتب‌سازی نزولی",
   "Tunneled DoH Server": "سرور DoH از مسیر پروکسی",
   "Direct DNS Server": "سرور DNS مستقیم",
   "DNS listen address": "نشانی شنود DNS",
-  "Local and bypassed domains use Direct DNS (IP or IP:port). Other queries use HTTPS through the active proxy, without direct fallback. Point AdGuard upstream to the saved DNS listen address on port 1053; Direct DNS must not forward back to AdGuard or this listener.": "دامنه‌های محلی و مستثنا از DNS مستقیم استفاده می‌کنند (IP یا IP:port). سایر درخواست‌ها با HTTPS از پروکسی فعال عبور می‌کنند و در صورت خطا به مسیر مستقیم برنمی‌گردند. upstream در AdGuard را روی نشانی ذخیره‌شدهٔ شنود DNS با درگاه 1053 قرار دهید؛ DNS مستقیم نباید درخواست را به AdGuard یا همین شنونده برگرداند.",
-  "Optionally return synthetic IPv4 addresses for proxied domains. Bypassed domains keep real answers from Direct DNS. Split DNS also works with FakeDNS off; the engine must stay on.": "در صورت فعال‌سازی، دامنه‌های پروکسی‌شده نشانی IPv4 ساختگی می‌گیرند. دامنه‌های مستثنا پاسخ واقعی DNS مستقیم را دریافت می‌کنند. تفکیک DNS با FakeDNS خاموش هم کار می‌کند؛ موتور باید روشن بماند.",
-  "AdGuard on the host can use 127.0.0.1:1053. Docker AdGuard needs a reachable private host address. Keep local rewrites in AdGuard. Before stopping the engine, restore AdGuard’s normal upstream. Clear DNS caches when switching FakeDNS on or off.": "AdGuard روی میزبان می‌تواند از 127.0.0.1:1053 استفاده کند. AdGuard در Docker به نشانی خصوصی قابل دسترس میزبان نیاز دارد. بازنویسی‌های محلی را در AdGuard نگه دارید. پیش از توقف موتور، upstream معمولی AdGuard را برگردانید. هنگام روشن یا خاموش کردن FakeDNS حافظهٔ نهان DNS را پاک کنید.",
 
-  "Keep the Debian host and Docker workloads on real DNS. Only LAN clients intercepted by HooLAN should receive FakeIP answers.": "خود میزبان Debian و برنامه‌های Docker باید DNS واقعی دریافت کنند. فقط کاربران LAN که اتصالشان در HooLAN رهگیری می‌شود باید پاسخ FakeIP بگیرند.",
   "FakeDNS": "DNS ساختگی (FakeDNS)",
   "FakeDNS listen address": "نشانی گوش‌دادن FakeDNS",
-  "TCP/UDP port 1053 · FakeIP pool 198.18.0.0/15": "درگاه TCP/UDP برابر 1053 · محدودهٔ FakeIP برابر 198.18.0.0/15",
-  "Return synthetic IPv4 addresses to LAN clients and recover domains inside sing-box. Requires the proxy engine to stay on. Encrypted DNS is used for real lookups; the ordinary DNS server setting is ignored in this mode.": "به دستگاه‌های شبکهٔ محلی نشانی IPv4 ساختگی می‌دهد و نام دامنه را در sing-box بازیابی می‌کند. موتور پروکسی باید روشن بماند. جست‌وجوی نشانی‌های واقعی با DNS رمزگذاری‌شده انجام می‌شود؛ تنظیم سرور DNS معمولی در این حالت نادیده گرفته می‌شود.",
-  "For Docker AdGuard, bind to a private address on the Debian host that the container can reach, then set AdGuard upstream to that address on port 1053. Keep local DNS rewrites in AdGuard. Restore its normal upstream and clear AdGuard/client DNS caches before turning the engine or FakeDNS off.": "برای AdGuard در Docker، یک نشانی خصوصی میزبان Debian را که کانتینر به آن دسترسی دارد وارد کنید؛ سپس upstream در AdGuard را روی همان نشانی با درگاه 1053 بگذارید. بازنویسی‌های DNS محلی را در AdGuard نگه دارید. پیش از خاموش‌کردن موتور یا FakeDNS، upstream معمولی را برگردانید و حافظهٔ نهان DNS در AdGuard و دستگاه‌ها را پاک کنید.",
 
   "Automatic selection (global)": "انتخاب خودکار سراسری",
   "Choose the fastest reachable ordinary configuration globally. Activate a saved group to use its own strategy.": "سریع‌ترین پیکربندی معمولی در دسترس را به‌صورت سراسری انتخاب کنید. برای استفاده از راهبرد یک گروه ذخیره‌شده، همان گروه را فعال کنید.",
@@ -141,7 +136,6 @@
   "Routing & DNS": "مسیریابی و DNS",
   "Changes are saved on the gateway and applied to the running engine.": "تغییرات در دروازه ذخیره و روی موتور فعال اعمال می‌شوند.",
   "DNS server": "سرور DNS",
-  "Resolver used by the proxy engine. Leave blank for the system resolver, or enter an IP address with an optional port, for example 1.1.1.1 or [2606:4700:4700::1111]:53. Local AdGuard DNS traffic still bypasses interception.": "حل‌کنندهٔ DNS موتور پروکسی. برای استفاده از DNS سیستم خالی بگذارید، یا IP و پورت اختیاری مانند 1.1.1.1 یا [2606:4700:4700::1111]:53 وارد کنید. DNS محلی AdGuard همچنان از رهگیری مستثناست.",
   "System resolver": "DNS سیستم",
   "Iran bypass": "عبور مستقیم ایران",
   "Route Iranian destinations directly, outside the selected proxy.": "مقصدهای ایرانی را مستقیماً و خارج از پروکسی انتخاب‌شده مسیریابی کنید.",

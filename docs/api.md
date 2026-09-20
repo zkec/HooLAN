@@ -101,4 +101,4 @@ sequence. Invalid values are rejected; apply failures restore the old settings.
 The listener runs even with FakeDNS disabled. The legacy `dns_server` field is
 accepted as a Direct DNS input alias; existing state inherits it when
 `direct_dns` is absent. Blank resolver fields use the documented defaults.
-See [split DNS](split-dns.md) before pointing AdGuard at this listener.
+See [split DNS](dns.md) before pointing AdGuard at this listener.
