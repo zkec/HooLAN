@@ -9,6 +9,13 @@
 </p>
 <h1 align="center">HooLAN</h1>
 
+<center>
+
+**این متن توسط هوش مصنوعی ترجمه شده است و دیگر بروز نمی‌شود. لطفا برای اصطلاحات دقیق‌تر و بروزتر، به  متن <a href="README.md">انگلیسی</a> مراجعه فرمایید.**
+
+</center>
+
+
 <p align="center">
   <a href="#شروع-سریع">شروع سریع</a> · <a href="docs/installation.md">نصب</a> · <a href="docs/dashboard.md">داشبورد</a> · <a href="docs/routing.md">مسیریابی</a> · <a href="docs/dns-fa.md">DNS و FakeDNS</a> · <a href="docs/devices.md">دستگاه‌ها</a> · <a href="docs/troubleshooting.md">عیب‌یابی</a> · <a href="README.md">English</a>
 </p>

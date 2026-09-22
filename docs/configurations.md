@@ -59,3 +59,14 @@ Mbps. Neither is an ICMP ping or a guarantee of future throughput.
 QR Code opens an explicit credential-bearing share link. Single nodes can be
 imported by a compatible mobile client. A chain/group cannot be faithfully
 represented by one ordinary node URL. See [integrations](integrations.md).
+
+## Screenshot
+
+Configurations tab with illustrative sample data. The screenshot follows your
+viewer’s light or dark color preference.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/configurations-dark.png" />
+  <source media="(prefers-color-scheme: light)" srcset="images/configurations-light.png" />
+  <img src="images/configurations-light.png" alt="Configurations tab with manual nodes, subscriptions, chains and load balancing" width="1440" />
+</picture>
