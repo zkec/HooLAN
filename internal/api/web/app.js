@@ -158,12 +158,14 @@
     if (previous && previous.state === 'running' && job.kind === 'restore' && job.state === 'succeeded') { state.settings = null; state.settingsDirty = false; state.rulesDirty = false; state.telegramLoaded = false; state.speedResults.clear(); }
     if (job.kind === 'telegram') telegramStatus( job.state === 'running' ? 'Sending test message…' : job.state === 'succeeded' ? 'Test message sent.' : job.error || 'Telegram test failed', job.state === 'failed');
     var parts = [];
-    if (state.jobRunning) parts.push(name + ' running. Testing nodes can take a few minutes on a Debian host.');
+    if (state.jobRunning) parts.push(name + ' running');
+    if (job.tests_total) parts.push((job.tested || 0) + '/' + job.tests_total + ' tested (' + Math.floor(100 * (job.tested || 0) / job.tests_total) + '%)');
     if (job.state === 'succeeded') parts.push(name + ' completed ' + ago(job.finished_at) + '.');
     if (job.state === 'failed') parts.push(name + ' failed: ' + (job.error || 'Unknown error'));
     if (job.sources_total) parts.push((job.sources_ok || 0) + '/' + job.sources_total + ' sources');
     if (job.nodes_added || job.nodes_updated) parts.push((job.nodes_added || 0) + ' added, ' + (job.nodes_updated || 0) + ' updated');
     if (job.tested) parts.push((job.reachable || 0) + '/' + job.tested + ' reachable');
+    if (previous && job.tested !== previous.tested) state.inventoryAt = 0;
     if (job.engine_reloaded) parts.push('Engine reloaded');
     text($('job'), parts.join(' · '));
     var warnings = job.warnings || [];
@@ -384,7 +386,7 @@
     if (document.hidden || state.busy) { schedulePoll(); return; }
     try {
       await fetchStatus();
-      if (Date.now() - state.inventoryAt > 15000) await fetchInventory();
+      if (state.jobRunning || Date.now() - state.inventoryAt > 15000) await fetchInventory();
       if (!state.telegramLoaded) await loadTelegram();
       if (!state.settings) renderSettings(await call('GET', '/api/settings'));
       if (window.location.hash === '#usage') renderUsage(await call('GET', '/api/usage'));

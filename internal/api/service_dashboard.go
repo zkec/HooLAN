@@ -13,7 +13,6 @@ import (
 	"hoolan/internal/engine"
 	"hoolan/internal/store"
 	"hoolan/internal/subscription"
-	"hoolan/internal/tester"
 )
 
 // Subscription retains source membership separately from the deduplicated node
@@ -695,30 +694,5 @@ func (s *Service) testSelectedNodes(ctx context.Context, wanted map[string]bool)
 	if len(nodes) == 0 {
 		return store.ErrNotFound
 	}
-	var results []tester.Result
-	if selected, ok := s.cfg.Tester.(interface {
-		TestSelectedNodes(context.Context, []subscription.Node, []subscription.Node) []tester.Result
-	}); ok {
-		results = selected.TestSelectedNodes(ctx, nodes, all)
-	} else {
-		results = s.cfg.Tester.TestNodes(ctx, nodes)
-	}
-	if len(results) != len(ids) {
-		return errors.New("latency tester returned incomplete results")
-	}
-	reachable := 0
-	measurements := make([]store.Measurement, len(results))
-	for i, result := range results {
-		if result.OK() {
-			reachable++
-		}
-		measurements[i] = store.Measurement{ID: ids[i], Latency: result.Latency, Err: result.Err}
-	}
-	if err := s.cfg.Store.RecordMeasurements(measurements); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.job.Tested, s.job.Reachable = len(results), reachable
-	s.mu.Unlock()
-	return ctx.Err()
+	return s.probeNodes(ctx, nodes, all, ids)
 }

@@ -125,6 +125,7 @@ function checkDashboard(source) {
     {id:'unknown',tag:'Untested',protocol:'vmess',server:'10.0.0.3',port:443,latency_ms:-1}
   ];
   let configTable = app.nodeTable(configs,'','test').children[0];
+  assert(!configTable.rows[1].children[6].children[0].children.some(button => button.dataset.action === 'ping-node'), 'manual testing uses group actions');
   configTable.rows[0].children[4].children[0].events.click();
   assert(configTable.rows[1].sortKey === 'fast' && configTable.rows[3].sortKey === 'failed' && configTable.rows[4].sortKey === 'unknown', 'latency numeric order/missing');
   configTable.rows[0].children[4].children[0].events.click();

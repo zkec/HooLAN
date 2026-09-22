@@ -160,6 +160,11 @@ func (t *Tester) TestNodes(ctx context.Context, nodes []subscription.Node) []Res
 // TestSelectedNodes probes targets with the complete inventory available for
 // resolving detour dependencies, without probing those dependencies separately.
 func (t *Tester) TestSelectedNodes(ctx context.Context, nodes, inventory []subscription.Node) []Result {
+	return t.TestSelectedNodesProgress(ctx, nodes, inventory, nil)
+}
+
+// TestSelectedNodesProgress reports each completed result; callbacks may run concurrently.
+func (t *Tester) TestSelectedNodesProgress(ctx context.Context, nodes, inventory []subscription.Node, completed func(int, Result)) []Result {
 	results := make([]Result, len(nodes))
 	sem := make(chan struct{}, t.opts.Concurrency)
 	var wg sync.WaitGroup
@@ -168,6 +173,11 @@ func (t *Tester) TestSelectedNodes(ctx context.Context, nodes, inventory []subsc
 		wg.Add(1)
 		go func(i int, n subscription.Node) {
 			defer wg.Done()
+			defer func() {
+				if completed != nil {
+					completed(i, results[i])
+				}
+			}()
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()

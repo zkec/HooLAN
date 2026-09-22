@@ -401,6 +401,7 @@
 };
   var originals = new WeakMap(), attributes = new WeakMap();
   var patterns = [
+      [/^(\d+)\/(\d+) tested \((\d+)%\)$/, '$1 از $2 آزمایش‌شده ($3٪)'],
       [/^(\d+) members$/, '$1 عضو'], [/^Process (\d+)$/, 'فرایند $1'], [/^(\d+) enabled$/, '$1 فعال'], [/^(\d+) healthy$/, '$1 سالم'],
       [/^Updated (.*)$/, 'به‌روزرسانی $1'], [/^(\d+)\/(\d+) sources$/, '$1 از $2 منبع'], [/^(\d+) added, (\d+) updated$/, '$1 افزوده، $2 به‌روزشده'], [/^(\d+)\/(\d+) reachable$/, '$1 از $2 در دسترس'],
       [/^(\d+) selected$/, '$1 انتخاب‌شده'], [/^(\d+) lines$/, '$1 خط'],
@@ -427,8 +428,8 @@
     for (var j = 0; j < messages.length; j++) {
       var key = messages[j];
       if (trimmed.startsWith(key + ': ')) return fa[key] + ': ' + trimmed.slice(key.length + 2);
+      if (trimmed === key + ' running') return fa[key] + ' در حال اجرا';
       if (trimmed === key + ' complete.') return fa[key] + ' کامل شد.';
-      if (trimmed === key + ' running. Testing nodes can take a few minutes on a Debian host.') return fa[key] + ' در حال اجرا است. آزمایش گره‌ها روی میزبان دبیان ممکن است چند دقیقه طول بکشد.';
       if (trimmed.startsWith(key + ' completed ')) return fa[key] + ' کامل شد: ' + translate(trimmed.slice(key.length + 11).replace(/\.$/, ''));
       if (trimmed.startsWith(key + ' failed: ')) return fa[key] + ' ناموفق بود: ' + trimmed.slice(key.length + 9);
     }

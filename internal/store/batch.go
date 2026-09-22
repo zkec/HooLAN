@@ -24,8 +24,8 @@ func (s *Store) ReplaceRecords(records []Record) error {
 	return nil
 }
 
-// Measurement is one completed probe. A sweep writes the store once, reducing
-// SD-card fsyncs and keeping readers from seeing partially updated health.
+// Measurement is one completed probe. RecordMeasurements commits the supplied
+// results atomically; incremental probes may publish one result at a time.
 type Measurement struct {
 	ID      string
 	Latency time.Duration

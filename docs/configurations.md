@@ -30,7 +30,9 @@ untested configurations in either direction. Missing check times stay at the bot
 With no rows selected, Ping all and Delete all apply to that card’s configurations.
 Select rows to narrow these actions to Ping selected and Delete selected. Ping
 skips load-balanced groups; test their original members instead. Tests are bounded
-background jobs, with progress in the dashboard. Deleting a shared node removes
+background jobs. The dashboard shows completed/total tests and a percentage,
+and refreshes completed node results about every 1.5 seconds while testing.
+Select a single row to test just that configuration. Deleting a shared node removes
 it from every source group; a future subscription refresh can import it again.
 Deleting an active configuration may change selection or stop the engine when
 no usable configuration remains. Read the confirmation before submitting.

@@ -193,6 +193,7 @@ type JobStatus struct {
 	NodesUpdated int `json:"nodes_updated"`
 	NodesPruned  int `json:"nodes_pruned"`
 	Tested       int `json:"tested"`
+	TestsTotal   int `json:"tests_total"`
 	Reachable    int `json:"reachable"`
 	// EngineReloaded is true when a running engine picked up the new node set.
 	EngineReloaded bool `json:"engine_reloaded"`
@@ -934,32 +935,10 @@ func (s *Service) sweepLatency(ctx context.Context) error {
 	if len(nodes) == 0 {
 		return nil
 	}
-	var results []tester.Result
-	if selected, ok := s.cfg.Tester.(interface {
-		TestSelectedNodes(context.Context, []subscription.Node, []subscription.Node) []tester.Result
-	}); ok {
-		results = selected.TestSelectedNodes(ctx, nodes, all)
-	} else {
-		results = s.cfg.Tester.TestNodes(ctx, nodes)
-	}
-	if len(results) != len(ids) {
-		return errors.New("latency tester returned incomplete results")
-	}
-	reachable := 0
-	measurements := make([]store.Measurement, len(results))
-	for i, result := range results {
-		if result.OK() {
-			reachable++
-		}
-		measurements[i] = store.Measurement{ID: ids[i], Latency: result.Latency, Err: result.Err}
-	}
-	if err := s.cfg.Store.RecordMeasurements(measurements); err != nil {
+	if err := s.probeNodes(ctx, nodes, all, ids); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	s.job.Tested = len(results)
-	s.job.Reachable = reachable
-	s.mu.Unlock()
+	reachable := s.JobStatus().Reachable
 
 	// A sweep where nothing answered is reported, not failed: the records are
 	// already marked and the operator needs to see them.
