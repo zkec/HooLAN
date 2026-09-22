@@ -27,7 +27,7 @@ function checkDashboard(source) {
   const window = {};
   const entry = '  init();\n}());';
   assert(source.includes(entry), 'dashboard entry point changed; update fixture');
-  eval(source.replace(entry, '  window.test = {state:state, nodeTable:makeNodeTable, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls};\n}());'));
+  eval(source.replace(entry, '  window.test = {state:state, nodeTable:makeNodeTable, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls, groupIDs:groupActionIDs};\n}());'));
   const app = window.test, state = app.state;
   app.settings({dns_server:'9.9.9.9', iran_bypass:true, fake_dns:{enabled:true,listen:'192.168.3.5'}});
   assert(document.getElementById('fakedns-enabled').checked && !document.getElementById('direct-dns').disabled, 'FakeDNS form not rendered');
@@ -121,19 +121,27 @@ function checkDashboard(source) {
   const configs = [
     {id:'slow',tag:'Node 10',protocol:'trojan',server:'10.0.0.10',port:443,latency_ms:200,last_checked_at:'2026-01-01T01:00:00Z'},
     {id:'fast',tag:'Node 2',protocol:'vless',server:'10.0.0.2',port:443,latency_ms:20,last_checked_at:'2026-02-01T01:00:00Z'},
+    {id:'failed',tag:'Node 20 failed',protocol:'vless',server:'10.0.0.4',port:443,latency_ms:-1,last_checked_at:'2026-01-01T01:00:00Z'},
     {id:'unknown',tag:'Untested',protocol:'vmess',server:'10.0.0.3',port:443,latency_ms:-1}
   ];
   let configTable = app.nodeTable(configs,'','test').children[0];
   configTable.rows[0].children[4].children[0].events.click();
-  assert(configTable.rows[1].sortKey === 'fast' && configTable.rows[3].sortKey === 'unknown', 'latency numeric order/missing');
+  assert(configTable.rows[1].sortKey === 'fast' && configTable.rows[3].sortKey === 'failed' && configTable.rows[4].sortKey === 'unknown', 'latency numeric order/missing');
   configTable.rows[0].children[4].children[0].events.click();
-  assert(configTable.rows[1].sortKey === 'slow' && configTable.rows[3].sortKey === 'unknown', 'latency reverse/missing');
+  assert(configTable.rows[1].sortKey === 'slow' && configTable.rows[3].sortKey === 'failed' && configTable.rows[4].sortKey === 'unknown', 'latency reverse/missing');
   configTable = app.nodeTable(configs,'','test').children[0];
   assert(configTable.rows[1].sortKey === 'slow', 'configuration sort reset on poll');
   configTable.rows[0].children[1].children[0].events.click();
   assert(configTable.rows[1].sortKey === 'fast', 'natural configuration name sort');
   configTable.rows[0].children[5].children[0].events.click();
   assert(configTable.rows[1].sortKey === 'fast', 'checked timestamp sort');
+  state.nodes = [{id:'one',manual:true,protocol:'vless'},{id:'two',manual:true,protocol:'trojan'},{id:'group',manual:true,protocol:'loadbalance'},{id:'sub',manual:false,subscription_ids:['s'],protocol:'vless'}];
+  state.groupSelections.clear();
+  assert(app.groupIDs('manual','delete').join(',') === 'one,two,group', 'delete all must stay within the group');
+  assert(app.groupIDs('manual','ping').join(',') === 'one,two', 'ping all excludes unsupported load balancers');
+  state.groupSelections.set('manual',new Set(['two']));
+  assert(app.groupIDs('manual','delete').join(',') === 'two' && app.groupIDs('manual','ping').join(',') === 'two', 'checked rows must narrow actions');
+  assert(app.groupIDs('empty','delete').length === 0, 'empty group action');
   assert(app.limits({}).textContent === 'Unlimited', 'zero limits must be unlimited');
   const limits = app.limits({proxy_download_mbps:12.5,direct_upload_mbps:1});
   assert(limits.children.length === 4 && limits.textContent.includes('12.5 Mbps'), 'four-way fractional limits');

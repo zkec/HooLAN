@@ -1401,3 +1401,6 @@ select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 #settings-form .dns-details[hidden] { display: none; }
 #settings-form .dns-details p { margin: 0; }
 #settings-form .form-footer { padding-top: 0; }
+
+/* Keep group actions together at the trailing edge, including RTL layouts. */
+.group-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-inline-start: auto; justify-content: flex-end; }

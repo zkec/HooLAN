@@ -215,6 +215,7 @@
       var active = !!activeTag && (node.tag === activeTag || node.effective_tag === activeTag);
       var row = element('tr', pinned || active ? 'selected' : '');
       row.sortKey = node.id;
+      row.sortRanks = {4: typeof node.latency_ms === 'number' && node.latency_ms >= 0 ? 0 : Date.parse(node.last_checked_at) > 0 ? 1 : 2};
       row.sortValues = [null, node.tag || node.server || '', node.protocol + (node.transport ? ' / ' + node.transport : ''),
         node.protocol === 'loadbalance' ? [Number(node.member_count) || 0, 'members'] : [node.server || '', Number(node.port) || 0],
         typeof node.latency_ms === 'number' && node.latency_ms >= 0 ? node.latency_ms : null,
@@ -288,11 +289,13 @@
     var label = element('label'), all = document.createElement('input'); all.type = 'checkbox'; all.dataset.selectGroup = group;
     label.appendChild(all); label.appendChild(document.createTextNode(' Select all')); bar.appendChild(label);
     var count = element('span'); count.dataset.groupCount = group; count.setAttribute('role', 'status'); bar.appendChild(count);
+    var actions = element('div', 'group-actions');
     ['ping', 'delete'].forEach(function (action) {
-      var button = element('button', 'button', action === 'ping' ? 'Bulk Ping' : 'Bulk Delete'); button.type = 'button';
-      button.dataset.bulkAction = action; button.dataset.group = group; button.dataset.mutation = ''; button.dataset.job = ''; bar.appendChild(button);
+      var button = element('button', 'button', action === 'ping' ? 'Ping all' : 'Delete all'); button.type = 'button';
+      button.dataset.bulkAction = action; button.dataset.group = group; button.dataset.mutation = ''; button.dataset.job = ''; actions.appendChild(button);
     });
-    if (subscription) bar.appendChild(actionButton('Refresh', 'refresh-subscription', subscription.id, false, true));
+    if (subscription) actions.appendChild(actionButton('Refresh', 'refresh-subscription', subscription.id, false, true));
+    bar.appendChild(actions);
     card.appendChild(bar); card.appendChild(makeNodeTable(nodes, 'No configurations in this group yet.', group)); return card;
   }
   function renderInventory() {
@@ -688,7 +691,11 @@
       var all = card.querySelector('[data-select-group]');
       all.disabled = state.busy || !state.authenticated || !total;
       all.checked = !!total && count === total; all.indeterminate = count > 0 && count < total;
-      card.querySelectorAll('[data-bulk-action]').forEach(function (button) { button.disabled = !count || state.busy || state.jobRunning || !state.authenticated || (button.dataset.bulkAction === 'ping' && groupNodes(group).some(function(n) { return n.protocol === 'loadbalance' && groupSelection(group).has(n.id); })); });
+      card.querySelectorAll('[data-bulk-action]').forEach(function (button) {
+        var ping = button.dataset.bulkAction === 'ping';
+        text(button, ping ? (count ? 'Ping selected' : 'Ping all') : (count ? 'Delete selected' : 'Delete all'));
+        button.disabled = !groupActionIDs(group, button.dataset.bulkAction).length || state.busy || state.jobRunning || !state.authenticated;
+      });
       card.querySelectorAll('[data-select-node]').forEach(function (box) { box.checked = groupSelection(group).has(box.dataset.selectNode); box.disabled = state.busy || !state.authenticated; });
     });
     $('chain-save').disabled=state.busy || state.jobRunning || state.chainHops.length<2 || !state.authenticated;
@@ -707,6 +714,12 @@
     });
     $('chain-preview').dataset.noI18n = ''; text($('chain-preview'),state.chainHops.map(label).join(' → '));
   }
+  function groupActionIDs(group, action) {
+    var selected = groupSelection(group);
+    return groupNodes(group).filter(function (node) {
+      return (!selected.size || selected.has(node.id)) && (action !== 'ping' || node.protocol !== 'loadbalance');
+    }).map(function (node) { return node.id; });
+  }
   function wireBatchEvents() {
     wireDeviceSettings();
     document.addEventListener('change', function (event) {
@@ -718,7 +731,7 @@
     });
     document.addEventListener('click', function (event) {
       var button = event.target.closest('[data-bulk-action]'); if (!button || button.disabled) return;
-      var group = button.dataset.group, ids = Array.from(groupSelection(group)); if (!ids.length) return;
+      var group = button.dataset.group, ids = groupActionIDs(group, button.dataset.bulkAction); if (!ids.length) return;
       if (button.dataset.bulkAction === 'ping') { startJob('/api/nodes/test', {node_ids: ids}, 'Selected latency tests started.'); return; }
       if (!window.confirm(window.I18n.t('Delete ' + ids.length + ' selected configurations? Shared configurations are removed from every group. Deleting the active config switches to Auto; deleting all configs stops the proxy. Subscription refresh may reimport provider nodes.'))) return;
       mutate('Bulk delete', async function () {
@@ -928,6 +941,9 @@
       });
       if (!order) return;
       Array.from(body.children).sort(function (a, b) {
+        // Keep measured, failed and untested latency in that order in both directions.
+        var rank = ((a.sortRanks || {})[order.column] || 0) - ((b.sortRanks || {})[order.column] || 0);
+        if (rank) return rank;
         var av = a.sortValues[order.column], bv = b.sortValues[order.column];
         // Untested latency / missing dates stay last in either direction.
         if (av == null || bv == null) { if (av !== bv) return av == null ? 1 : -1; }

@@ -22,11 +22,14 @@ fields left blank preserve the saved value.
 Click Configuration, Protocol, Server, Latency or Checked in a card’s table
 header. Click again to reverse the order. Each card keeps its own sort order
 during refreshes. Sorting preserves checked rows and does not change the active
-configuration. Untested latency and missing check times stay at the bottom.
+configuration. Measured latencies come first, followed by failed tests, then
+untested configurations in either direction. Missing check times stay at the bottom.
 
 ## Batch actions
 
-Select rows within a card, then use Bulk Ping or Bulk Delete. Tests are bounded
+With no rows selected, Ping all and Delete all apply to that card’s configurations.
+Select rows to narrow these actions to Ping selected and Delete selected. Ping
+skips load-balanced groups; test their original members instead. Tests are bounded
 background jobs, with progress in the dashboard. Deleting a shared node removes
 it from every source group; a future subscription refresh can import it again.
 Deleting an active configuration may change selection or stop the engine when
@@ -52,7 +55,7 @@ chain globally or assign it to a device.
 
 ## Test and share
 
-Bulk Ping measures latency through isolated sing-box probe processes. A Speed
+Ping selected measures latency through isolated sing-box probe processes. A Speed
 Test downloads a fixed payload through the selected node or chain and reports
 Mbps. Neither is an ICMP ping or a guarantee of future throughput.
 

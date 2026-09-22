@@ -12,9 +12,11 @@ configuration count and selected outbound.
 **Add & create** contains Add a configuration, Add a subscription, Chain Builder
 and Load balancing. Manual configurations and subscriptions use separate cards;
 subscription lists collapse from their headers. Row selections drive each
-card's Bulk Ping and Bulk Delete actions. Click Configuration, Protocol, Server,
-Latency or Checked to sort that card; click again to reverse. Untested latency
-and missing timestamps stay at the bottom.
+card’s Ping selected and Delete selected actions. With no rows selected,
+Ping all and Delete all apply to that group. Ping skips load-balanced groups;
+test their original members instead. Click Configuration, Protocol, Server,
+Latency or Checked to sort that card; click again to reverse. Latency sorting keeps measured results first, then failed tests, then untested
+configurations in either direction. Missing timestamps stay at the bottom.
 
 The global automatic-selection switch lives in Load balancing. It selects an
 ordinary configuration by measured latency. Activate a saved group to use that
