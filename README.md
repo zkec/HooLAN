@@ -8,7 +8,7 @@
 <h1 align="center">HooLAN</h1>
 
 <p align="center">
-  <a href="#installation">Installation</a> · <a href="docs/dashboard.md">Dashboard</a> · <a href="docs/routing.md">Routing</a> · <a href="#screenshots">Screenshots</a> · <a href="docs/dns.md">DNS &amp; FakeDNS</a> · <a href="docs/devices.md">Devices</a> · <a href="docs/troubleshooting.md">Troubleshooting</a> · <a href="README-fa.md">Persian (Outdated)</a>
+  <a href="#installation">Installation</a> · <a href="docs/dashboard.md">Dashboard</a> · <a href="docs/routing.md">Routing</a> · <a href="#screenshots">Screenshots</a> · <a href="docs/dns.md">DNS &amp; FakeDNS</a> · <a href="docs/devices.md">Devices</a> · <a href="docs/troubleshooting.md">Troubleshooting</a> · <a href="README-fa.md"><s>Persian</s></a>
 </p>
 
 HooLAN is a web dashboard for managing a transparent proxy gateway on Debian.
@@ -49,7 +49,7 @@ flowchart LR
 Routing happens in two stages. **nftables** intercepts eligible LAN IPv4 TCP/UDP;
 local/private destinations and excluded traffic use ordinary host routing.
 **sing-box** handles DNS and safety rules first, then evaluates custom routing
-rules, custom rule sets and the Iran preset. The first matching action wins:
+rules, custom rule sets and the Iran preset. The first matching action either:
 connect directly, use the globally selected proxy, or reject. Remaining traffic
 uses its device assignment or the global default. Device assignments do not
 override earlier bypass or rejection rules.
@@ -57,25 +57,14 @@ override earlier bypass or rejection rules.
 Chains follow their saved hop sequence. Load-balanced groups either distribute
 connections or select the best measured latency. DNS listens on TCP/UDP port
 **1053**, with separate direct and tunneled resolvers and optional FakeDNS.
+
 See the [routing guide](docs/routing.md) for the complete decision order,
 configuration examples, updates and diagnostics.
-
-HooLAN enables interception only after the engine owns the required TCP and UDP
-listeners. Disabling the engine removes interception while preserving the
-router's forwarding/NAT setup and device limits. Normal forwarding must be
-configured independently; an OFF toggle cannot create an upstream route.
-If clients use HooLAN DNS on port 1053, switch them to a working resolver before OFF.
-With FakeDNS enabled, restore real DNS and clear downstream caches before OFF;
-see the [FakeDNS shutdown procedure](docs/dns.md#cache-shutdown-and-recovery).
-
-The backend uses only the Go standard library. QR rendering loads a pinned
-browser library on demand; the rest of the dashboard's assets are embedded.
 
 ## Installation
 
 These steps are for a fresh installation on Debian. For an existing installation,
-follow [Updating an installation](docs/installation.md#updating-an-installation)
-to preserve your settings.
+follow [Updating an installation](docs/installation.md#updating-an-installation).
 
 ### 1. Prepare the host
 
@@ -176,7 +165,6 @@ access before enabling interception or changing DHCP for the whole LAN.
 sudo install -m644 deploy/hoolan.service /etc/systemd/system/hoolan.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now hoolan
-sudo journalctl -u hoolan -n 80 --no-pager
 ```
 
 ### 6. Open the dashboard
