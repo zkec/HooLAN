@@ -1,6 +1,6 @@
 # DNS & FakeDNS
 
-[Home](../README.md) · [Routing](routing.md) · [Troubleshooting](troubleshooting.md) · [فارسی](dns-fa.md)
+[Home](../README.md) · [Routing](routing.md) · [Troubleshooting](troubleshooting.md) 
 
 Configure DNS in **Settings → Routing & DNS**. HooLAN listens on **port 1053**
 over TCP and UDP while the engine is running.

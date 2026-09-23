@@ -17,7 +17,7 @@
 
 
 <p align="center">
-  <a href="#شروع-سریع">شروع سریع</a> · <a href="docs/installation.md">نصب</a> · <a href="docs/dashboard.md">داشبورد</a> · <a href="docs/routing.md">مسیریابی</a> · <a href="docs/dns-fa.md">DNS و FakeDNS</a> · <a href="docs/devices.md">دستگاه‌ها</a> · <a href="docs/troubleshooting.md">عیب‌یابی</a> · <a href="README.md">English</a>
+  <a href="#شروع-سریع">شروع سریع</a> · <a href="docs/installation.md">نصب</a> · <a href="docs/dashboard.md">داشبورد</a> · <a href="docs/routing.md">مسیریابی</a> · <a href="docs/dns.md">DNS و FakeDNS</a> · <a href="docs/devices.md">دستگاه‌ها</a> · <a href="docs/troubleshooting.md">عیب‌یابی</a> · <a href="README.md">English</a>
 </p>
 
 HooLAN یک داشبورد وب برای مدیریت دروازهٔ پروکسی شفاف روی Debian است.

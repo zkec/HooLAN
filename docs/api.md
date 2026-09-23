@@ -28,8 +28,7 @@ must match the public origin. `/healthz` is public liveness, not a routing test.
 
 ## Request examples
 
-Set `HOOLAN_TOKEN` in your shell before using these examples. Do not include
-real credentials in shared command output.
+Set `HOOLAN_TOKEN` in your shell before using these examples.
 
 ```bash
 curl --fail-with-body -H "Authorization: Bearer $HOOLAN_TOKEN" \
@@ -40,7 +39,7 @@ Device update (`node_id: ""` means Global Default):
 
 ```json
 {
-  "ip": "192.168.3.141",
+  "ip": "192.168.x.x",
   "alias": "Phone",
   "node_id": "direct",
   "qos": {

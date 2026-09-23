@@ -11,16 +11,13 @@ Do not run a separate sing-box service on the same listeners.
 
 Examples use a Debian host `192.168.3.5`, upstream router `192.168.3.1`, LAN `192.168.3.0/24`,
 interface `eth0`, dashboard `8080`, TPROXY `7892` and Clash `127.0.0.1:9090`.
-Substitute your actual values. The Debian host's default route must reach the upstream
-router. Give the Debian host a stable address and reserve device addresses in DHCP.
+Substitute your actual values.
 
 ## Build
 
 ```bash
 sudo apt-get update
 sudo apt-get install nftables iproute2 procps util-linux ca-certificates curl
-sing-box version
-ip -4 route show default
 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
 ```
 
@@ -48,7 +45,9 @@ sudoedit /opt/hoolan/scripts/tproxy/tproxy.conf
 ```
 
 Set independent random values for `HOOLAN_TOKEN` (dashboard/API) and
-`HOOLAN_CLASH_SECRET` (engine control API). For example, generate each with
+`HOOLAN_CLASH_SECRET` (engine control API).
+
+For example, generate each with
 `openssl rand -hex 32` if OpenSSL is installed. `HOOLAN_SUBS` optionally supplies
 initial subscription URLs; the UI can manage subscriptions without it.
 
@@ -64,10 +63,6 @@ PI_LAN_IP="192.168.3.5"
 SELF_ORIGIN_NETS=""
 WG_RP_FILTER="yes"
 ```
-
-The service flag and `TPROXY_PORT` must agree. Reserve the mark, routing table,
-priority and adjacent distribution-listener ports for HooLAN. LAN prefixes are
-read from the live interface. Keep the template and helpers together.
 
 ## Establish routing before interception
 
@@ -96,7 +91,6 @@ Test a single client with the engine OFF before changing DHCP for the whole LAN.
 sudo install -m644 deploy/hoolan.service /etc/systemd/system/hoolan.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now hoolan
-sudo journalctl -u hoolan -n 80 --no-pager
 ```
 
 The supplied unit binds to loopback. From your workstation:
@@ -105,40 +99,37 @@ The supplied unit binds to loopback. From your workstation:
 ssh -N -L 8080:127.0.0.1:8080 user@192.168.3.5
 ```
 
-Open `http://127.0.0.1:8080/`, sign in with `HOOLAN_TOKEN`, add/test/select a
-configuration and enable the engine. Point DHCP's IPv4 gateway option at the Debian host
-only after testing. Advertise the Debian host as DNS only if a resolver listens there.
+Open `http://127.0.0.1:8080/`, sign in with `HOOLAN_TOKEN`, Point DHCP's IPv4 gateway option at the host
+only after testing. Advertise the host as DNS only if a resolver listens there.
 Plan IPv6 RA/DHCPv6 separately.
 
 ## HTTPS access
 
-Use a trusted HTTPS reverse proxy. Preserve the public Host header and disable
-buffering for live logs:
-
-```nginx
-proxy_pass http://127.0.0.1:8080;
-proxy_set_header Host $http_host;
-proxy_set_header X-Forwarded-Proto $scheme;
-proxy_http_version 1.1;
-proxy_buffering off;
-proxy_read_timeout 75s;
-```
+Use a trusted HTTPS reverse proxy.
 
 Add `-secure-cookies` to the service's `ExecStart` for HTTPS-only browser access.
-Reload systemd and restart after editing the unit. A proxy in a container needs
-a reachable host listener; its own loopback is not the Debian host's loopback. Restrict
-that listener to trusted sources. Keep Clash on loopback.
+Reload systemd and restart after editing the unit.
 
 ## Updating an installation
 
-Download a backup, build a new executable, stop `hoolan`, replace the executable
-and firewall helpers/template, then start it again. Preserve the live `env`,
-`tproxy.conf` and state files. If the unit changes, install it and run
-`systemctl daemon-reload`. Test OFF forwarding and ON interception afterward.
+Download a backup of your data from the UI.
 
-## AdGuard and split DNS
+ build a new executable:
+ ```bash
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
+```
+stop `hoolan`, replace the executable and firewall helpers/template, then start it again:
 
-For AdGuard Home on port 53 (including Docker), follow the
-[split-DNS setup guide](dns.md) to forward to HooLAN on port 1053.
-Set your actual router IP as Direct DNS, configure tunneled DoH, and use a
-container-reachable private host address when Docker does not share host networking.
+```bash
+sudo systemctl stop hoolan
+sudo cp hoolan /opt/hoolan/hoolan
+sudo cp scripts/tproxy/* /opt/hoolan/scripts/tproxy/
+sudo chmod +x /opt/hoolan/scripts/tproxy/*.sh
+sudo systemctl start hoolan
+```
+
+ Preserve the live `env`,
+`tproxy.conf` and state files. If the unit changes, install it and run:
+```bash
+systemctl daemon-reload
+```

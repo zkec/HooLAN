@@ -3,9 +3,8 @@
 [Home](../README.md) · [Documentation](../README.md#documentation)
 
 Sign in using `HOOLAN_TOKEN`. Browser authentication uses an HttpOnly session
-cookie and CSRF protection. The header provides engine ON/OFF, theme, language
-and sign-out controls. Status cards show the process, interception rules,
-configuration count and selected outbound.
+cookie and CSRF protection. 
+
 
 ## Configurations
 
