@@ -2,3 +2,4 @@ hoolan
 MEMORY.md
 *.db
 *.json
+.directory
