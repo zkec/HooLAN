@@ -167,6 +167,7 @@ func run(cfg config, log *slog.Logger) error {
 	// which cannot happen before New returns below.
 	var svcRef *api.Service
 	eng := engine.NewManager(engine.Options{
+		ManagedDNS:     true,
 		BinaryPath:     cfg.singBox,
 		ConfigPath:     cfg.configPath,
 		TProxyPort:     cfg.tproxyPort,
@@ -208,6 +209,10 @@ func run(cfg config, log *slog.Logger) error {
 		return fmt.Errorf("api service: %w", err)
 	}
 	svcRef = svc
+	if err := eng.StartDNS(); err != nil {
+		return fmt.Errorf("start gateway DNS: %w", err)
+	}
+	defer eng.CloseDNS()
 
 	warnIfExposed(cfg, log)
 	if len(svc.Subscriptions()) == 0 {

@@ -70,7 +70,7 @@ for iface in all default "$LAN_IF"; do
 done
 run nft -a list table inet proxy_tproxy
 run nft -a list table inet hoolan_fakedns
-run ss -lntup "( sport = :1053 )"
+run ss -lntup "( sport = :1053 or sport = :1054 )"
 # All base chains matter: accept in one chain does not overrule a later drop.
 run nft -a list ruleset
 run iptables --version

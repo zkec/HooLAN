@@ -46,12 +46,13 @@ func (h *handlers) nodes(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		id, err := h.svc.AddManualNode(r.Context(), req.Link)
+		ids, err := h.svc.AddManualNodes(r.Context(), req.Link)
 		if err != nil {
 			h.dashboardError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{"node_id": id, "message": "Manual config saved"})
+		writeJSON(w, http.StatusCreated, map[string]any{"node_id": ids[0], "node_ids": ids, "count": len(ids), "message": "Manual configs saved"})
+
 	default:
 		methodsNotAllowed(w, "GET, POST")
 	}
@@ -76,8 +77,22 @@ func (h *handlers) subscriptions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusCreated, sub)
+	case http.MethodDelete:
+		var req struct {
+			ID string `json:"subscription_id"`
+		}
+		if err := decodeBody(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		removed, err := h.svc.RemoveSubscription(r.Context(), req.ID)
+		if err != nil {
+			h.dashboardError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"removed_nodes": removed})
 	default:
-		methodsNotAllowed(w, "GET, POST")
+		methodsNotAllowed(w, "GET, POST, DELETE")
 	}
 }
 

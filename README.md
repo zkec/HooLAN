@@ -92,7 +92,7 @@ The examples below use `eth0`, host address `192.168.3.5` and LAN subnet
 
 ### 2. Build and install HooLAN
 
-Run these commands from the repository root on your Debian host:
+Run these commands from the repository root on your host:
 
 ```bash
 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
@@ -132,14 +132,14 @@ Edit the firewall configuration:
 sudoedit /opt/hoolan/scripts/tproxy/tproxy.conf
 ```
 
-Set `LAN_IF` to your LAN interface and `PI_LAN_IP` to the Debian host's static
+Set `LAN_IF` to your LAN interface and `PI_LAN_IP` to the host's static
 LAN address. Keep `TPROXY_PORT="7892"` to match the supplied service unit.
 See the [configuration reference](docs/installation.md#install-the-service-files)
 for the remaining mark, routing table and interface options.
 
 ### 4. Configure gateway forwarding
 
-Clients must have internet access through the Debian host even when the proxy
+Clients must have internet access through the host even when the proxy
 engine is OFF. Configure IPv4 forwarding, an upstream default route, firewall
 permissions and either a return route or scoped NAT.
 
@@ -156,7 +156,7 @@ with backups of the UFW files. The mark must match `tproxy.conf`. For other
 firewalls or a two-interface setup, configure the equivalent rules through your
 firewall; see [host routing](docs/installation.md#establish-routing-before-interception).
 
-Set one test client's IPv4 gateway to the Debian host and verify internet
+Set one test client's IPv4 gateway to the host and verify internet
 access before enabling interception or changing DHCP for the whole LAN.
 
 ### 5. Start the service
@@ -179,7 +179,7 @@ ssh -N -L 8080:127.0.0.1:8080 user@192.168.3.5
 Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/) and sign in with your
 `HOOLAN_TOKEN`. Add a configuration or subscription, test and select an outbound,
 then enable the proxy engine. Verify the test client's connection before setting
-DHCP's IPv4 gateway option to the Debian host for the rest of the LAN.
+DHCP's IPv4 gateway option to the host for the rest of the LAN.
 
 Reserve client addresses in DHCP for stable device routing and limits. Keep a
 working DNS resolver configured; HooLAN's DNS listener uses port **1053** and is
@@ -251,16 +251,8 @@ See the [routing guide](docs/routing.md) for policy configuration and the
 Run `./hoolan -h` for command-line options. Rule-set filesystem paths and update
 timestamps appear in Settings. Backups contain secrets; store them privately.
 
-## Scope
+## TroubleShoot
 
-HooLAN manages IPv4 traffic that crosses the Debian host. Same-subnet traffic taking
-another path cannot be measured or limited. Device limits are packet-drop
-policers, not queued traffic shaping. Connection distribution cannot combine
-one download across proxies and does not measure remote server load. Usage
-counts engine payload bytes and omits raw forwarding while the engine is OFF;
-short connections can be missed by attribution sampling.
+See [troubleshooting](docs/troubleshooting.md) for any questions.
 
-Run the gateway on bare metal. Keep the Clash API local, preserve the dashboard's
-public Host header behind HTTPS, and configure forwarding in the host's active
-firewall. See [troubleshooting](docs/troubleshooting.md) before altering broad
-INPUT/FORWARD policies.
+Feel free to open an issue on github or contact me at [@zkeck1](https://t.me/zkeck1) on telegram

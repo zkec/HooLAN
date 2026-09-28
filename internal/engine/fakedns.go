@@ -2,7 +2,9 @@ package engine
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 )
 
@@ -41,6 +43,11 @@ func (m *Manager) ConfigureFakeDNS(o FakeDNSOptions) error {
 	defer m.settingsMu.Unlock()
 	if o.Enabled && (m.opts.CacheFilePath == "" || m.opts.DNS != nil) {
 		return fmt.Errorf("FakeDNS requires a persistent cache file and cannot be combined with a custom DNS block")
+	}
+	if m.dnsRelay != nil {
+		if err := m.dnsRelay.Listen(net.JoinHostPort(o.Listen, strconv.Itoa(FakeDNSPort))); err != nil {
+			return fmt.Errorf("DNS listener: %w", err)
+		}
 	}
 	m.opts.FakeDNS = o
 	return nil
@@ -99,7 +106,12 @@ func (m *Manager) buildFakeDNS(inbounds []string, rules []RouteRule) (*DNSOption
 			prefix = append(prefix, rule)
 			// Resolve with the real encrypted resolver before IP/GeoIP/private rules.
 			// Explicit server prevents this lookup from matching the fake A rule.
-			prefix = append(prefix, RouteRule{Action: "resolve", Server: secureDNSServer, Strategy: "ipv4_only"})
+			resolve := RouteRule{Action: "resolve", Server: secureDNSServer, Strategy: "ipv4_only"}
+			if ips := m.directDevicePrefixes(); len(ips) > 0 && (m.opts.TunneledDoH != "" || m.opts.DirectDNS != "") {
+				prefix = append(prefix, RouteRule{SourceIPCIDR: ips, Action: "resolve", Server: directDNSTag, Strategy: "ipv4_only"})
+				resolve.SourceIPCIDR, resolve.Invert = ips, true
+			}
+			prefix = append(prefix, resolve)
 			// A recovered domain can resolve to a private listener address.
 			// Recheck after resolution to preserve the self-dial loop guard.
 			prefix = append(prefix, RouteRule{IPIsPrivate: true, Port: listenerPorts, Action: "reject"})

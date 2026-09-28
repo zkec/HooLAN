@@ -1404,3 +1404,5 @@ select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Keep group actions together at the trailing edge, including RTL layouts. */
 .group-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-inline-start: auto; justify-content: flex-end; }
+
+#node-link { width: 100%; min-height: 7rem; resize: vertical; }

@@ -176,9 +176,10 @@ See [chains](configurations.md) and [load balancing](load-balancing.md).
 
 ## 6. DNS and FakeDNS
 
-DNS listens on **TCP/UDP port 1053** while the engine runs. Direct/local matches
+DNS listens on **TCP/UDP port 1053** while HooLAN runs, including engine OFF. Direct/local matches
 use **Direct DNS Server**; remaining real queries use **Tunneled DoH Server**
-through the global active proxy without direct fallback. DNS decisions follow
+through the global active proxy. If proxy DNS is unavailable, the listener
+falls back to Direct DNS outside the proxy. DNS decisions follow
 the applicable ordered domain/rule-set policy, not a device-specific DNS proxy.
 
 IP/GeoIP rules need an answer before they can be evaluated. The engine obtains
@@ -233,9 +234,9 @@ traffic. Limits are packet-drop policing, with stricter handling for unclassifie
 traffic; see [device limits](devices.md).
 
 Turning the engine OFF removes interception while leaving separately configured
-forwarding/NAT and device limits in place. Port 1053 stops with the engine.
-Restore a working resolver first, and clear virtual-address caches if FakeDNS
-was enabled. The FakeDNS guard remains to prevent stale virtual destinations
+forwarding/NAT and device limits in place. Port 1053 remains available through
+HooLAN and uses Direct DNS while the engine is off. Clear virtual-address caches
+if FakeDNS was enabled. Stopping HooLAN itself still stops DNS. The FakeDNS guard remains to prevent stale virtual destinations
 from being forwarded as real internet traffic.
 
 ## Verify a routing change

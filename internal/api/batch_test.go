@@ -3,12 +3,12 @@ package api
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"hoolan/internal/engine"
 	"hoolan/internal/store"
 	"hoolan/internal/subscription"
 	"hoolan/internal/tester"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -248,5 +248,31 @@ func TestEmptySyncStopsLastRunningConfiguration(t *testing.T) {
 	}
 	if h.eng.Running() || h.svc.state.ProxyEnabled || h.store.Len() != 0 {
 		t.Fatal("empty sync left proxy enabled")
+	}
+}
+
+func TestMixedUnsupportedSubscriptionSync(t *testing.T) {
+	h, transport := syncHarness(t)
+	for u := range transport.feeds {
+		transport.feeds[u] = providerLink + "\nsnell://unsupported-example"
+	}
+	if err := h.svc.refresh(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if h.store.Len() != 1 {
+		t.Fatalf("supported nodes not imported: %d", h.store.Len())
+	}
+	if len(h.svc.JobStatus().Warnings) == 0 {
+		t.Fatal("missing skipped-protocol warning")
+	}
+	// An entirely unsupported response cannot prune the last usable nodes.
+	for u := range transport.feeds {
+		transport.feeds[u] = "snell://unsupported-example"
+	}
+	if err := h.svc.refresh(context.Background(), false); err == nil {
+		t.Fatal("expected unusable response error")
+	}
+	if h.store.Len() != 1 {
+		t.Fatal("unsupported-only feed pruned existing membership")
 	}
 }

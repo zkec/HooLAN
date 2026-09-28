@@ -45,7 +45,7 @@ func ValidateDNSListener(direct, listen string) error {
 	if err != nil {
 		return err
 	}
-	if server["server"] == listen && server["server_port"] == FakeDNSPort {
+	if (server["server"] == listen && server["server_port"] == FakeDNSPort) || (server["server"] == "127.0.0.1" && server["server_port"] == ManagedDNSPort) {
 		return fmt.Errorf("direct DNS cannot point back to the sing-box DNS listener")
 	}
 	return nil
@@ -72,8 +72,7 @@ func (m *Manager) DNSListener() (string, int) {
 	if m.opts.TunneledDoH == "" && m.opts.DirectDNS == "" && !m.opts.FakeDNS.Enabled {
 		return "", 0
 	}
-	o, _ := NormalizeFakeDNS(m.opts.FakeDNS)
-	return o.Listen, FakeDNSPort
+	return m.dnsBindAddress(), m.dnsBindPort()
 }
 
 // buildSplitDNS is called after applyRulePolicy, before per-device rules.
@@ -131,6 +130,9 @@ func (m *Manager) buildSplitDNS(route *RouteOptions, clients []string) (*DNSOpti
 	}
 	route.DefaultDomainResolver = &DomainResolverOptions{Server: DefaultResolverTag}
 	clients = append(append([]string{}, clients...), FakeDNSInbound)
+	if ips := m.directDevicePrefixes(); len(ips) > 0 {
+		dns.Rules = append(dns.Rules, map[string]any{"source_ip_cidr": ips, "action": "route", "server": directDNSTag})
+	}
 	if o.Enabled {
 		dns.Servers = append(dns.Servers, map[string]any{"type": "fakeip", "tag": fakeIPServer, "inet4_range": FakeDNSRange})
 		dns.Rules = append(dns.Rules, map[string]any{"inbound": clients, "query_type": []string{"AAAA", "HTTPS", "SVCB"}, "action": "predefined", "rcode": "NOERROR"})

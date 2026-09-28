@@ -296,7 +296,10 @@
       var button = element('button', 'button', action === 'ping' ? 'Ping all' : 'Delete all'); button.type = 'button';
       button.dataset.bulkAction = action; button.dataset.group = group; button.dataset.mutation = ''; button.dataset.job = ''; actions.appendChild(button);
     });
-    if (subscription) actions.appendChild(actionButton('Refresh', 'refresh-subscription', subscription.id, false, true));
+    if (subscription) {
+      actions.appendChild(actionButton('Refresh', 'refresh-subscription', subscription.id, false, true));
+      actions.appendChild(actionButton('Remove subscription', 'remove-subscription', subscription.id, false, true));
+    }
     bar.appendChild(actions);
     card.appendChild(bar); card.appendChild(makeNodeTable(nodes, 'No configurations in this group yet.', group)); return card;
   }
@@ -556,6 +559,16 @@
       if (button.dataset.action === 'edit-chain') openChainEditor(id);
       if (button.dataset.action === 'select-node') selectNode(id);
       if (button.dataset.action === 'test-subscription') startJob('/api/subscriptions/test', { subscription_id: id }, 'Subscription latency test started.');
+      if (button.dataset.action === 'remove-subscription') {
+        var sub = state.subscriptions.find(function (item) { return item.id === id; });
+        if (!sub || !window.confirm((sub.name || 'Subscription') + '\n\n' + window.I18n.t('Remove this subscription and its exclusive configurations? Shared and manually saved configurations are kept. Removing the active configuration switches to Auto; removing the last configuration stops the proxy.'))) return;
+        mutate('Remove subscription', async function () {
+          await call('DELETE', '/api/subscriptions', {subscription_id:id});
+          state.groupSelections.delete(id); state.groupOpen.delete(id);
+          toast('Subscription removed.', 'ok');
+        });
+        return;
+      }
       if (button.dataset.action === 'refresh-subscription') startJob('/api/subscriptions/refresh', { subscription_id: id }, 'Subscription refresh started.');
     });
     $('proxy-toggle').addEventListener('change', function (event) {
@@ -589,7 +602,7 @@
       mutate('Add config', async function () {
         var response = await call('POST', '/api/nodes', { link: link });
         $('node-form').reset();
-        toast(response.message || 'Configuration added.', 'ok');
+        toast(response.count ? response.count + ' configurations saved.' : (response.message || 'Configuration added.'), 'ok');
       });
     });
     $('refresh-all-btn').addEventListener('click', function () { startJob('/api/nodes/refresh', undefined, 'All subscriptions are refreshing and testing.'); });

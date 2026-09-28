@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"hoolan/internal/dnsrelay"
 	"hoolan/internal/store"
 	"hoolan/internal/subscription"
 )
@@ -65,6 +66,8 @@ const (
 
 // Options configures config generation and process supervision.
 type Options struct {
+	// ManagedDNS keeps a Go DNS relay alive when the proxy engine is off.
+	ManagedDNS bool
 	// BinaryPath is the sing-box executable. Default: resolved from PATH.
 	BinaryPath string
 	// ConfigPath is where config.json is written. Default:
@@ -201,6 +204,7 @@ func (o *Options) setDefaults() {
 // Manager renders config and supervises one sing-box process.
 // All exported methods are safe for concurrent use.
 type Manager struct {
+	dnsRelay        *dnsrelay.Server
 	opts            Options
 	settingsMu      sync.RWMutex
 	deviceRoutes    map[string]string
@@ -240,6 +244,18 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 	distribution, err := DistributionPlan(nodes, m.opts.TProxyPort)
 	if err != nil {
 		return nil, err
+	}
+	if m.opts.ManagedDNS {
+		if m.opts.TProxyPort == ManagedDNSPort {
+			return nil, errors.New("TPROXY port conflicts with internal DNS")
+		}
+		for _, g := range distribution {
+			for _, member := range g.Members {
+				if member.Port == ManagedDNSPort {
+					return nil, errors.New("distribution port conflicts with internal DNS")
+				}
+			}
+		}
 	}
 	inbounds := []any{}
 	inboundTags := []string{m.opts.InboundTag}
@@ -471,7 +487,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		inbounds = append(inbounds, map[string]any{"type": "direct", "tag": FakeDNSInbound, "listen": m.opts.FakeDNS.Listen, "listen_port": FakeDNSPort})
+		inbounds = append(inbounds, map[string]any{"type": "direct", "tag": FakeDNSInbound, "listen": m.dnsBindAddress(), "listen_port": m.dnsBindPort()})
 	}
 	route.Rules = rules
 	m.applyRulePolicy(route)
@@ -482,11 +498,11 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 			return nil, err
 		}
 		if !m.opts.FakeDNS.Enabled {
-			o, err := NormalizeFakeDNS(m.opts.FakeDNS)
+			_, err := NormalizeFakeDNS(m.opts.FakeDNS)
 			if err != nil {
 				return nil, err
 			}
-			inbounds = append(inbounds, map[string]any{"type": "direct", "tag": FakeDNSInbound, "listen": o.Listen, "listen_port": FakeDNSPort})
+			inbounds = append(inbounds, map[string]any{"type": "direct", "tag": FakeDNSInbound, "listen": m.dnsBindAddress(), "listen_port": m.dnsBindPort()})
 			prefix := []RouteRule{{Inbound: []string{FakeDNSInbound}, Action: "hijack-dns"}, {Inbound: inboundTags, Port: []int{53}, Action: "hijack-dns"}}
 			for _, r := range route.Rules {
 				if len(r.Protocol) == 1 && r.Protocol[0] == "dns" {

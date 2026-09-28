@@ -146,24 +146,25 @@ type Service struct {
 type State struct {
 	Telegram TelegramSettings `json:"telegram"`
 
-	DeviceLimits       map[string]netfilter.DeviceLimits `json:"device_limits,omitempty"`
-	DeviceAliases      map[string]string                 `json:"device_aliases,omitempty"`
-	DeviceRoutes       map[string]string                 `json:"device_routes,omitempty"`
-	Usage              Usage                             `json:"usage"`
-	RuleScheduleAnchor time.Time                         `json:"rule_schedule_anchor,omitempty"`
-	RulePolicy         *engine.RulePolicy                `json:"rule_policy,omitempty"`
-	RuleFiles          map[string]string                 `json:"rule_files,omitempty"`
-	RuleLastUpdate     time.Time                         `json:"rule_last_update,omitempty"`
-	RuleLastAttempt    time.Time                         `json:"rule_last_attempt,omitempty"`
-	RuleError          string                            `json:"rule_error,omitempty"`
-	Subscriptions      []Subscription                    `json:"subscriptions,omitempty"`
-	ManualNodeIDs      map[string]bool                   `json:"manual_node_ids,omitempty"`
-	FakeDNS            engine.FakeDNSOptions             `json:"fake_dns"`
-	TunneledDoH        string                            `json:"tunneled_doh"`
-	DirectDNS          string                            `json:"direct_dns"`
-	DNSServer          string                            `json:"dns_server,omitempty"`
-	IranBypass         *bool                             `json:"iran_bypass,omitempty"`
-	ProxyEnabled       bool                              `json:"proxy_enabled"`
+	DeviceLimits           map[string]netfilter.DeviceLimits `json:"device_limits,omitempty"`
+	DeviceAliases          map[string]string                 `json:"device_aliases,omitempty"`
+	DeviceRoutes           map[string]string                 `json:"device_routes,omitempty"`
+	Usage                  Usage                             `json:"usage"`
+	RuleScheduleAnchor     time.Time                         `json:"rule_schedule_anchor,omitempty"`
+	RulePolicy             *engine.RulePolicy                `json:"rule_policy,omitempty"`
+	RuleFiles              map[string]string                 `json:"rule_files,omitempty"`
+	RuleLastUpdate         time.Time                         `json:"rule_last_update,omitempty"`
+	RuleLastAttempt        time.Time                         `json:"rule_last_attempt,omitempty"`
+	RuleError              string                            `json:"rule_error,omitempty"`
+	RemovedSubscriptionIDs map[string]bool                   `json:"removed_subscription_ids,omitempty"`
+	Subscriptions          []Subscription                    `json:"subscriptions,omitempty"`
+	ManualNodeIDs          map[string]bool                   `json:"manual_node_ids,omitempty"`
+	FakeDNS                engine.FakeDNSOptions             `json:"fake_dns"`
+	TunneledDoH            string                            `json:"tunneled_doh"`
+	DirectDNS              string                            `json:"direct_dns"`
+	DNSServer              string                            `json:"dns_server,omitempty"`
+	IranBypass             *bool                             `json:"iran_bypass,omitempty"`
+	ProxyEnabled           bool                              `json:"proxy_enabled"`
 	// AutoSelect true means the urltest group drives the choice.
 	AutoSelect bool `json:"auto_select"`
 	// SelectedNodeID is a store record ID, not a tag: tags are
@@ -649,17 +650,18 @@ func (s *Service) waitEngineListening(ctx context.Context) error {
 		}
 		fakeDNS := s.Settings().FakeDNS
 		dnsReadyRequired := fakeDNS.Enabled
+		dnsAddress, dnsPort := fakeDNS.Listen, engine.FakeDNSPort
 		if provider, ok := s.cfg.Engine.(interface{ DNSListener() (string, int) }); ok {
-			_, dnsPort := provider.DNSListener()
+			dnsAddress, dnsPort = provider.DNSListener()
 			dnsReadyRequired = dnsPort > 0
 		}
 		if listening && dnsReadyRequired {
-			listening, err = fakeDNSSocketsReady(s.cfg.Engine.Pid(), fakeDNS.Listen, engine.FakeDNSPort)
+			listening, err = fakeDNSSocketsReady(s.cfg.Engine.Pid(), dnsAddress, dnsPort)
 			if err != nil {
 				return err
 			}
 			if !listening {
-				port = engine.FakeDNSPort
+				port = dnsPort
 			}
 		}
 		if listening {

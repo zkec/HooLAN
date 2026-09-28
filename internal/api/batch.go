@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/http"
 	"hoolan/internal/engine"
 	"hoolan/internal/store"
 	"hoolan/internal/subscription"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -62,6 +62,12 @@ func (s *Service) DeleteNodes(ctx context.Context, ids []string) (int, error) {
 	if busy {
 		return 0, ErrRefreshInProgress
 	}
+	return s.deleteNodesLocked(ctx, remove, "")
+}
+
+// deleteNodesLocked commits source membership, inventory and selection together.
+// Caller owns opMu and has checked for running jobs.
+func (s *Service) deleteNodesLocked(ctx context.Context, remove map[string]bool, subscriptionID string) (int, error) {
 	before := s.cfg.Store.All()
 	byID := map[string]store.Record{}
 	for _, r := range before {
@@ -105,15 +111,27 @@ func (s *Service) DeleteNodes(ctx context.Context, ids []string) (int, error) {
 	oldRoutes := s.state.DeviceRoutes
 	s.state.DeviceRoutes = withoutRoutes(oldRoutes, remove)
 	oldSubs, oldManual, oldAuto, oldSelected := s.state.Subscriptions, s.state.ManualNodeIDs, s.state.AutoSelect, s.state.SelectedNodeID
-	s.state.Subscriptions = append([]Subscription(nil), oldSubs...)
-	for i, sub := range oldSubs {
+	oldRemoved := s.state.RemovedSubscriptionIDs
+	if subscriptionID != "" {
+		s.state.RemovedSubscriptionIDs = make(map[string]bool, len(oldRemoved)+1)
+		for id, v := range oldRemoved {
+			s.state.RemovedSubscriptionIDs[id] = v
+		}
+		s.state.RemovedSubscriptionIDs[subscriptionID] = true
+	}
+	s.state.Subscriptions = make([]Subscription, 0, len(oldSubs))
+	for _, sub := range oldSubs {
+		if sub.ID == subscriptionID {
+			continue
+		}
 		next := []string{}
 		for _, id := range sub.NodeIDs {
 			if !remove[id] {
 				next = append(next, id)
 			}
 		}
-		s.state.Subscriptions[i].NodeIDs = next
+		sub.NodeIDs = next
+		s.state.Subscriptions = append(s.state.Subscriptions, sub)
 	}
 	s.state.ManualNodeIDs = map[string]bool{}
 	for id, v := range oldManual {
@@ -125,12 +143,13 @@ func (s *Service) DeleteNodes(ctx context.Context, ids []string) (int, error) {
 		s.state.SelectedNodeID = ""
 		s.state.AutoSelect = true
 	}
-	err = s.cfg.Store.ReplaceRecords(remaining)
+	err := s.cfg.Store.ReplaceRecords(remaining)
 	if err == nil {
 		err = s.saveState()
 	}
 	if err != nil {
 		s.state.Subscriptions = oldSubs
+		s.state.RemovedSubscriptionIDs = oldRemoved
 		s.state.DeviceRoutes = oldRoutes
 		s.state.ManualNodeIDs = oldManual
 		s.state.AutoSelect = oldAuto

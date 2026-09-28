@@ -4,8 +4,11 @@
 
 ## Add and refresh
 
-Paste a supported node link in Add a configuration, or add a subscription
-URL.
+Paste one or more supported node links in Add a configuration, or add a
+subscription URL. Manual import detects links separated by spaces, tabs or new
+lines and saves each distinct endpoint in Manual configurations. The whole paste
+is validated before saving; an invalid link reports its position without
+importing a partial batch. Existing endpoints are updated instead of duplicated.
 
 Supported families include VLESS, VMess, Trojan,
 Shadowsocks, Hysteria2 and TUIC; accepted fields depend on the protocol parser.
@@ -18,7 +21,22 @@ with an empty list.
 Manual configurations remain distinct from provider-managed entries. Use their
 Edit action to update supported endpoint and transport settings.
 
+## Mixed-protocol subscriptions
+
+Refresh imports supported protocols from a mixed feed and reports skipped
+unsupported entries as warnings. An entirely unsupported feed, or a malformed
+entry for a supported protocol, retains the previous membership. VMess is
+supported; an unsupported entry elsewhere in the subscription no longer blocks
+otherwise valid VMess, VLESS, Trojan, Shadowsocks or Hysteria2 nodes.
+
 ## Batch actions
+
+**Remove subscription**, beside Refresh on each subscription card, removes the
+source and its exclusive configurations after confirmation. Shared configurations
+and manually saved configurations are retained. The source stays removed after
+restart even if its URL is in `HOOLAN_SUBS`; explicitly adding it again restores
+it. A remaining configuration that depends on a deleted node must be updated
+before removal can proceed.
 
 With no rows selected, Ping all and Delete all apply to that card’s configurations.
 Select rows to narrow these actions to Ping selected and Delete selected. **Ping
@@ -56,4 +74,3 @@ Mbps. Neither is an ICMP ping or a guarantee of future throughput.
 QR Code opens an explicit credential-bearing share link. Single nodes can be
 imported by a compatible mobile client. A chain/group cannot be faithfully
 represented by one ordinary node URL. See [integrations](integrations.md).
-

@@ -3,7 +3,8 @@
 [Home](../README.md) · [Routing](routing.md) · [Troubleshooting](troubleshooting.md) 
 
 Configure DNS in **Settings → Routing & DNS**. HooLAN listens on **port 1053**
-over TCP and UDP while the engine is running.
+over TCP and UDP while the HooLAN service is running, even when its proxy engine
+is OFF.
 
 ## Choose your DNS servers
 
@@ -17,8 +18,10 @@ for direct DNS. Use your own resolver addresses; the examples are not automatic
 network discovery. Click **Save settings** to apply changes.
 
 Local and bypassed domains use Direct DNS. Other queries use tunneled DoH.
-If the proxy cannot reach the DoH server, those real lookups fail rather than
-falling back to an unencrypted connection.
+If proxy DNS times out, becomes unreachable or returns SERVFAIL, the gateway
+retries through Direct DNS. This availability fallback sends the query outside
+the proxy; it is not encrypted DoH. NXDOMAIN and explicit refusals are preserved,
+not retried. When the proxy engine is OFF, requests go straight to Direct DNS.
 
 ## Listen address
 
@@ -69,7 +72,10 @@ use Direct DNS to avoid a DNS/proxy dependency loop. IP-based endpoints reduce
 this dependency. HTTPS certificate verification remains enabled.
 
 Tunneled DNS uses the global active proxy, including its selected chain or
-group. Per-device routing does not choose a separate DNS proxy. Hash-distribution
+group. Clients assigned Direct use Direct DNS when their source IP is visible
+to HooLAN. A shared forwarding resolver hides the original device IP; those
+queries use the global DNS policy with the same outage fallback. Per-device
+proxy assignments do not choose a separate DNS proxy. Hash-distribution
 groups use their selector for this locally generated connection.
 
 ## Test DNS
@@ -93,10 +99,12 @@ alone does not prove that subsequent client traffic follows the gateway.
 
 ## Cache, shutdown and recovery
 
-Stopping the engine stops port 1053, even when FakeDNS is off. Switch callers
-to a working real resolver before stopping the engine. If FakeDNS was enabled,
-also clear downstream DNS caches and reconnect applications: virtual addresses
-cannot be forwarded as ordinary internet destinations.
+Stopping the proxy engine leaves the Go DNS listener on port 1053 available,
+using Direct DNS. Stopping the **HooLAN service itself** stops this listener;
+configure another resolver before shutting down the service. If FakeDNS was
+enabled, clear downstream DNS caches and reconnect applications after stopping
+the engine: cached virtual addresses cannot be forwarded as ordinary internet
+destinations, even though new DNS queries now receive real answers.
 
 Mappings persist in sing-box's cache, normally `/var/lib/hoolan/cache.db`.
 Keep this file across restarts. It is not included in backup ZIPs, so clear
@@ -135,3 +143,24 @@ The generated configuration targets sing-box 1.14+: a `dns-in` direct inbound,
 See the official [DNS actions](https://sing-box.sagernet.org/configuration/dns/rule_action/),
 [FakeIP server](https://sing-box.sagernet.org/configuration/dns/server/fakeip/) and
 [persistent cache](https://sing-box.sagernet.org/configuration/experimental/cache-file/) references.
+
+## Listener ownership and outage checks
+
+HooLAN owns the public TCP/UDP listener on the saved address at port **1053**.
+The engine owns a separate loopback-only listener at **127.0.0.1:1054**. Keep
+1054 free for HooLAN; there is no need to expose it to clients. Readiness checks
+verify the engine’s internal sockets before interception starts. The relay has
+bounded concurrency and deadlines, does not cache responses, and follows DNS
+setting changes without requiring a client upstream change.
+
+With the engine ON and OFF, test the same saved address:
+
+```bash
+dig @GATEWAY_IP -p 1053 example.com A +time=5 +tries=1
+dig @GATEWAY_IP -p 1053 example.com A +tcp +time=5 +tries=1
+```
+
+Check Direct DNS independently if fallback also fails. It must reach the
+internet without HooLAN and must not forward requests back to HooLAN or another
+resolver that uses HooLAN as its upstream. Engine OFF still needs working host
+forwarding/NAT for client traffic.

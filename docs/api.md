@@ -14,7 +14,7 @@ must match the public origin. `/healthz` is public liveness, not a routing test.
 | `GET /api/status`, `GET /api/nodes` | Engine, job, selection and inventory |
 | `POST /api/proxy/toggle`, `POST /api/proxy/select` | Engine control and selection |
 | `POST /api/nodes`, `PUT /api/nodes/edit` | Add link, edit manual endpoint |
-| `GET/POST /api/subscriptions`, `POST /api/subscriptions/refresh` | Sources and refresh |
+| `GET/POST/DELETE /api/subscriptions`, `POST /api/subscriptions/refresh` | Sources, removal and refresh |
 | `POST /api/nodes/test`, `POST /api/nodes/delete` | Batch `node_ids` actions |
 | `GET/POST/PUT /api/chains` | Ordered chain read/create/edit |
 | `POST /api/load-balancers` | Snapshot a group and its strategy |
@@ -34,6 +34,13 @@ Set `HOOLAN_TOKEN` in your shell before using these examples.
 curl --fail-with-body -H "Authorization: Bearer $HOOLAN_TOKEN" \
   http://127.0.0.1:8080/api/status
 ```
+
+Manual import uses `POST /api/nodes` with `{"link":"LINK_1 LINK_2"}`. The
+`link` string accepts multiple links separated by spaces, tabs or newlines
+(JSON-escape newlines as `\n`). The response includes `node_ids` and `count`;
+`node_id` remains the first ID for single-link clients. The batch must contain
+1–500 links and fit within the endpoint's 64 KiB JSON request limit. Invalid
+links reject the entire batch before saving; duplicate endpoints are merged.
 
 Device update (`node_id: ""` means Global Default):
 
@@ -67,6 +74,18 @@ node_id preserves the pin; empty node_id selects Global Default. GET returns
 `token_set` rather than the token.
 
 ## Jobs and errors
+
+Remove a subscription with `DELETE /api/subscriptions` and a JSON body:
+
+```json
+{"subscription_id":"SUBSCRIPTION_ID"}
+```
+
+The response contains `removed_nodes`. Removal deletes configurations owned only
+by that subscription and preserves shared or manually saved configurations.
+Removing an active configuration switches selection to Auto; removing the last
+usable configuration stops the proxy. Deleted sources stay removed after restart,
+including sources originally supplied through `HOOLAN_SUBS`.
 
 Refresh, latency, speed, Telegram test and restore operations use background jobs.
 A successful start returns HTTP 202 and job state; poll `/api/status` for progress

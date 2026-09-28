@@ -343,3 +343,60 @@ func testRealSplitDNS(t *testing.T, fake bool) {
 		t.Fatal("remote error fell back to Direct DNS or failure was not exercised")
 	}
 }
+
+func TestManagedDNSAndDirectDeviceResolution(t *testing.T) {
+	for _, fake := range []bool{false, true} {
+		m := NewManager(Options{ManagedDNS: true, CacheFilePath: filepath.Join(t.TempDir(), "cache.db"), Logger: quietLogger()})
+		if err := m.ConfigureSplitDNS("https://1.1.1.1/dns-query", "192.168.3.1"); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.ConfigureFakeDNS(FakeDNSOptions{Enabled: fake, Listen: "192.168.3.5"}); err != nil {
+			t.Fatal(err)
+		}
+		m.ConfigureDeviceRoutes(map[string]string{"192.168.3.141": DefaultDirect})
+		cfg, err := m.BuildConfig(testNodes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr, port := m.DNSListener()
+		if addr != "127.0.0.1" || port != ManagedDNSPort {
+			t.Fatal("wrong engine readiness listener", addr, port)
+		}
+		found := false
+		for _, in := range cfg.Inbounds {
+			if v, ok := in.(map[string]any); ok && v["tag"] == FakeDNSInbound {
+				found = true
+				if v["listen"] != "127.0.0.1" || v["listen_port"] != ManagedDNSPort {
+					t.Fatal("engine occupied public DNS port")
+				}
+			}
+		}
+		if !found {
+			t.Fatal("missing DNS inbound")
+		}
+		first := cfg.DNS.Rules[0].(map[string]any)
+		if first["server"] != directDNSTag || first["source_ip_cidr"].([]string)[0] != "192.168.3.141/32" {
+			t.Fatal("Direct device DNS depends on proxy")
+		}
+		if fake {
+			directResolve, proxyResolve := false, false
+			for _, r := range cfg.Route.Rules {
+				if r.Action != "resolve" {
+					continue
+				}
+				if r.Server == directDNSTag {
+					directResolve = len(r.SourceIPCIDR) == 1 && !r.Invert
+				}
+				if r.Server == secureDNSServer {
+					proxyResolve = len(r.SourceIPCIDR) == 1 && r.Invert
+				}
+			}
+			if !directResolve || !proxyResolve {
+				t.Fatal("Direct FakeIP connection still depends on proxy resolution")
+			}
+		}
+	}
+	if ValidateDNSListener("127.0.0.1:1054", "192.168.3.5") == nil {
+		t.Fatal("internal DNS recursion accepted")
+	}
+}

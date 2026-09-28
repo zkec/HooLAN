@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var fa = {
-  "DNS listens on port 1053 (TCP/UDP).": "DNS روی درگاه ۱۰۵۳ با TCP و UDP پاسخ می‌دهد.",
+  "DNS listens on port 1053 (TCP/UDP), including while the proxy is off. Direct DNS is used if proxy DNS is unavailable.": "DNS روی درگاه ۱۰۵۳ با TCP و UDP، حتی هنگام خاموش بودن پروکسی پاسخ می‌دهد. اگر DNS پروکسی در دسترس نباشد، از DNS مستقیم استفاده می‌شود.",
   "Use virtual IP addresses for proxied domains.": "برای دامنه‌های پروکسی‌شده از نشانی IP مجازی استفاده کنید.",
   "Sort ascending": "مرتب‌سازی صعودی",
   "Sort descending": "مرتب‌سازی نزولی",
@@ -107,6 +107,8 @@
   "Task warnings": "هشدارهای کار",
   "Add a configuration": "افزودن پیکربندی",
   "Paste a single node link, such as vless://, vmess://, trojan:// or ss://.": "پیوند یک گره مانند vless://، vmess://، trojan:// یا ss:// را وارد کنید.",
+  "Node links": "پیوندهای گره‌ها",
+  "Paste one or more node links, separated by spaces or new lines.": "یک یا چند پیوند گره را با فاصله یا در خط‌های جداگانه وارد کنید.",
   "Node link": "پیوند گره",
   "Add config": "افزودن پیکربندی",
   "Chain Builder": "ساخت زنجیره",
@@ -211,6 +213,9 @@
   "Ping selected": "پینگ انتخاب‌شده‌ها",
   "Delete all": "حذف همه",
   "Delete selected": "حذف انتخاب‌شده‌ها",
+  "Remove subscription": "حذف اشتراک",
+  "Subscription removed.": "اشتراک حذف شد.",
+  "Remove this subscription and its exclusive configurations? Shared and manually saved configurations are kept. Removing the active configuration switches to Auto; removing the last configuration stops the proxy.": "این اشتراک و پیکربندی‌های اختصاصی آن حذف شود؟ پیکربندی‌های مشترک و دستی حفظ می‌شوند. با حذف پیکربندی فعال، انتخاب خودکار می‌شود؛ با حذف آخرین پیکربندی، پروکسی متوقف می‌شود.",
   "Refresh": "تازه‌سازی",
   "Manual configurations": "پیکربندی‌های دستی",
   "No configurations in this group yet.": "این گروه هنوز پیکربندی ندارد.",
@@ -401,6 +406,7 @@
 };
   var originals = new WeakMap(), attributes = new WeakMap();
   var patterns = [
+      [/^(\d+) configurations saved\.$/, '$1 پیکربندی ذخیره شد.'],
       [/^(\d+)\/(\d+) tested \((\d+)%\)$/, '$1 از $2 آزمایش‌شده ($3٪)'],
       [/^(\d+) members$/, '$1 عضو'], [/^Process (\d+)$/, 'فرایند $1'], [/^(\d+) enabled$/, '$1 فعال'], [/^(\d+) healthy$/, '$1 سالم'],
       [/^Updated (.*)$/, 'به‌روزرسانی $1'], [/^(\d+)\/(\d+) sources$/, '$1 از $2 منبع'], [/^(\d+) added, (\d+) updated$/, '$1 افزوده، $2 به‌روزشده'], [/^(\d+)\/(\d+) reachable$/, '$1 از $2 در دسترس'],
@@ -415,7 +421,7 @@
       [/^(.*) \(disabled; Global Default\)$/, '$1 (غیرفعال؛ پیش‌فرض عمومی)'],
       [/^Delete (\d+) selected configurations\? Shared configurations are removed from every group\. Deleting the active config switches to Auto; deleting all configs stops the proxy\. Subscription refresh may reimport provider nodes\.$/, 'آیا $1 پیکربندی انتخاب‌شده حذف شود؟ پیکربندی‌های مشترک از همهٔ گروه‌ها حذف می‌شوند. حذف پیکربندی فعال، انتخاب را خودکار می‌کند؛ حذف همهٔ پیکربندی‌ها پروکسی را متوقف می‌کند. تازه‌سازی اشتراک ممکن است گره‌های ارائه‌دهنده را دوباره وارد کند.']
     ];
-  var messages = ['Create Load Balancer', 'Save device limit', 'Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
+  var messages = ['Remove subscription', 'Create Load Balancer', 'Save device limit', 'Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
   function translate(value) {
     if (document.documentElement.lang !== 'fa' || typeof value !== 'string') return value;
     var trimmed = value.trim();

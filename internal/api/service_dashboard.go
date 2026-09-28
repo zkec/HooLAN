@@ -53,7 +53,7 @@ func (s *Service) seedSubscriptions() {
 		seen[sub.URL] = true
 	}
 	for _, raw := range s.cfg.SubscriptionURLs {
-		if seen[raw] {
+		if seen[raw] || s.state.RemovedSubscriptionIDs[sourceID(raw)] {
 			continue
 		}
 		name := filepath.Base(raw)
@@ -118,9 +118,17 @@ func (s *Service) AddSubscription(name, raw string) (SubscriptionView, error) {
 	}
 	sub := Subscription{ID: sourceID(raw), Name: name, URL: raw}
 	previous := s.state.Subscriptions
+	oldRemoved := s.state.RemovedSubscriptionIDs
+	s.state.RemovedSubscriptionIDs = make(map[string]bool, len(oldRemoved))
+	for id, removed := range oldRemoved {
+		if id != sub.ID {
+			s.state.RemovedSubscriptionIDs[id] = removed
+		}
+	}
 	s.state.Subscriptions = append(append([]Subscription(nil), previous...), sub)
 	if err := s.saveState(); err != nil {
 		s.state.Subscriptions = previous
+		s.state.RemovedSubscriptionIDs = oldRemoved
 		return SubscriptionView{}, err
 	}
 	return SubscriptionView{ID: sub.ID, Name: sub.Name, URL: sub.URL}, nil
@@ -143,43 +151,75 @@ func (s *Service) NodeOrigins(id string) ([]string, bool) {
 	return ids, s.state.ManualNodeIDs[id] || len(ids) == 0
 }
 
+// AddManualNode retains the single-node interface for internal callers.
 func (s *Service) AddManualNode(ctx context.Context, link string) (string, error) {
-	link = strings.TrimSpace(link)
-	if len(link) > 64<<10 || strings.ContainsAny(link, "\r\n") {
-		return "", fmt.Errorf("%w: provide one node link", ErrInvalidInput)
+	ids, err := s.AddManualNodes(ctx, link)
+	if len(ids) == 0 {
+		return "", err
 	}
-	node, err := subscription.ParseLink(link)
-	if err != nil {
-		return "", fmt.Errorf("%w: node link is invalid or unsupported", ErrInvalidInput)
+	return ids[0], err
+}
+
+// AddManualNodes validates the entire paste before saving any configuration.
+// Inventory and manual ownership are committed once, followed by one reload.
+func (s *Service) AddManualNodes(ctx context.Context, text string) ([]string, error) {
+	if len(text) > 64<<10 {
+		return nil, fmt.Errorf("%w: pasted links exceed 64 KiB", ErrInvalidInput)
 	}
-	if err := node.Validate(); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	links := subscription.SplitNodeLinks(text)
+	if len(links) == 0 || len(links) > 500 {
+		return nil, fmt.Errorf("%w: provide 1–500 node links", ErrInvalidInput)
+	}
+	nodes := make([]subscription.Node, 0, len(links))
+	ids := make([]string, 0, len(links))
+	seen := map[string]bool{}
+	for i, link := range links {
+		node, err := subscription.ParseLink(link)
+		if err != nil {
+			return nil, fmt.Errorf("%w: link %d is invalid or unsupported; no configurations imported", ErrInvalidInput, i+1)
+		}
+		if err := node.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: link %d failed validation; no configurations imported", ErrInvalidInput, i+1)
+		}
+		id := store.NodeID(node)
+		if !seen[id] {
+			seen[id] = true
+			nodes = append(nodes, node)
+			ids = append(ids, id)
+		}
 	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-	id := store.NodeID(node)
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()
-		return "", errors.New("api: shutting down")
+		return nil, errors.New("api: shutting down")
 	}
-	previous := s.state.ManualNodeIDs[id]
-	s.state.ManualNodeIDs[id] = true
-	if err := s.saveState(); err != nil {
-		if !previous {
-			delete(s.state.ManualNodeIDs, id)
-		}
+	before := s.cfg.Store.All()
+	previous := s.state.ManualNodeIDs
+	next := make(map[string]bool, len(previous)+len(ids))
+	for id, manual := range previous {
+		next[id] = manual
+	}
+	for _, id := range ids {
+		next[id] = true
+	}
+	if _, _, err := s.cfg.Store.UpsertNodes(nodes); err != nil {
 		s.mu.Unlock()
-		return "", err
+		return nil, err
+	}
+	s.state.ManualNodeIDs = next
+	if err := s.saveState(); err != nil {
+		s.state.ManualNodeIDs = previous
+		err = errors.Join(err, s.cfg.Store.ReplaceRecords(before))
+		s.mu.Unlock()
+		return nil, err
 	}
 	s.mu.Unlock()
-	if _, _, err := s.cfg.Store.UpsertNodes([]subscription.Node{node}); err != nil {
-		return "", err
-	}
 	if err := s.reloadRunningLocked(ctx); err != nil {
-		return id, fmt.Errorf("node saved; applying it failed: %w", err)
+		return ids, fmt.Errorf("configurations saved; applying them failed: %w", err)
 	}
-	return id, nil
+	return ids, nil
 }
 
 func (s *Service) Settings() Settings {
@@ -447,10 +487,25 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, _ 
 			continue
 		}
 		nodes, parseErrs := subscription.ParseSubscription(raw)
-		if len(parseErrs) > 0 {
+		unsupported := 0
+		malformed := false
+		for _, parseErr := range parseErrs {
+			if errors.Is(parseErr, subscription.ErrUnsupportedScheme) {
+				unsupported++
+			} else {
+				malformed = true
+			}
+		}
+		// Mixed protocol feeds are normal. Unsupported entries cannot be used
+		// by this gateway; malformed supported entries still protect the old
+		// membership from a truncated or corrupt provider response.
+		if malformed || (unsupported > 0 && len(nodes) == 0) {
 			failures = append(failures, fmt.Errorf("%s: malformed subscription; previous membership retained", src.Name))
 			s.warn(fmt.Sprintf("%s: invalid feed; sync skipped", src.Name))
 			continue
+		}
+		if unsupported > 0 {
+			s.warn(fmt.Sprintf("%s: skipped %d unsupported entries; imported %d supported configurations", src.Name, unsupported, len(nodes)))
 		}
 		all = append(all, nodes...)
 		ids := make([]string, 0, len(nodes))

@@ -12,13 +12,14 @@ sudo bash /opt/hoolan/scripts/tproxy/diagnose.sh 192.168.3.141
 
 ## Engine OFF and no internet
 
-If AdGuard uses HooLAN port 1053, restore its normal upstream before stopping
-the engine; this DNS listener stops even when FakeDNS is disabled. See
-[split DNS](dns.md).
+HooLAN keeps port 1053 available with the proxy engine OFF and uses the saved
+Direct DNS server. Check that `hoolan.service` is running and test both TCP and
+UDP DNS from the actual caller. Direct DNS must work independently of HooLAN
+and must not forward requests back into it. See [DNS checks](dns.md).
 
-If FakeDNS was enabled, restore AdGuard's real upstream and clear its and the
-clients' caches first. Port 1053 stops with the engine; cached `198.18.0.0/15`
-destinations cannot use raw forwarding. See [FakeDNS recovery](dns.md#cache-shutdown-and-recovery).
+If FakeDNS was enabled, clear downstream and client caches: cached
+`198.18.0.0/15` destinations cannot use raw forwarding. New DNS queries receive
+real answers while the engine is off. See [FakeDNS recovery](dns.md#cache-shutdown-and-recovery).
 
 Test IPv4 forwarding, the Debian host's upstream default route, FORWARD rules and return
 routing/NAT. With clients using the Debian host as gateway, turning interception off still
