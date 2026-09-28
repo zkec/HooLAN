@@ -250,6 +250,7 @@ func New(cfg Config) (*Service, error) {
 		st = State{AutoSelect: true}
 	}
 	s.state = st
+	s.configureDNSProxy(st.ProxyEnabled)
 	s.seedSubscriptions()
 	if err := s.configureEngineRouting(); err != nil {
 		cancel()
@@ -515,6 +516,8 @@ func (s *Service) enable(ctx context.Context) error {
 	if len(nodes) == 0 {
 		return ErrNoNodes
 	}
+	// Set before starting: startup, reload and crash failures must not leak DNS.
+	s.configureDNSProxy(true)
 	if err := s.applyEngine(ctx, nodes); err != nil {
 		s.cleanupFailedEnable()
 		return err
@@ -569,11 +572,18 @@ func (s *Service) disable(ctx context.Context) error {
 	s.mu.Lock()
 	s.proxyEnabled = false
 	s.mu.Unlock()
+	s.configureDNSProxy(false)
 	if wasRunning {
 		s.notify("Proxy engine stopped; LAN interception is disabled.")
 	}
 	s.log.Info("proxy disabled")
 	return nil
+}
+
+func (s *Service) configureDNSProxy(enabled bool) {
+	if configurable, ok := s.cfg.Engine.(interface{ ConfigureDNSProxy(bool) }); ok {
+		configurable.ConfigureDNSProxy(enabled)
+	}
 }
 
 // applyEngine renders and (re)starts the engine, recording the tags each node

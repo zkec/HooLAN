@@ -10,9 +10,18 @@ sudo journalctl -u hoolan -n 100 --no-pager
 sudo bash /opt/hoolan/scripts/tproxy/diagnose.sh 192.168.3.141
 ```
 
+## DNS shows an ISP resolver while proxy mode is on
+
+Use the latest build: proxied queries must return an error if engine DNS fails,
+without retrying Direct DNS. In a forwarding resolver, use HooLAN port 1053 as
+the upstream and remove alternate/fallback resolvers for proxied clients. Check
+that the test device is not assigned Direct and no custom direct rule matches
+the tested domains. Check IPv6 and browser/OS DNS separately. See
+[DNS leak checks](dns.md#dns-leak-checks).
+
 ## Engine OFF and no internet
 
-HooLAN keeps port 1053 available with the proxy engine OFF and uses the saved
+HooLAN keeps port 1053 available when the proxy is explicitly switched OFF and uses the saved
 Direct DNS server. Check that `hoolan.service` is running and test both TCP and
 UDP DNS from the actual caller. Direct DNS must work independently of HooLAN
 and must not forward requests back into it. See [DNS checks](dns.md).

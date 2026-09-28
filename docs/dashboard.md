@@ -48,8 +48,9 @@ Routing includes DNS, update scheduling, the Iran preset, custom rule sets and
 custom match rules. Configure **Tunneled DoH Server**, **Direct DNS Server** and
 **DNS listen address** using the [DNS & FakeDNS guide](dns.md). The TCP/UDP
 listener on port 1053 works independently of the FakeDNS
-switch and remains available with the proxy engine OFF. Unavailable proxy DNS
-falls back to Direct DNS; HooLAN itself must stay running. The listen-address controls are shown only when FakeDNS is switched on;
+switch and remains available with the proxy explicitly OFF, using Direct DNS.
+While proxy mode is enabled, DNS errors never trigger direct fallback, including
+during engine restarts or crashes. HooLAN itself must stay running. The listen-address controls are shown only when FakeDNS is switched on;
 hiding them does not clear the saved address or stop split DNS. To change this
 address while keeping FakeDNS off, switch it on in the form, edit the address,
 switch it off again, then save. Both resolver fields remain editable in either mode. Save settings

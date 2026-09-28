@@ -178,8 +178,9 @@ See [chains](configurations.md) and [load balancing](load-balancing.md).
 
 DNS listens on **TCP/UDP port 1053** while HooLAN runs, including engine OFF. Direct/local matches
 use **Direct DNS Server**; remaining real queries use **Tunneled DoH Server**
-through the global active proxy. If proxy DNS is unavailable, the listener
-falls back to Direct DNS outside the proxy. DNS decisions follow
+through the global active proxy. If proxy DNS is unavailable while proxy mode
+is enabled, the listener returns a DNS error without retrying Direct DNS.
+Reloads and crashes retain this protection; explicitly switching OFF uses Direct DNS. DNS decisions follow
 the applicable ordered domain/rule-set policy, not a device-specific DNS proxy.
 
 IP/GeoIP rules need an answer before they can be evaluated. The engine obtains

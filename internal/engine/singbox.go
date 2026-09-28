@@ -204,13 +204,14 @@ func (o *Options) setDefaults() {
 // Manager renders config and supervises one sing-box process.
 // All exported methods are safe for concurrent use.
 type Manager struct {
-	dnsRelay        *dnsrelay.Server
-	opts            Options
-	settingsMu      sync.RWMutex
-	deviceRoutes    map[string]string
-	manualSelection bool
-	rulePolicy      *RulePolicy
-	ruleFiles       map[string]string
+	dnsRelay         *dnsrelay.Server
+	dnsProxyRequired bool // Desired mode; stays true during reloads or engine crashes.
+	opts             Options
+	settingsMu       sync.RWMutex
+	deviceRoutes     map[string]string
+	manualSelection  bool
+	rulePolicy       *RulePolicy
+	ruleFiles        map[string]string
 
 	mu     sync.Mutex
 	cmd    *exec.Cmd

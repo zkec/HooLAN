@@ -14,7 +14,8 @@ import (
 )
 
 // Policy is evaluated for every request. Empty Primary means direct-only.
-// Fallback is used on transport failure or SERVFAIL, never on NXDOMAIN/REFUSED.
+// A configured Primary is exclusive: errors must never expose the question to
+// Direct. Direct is used only when policy explicitly selects direct-only mode.
 type Policy struct{ Primary, Direct string }
 type Server struct {
 	mu      sync.Mutex
@@ -151,11 +152,10 @@ func (s *Server) answer(ctx context.Context, network string, ip net.IP, q []byte
 	p := s.policy(ip)
 	if p.Primary != "" {
 		r, err := s.exchange(ctx, network, p.Primary, q)
-		if err == nil && r[3]&15 != 2 {
+		if err == nil {
 			return r
 		}
-	}
-	if p.Direct != "" && ctx.Err() == nil {
+	} else if p.Direct != "" && ctx.Err() == nil {
 		if r, err := s.exchange(ctx, network, p.Direct, q); err == nil {
 			return r
 		}

@@ -338,6 +338,7 @@ func (s *Service) applyBackup(ctx context.Context, bundle backupBundle) error {
 		s.usageSeen = nil
 		err = errors.Join(err, s.saveState())
 		s.mu.Unlock()
+		s.configureDNSProxy(oldState.ProxyEnabled)
 		err = errors.Join(err, s.configureEngineRouting(), s.syncDeviceLimits(cleanCtx))
 		if err == nil && wasRunning && oldState.ProxyEnabled {
 			err = s.enable(cleanCtx)
@@ -357,6 +358,7 @@ func (s *Service) applyBackup(ctx context.Context, bundle backupBundle) error {
 	s.tagByID = map[string]string{}
 	err = s.saveState()
 	s.mu.Unlock()
+	s.configureDNSProxy(bundle.State.ProxyEnabled)
 	if err == nil {
 		err = errors.Join(s.configureEngineRouting(), s.syncDeviceLimits(ctx))
 	}

@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var fa = {
-  "DNS listens on port 1053 (TCP/UDP), including while the proxy is off. Direct DNS is used if proxy DNS is unavailable.": "DNS روی درگاه ۱۰۵۳ با TCP و UDP، حتی هنگام خاموش بودن پروکسی پاسخ می‌دهد. اگر DNS پروکسی در دسترس نباشد، از DNS مستقیم استفاده می‌شود.",
+  "DNS listens on port 1053 (TCP/UDP). Proxied queries never fall back to Direct DNS. Turning the proxy off uses Direct DNS.": "DNS روی درگاه ۱۰۵۳ با TCP و UDP پاسخ می‌دهد. پرس‌وجوهای پروکسی‌شده هرگز به DNS مستقیم برنمی‌گردند. با خاموش کردن پروکسی، DNS مستقیم استفاده می‌شود.",
   "Use virtual IP addresses for proxied domains.": "برای دامنه‌های پروکسی‌شده از نشانی IP مجازی استفاده کنید.",
   "Sort ascending": "مرتب‌سازی صعودی",
   "Sort descending": "مرتب‌سازی نزولی",

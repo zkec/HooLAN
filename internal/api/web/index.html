@@ -108,7 +108,7 @@
           <div class="field"><label for="tunneled-doh">Tunneled DoH Server</label><input id="tunneled-doh" name="tunneled_doh" type="url" placeholder="https://1.1.1.1/dns-query" autocomplete="off" spellcheck="false" aria-describedby="dns-help" /></div>
           <div class="field"><label for="direct-dns">Direct DNS Server</label><input id="direct-dns" name="direct_dns" type="text" placeholder="192.168.3.1" autocomplete="off" spellcheck="false" aria-describedby="dns-help" /></div>
         </div>
-        <p id="dns-help" class="muted small">DNS listens on port 1053 (TCP/UDP), including while the proxy is off. Direct DNS is used if proxy DNS is unavailable.</p>
+        <p id="dns-help" class="muted small">DNS listens on port 1053 (TCP/UDP). Proxied queries never fall back to Direct DNS. Turning the proxy off uses Direct DNS.</p>
 
         <section class="routing-section" aria-labelledby="fakedns-heading">
           <div class="setting setting-row"><div><h3 id="fakedns-heading">FakeDNS</h3><p id="fakedns-help" class="muted small">Use virtual IP addresses for proxied domains.</p></div><label class="switch" for="fakedns-enabled"><input id="fakedns-enabled" type="checkbox" role="switch" aria-describedby="fakedns-help" data-mutation /><span class="switch-track" aria-hidden="true"></span><span id="fakedns-label" class="switch-label">Off</span></label></div>

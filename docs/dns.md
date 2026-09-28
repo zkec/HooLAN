@@ -18,10 +18,12 @@ for direct DNS. Use your own resolver addresses; the examples are not automatic
 network discovery. Click **Save settings** to apply changes.
 
 Local and bypassed domains use Direct DNS. Other queries use tunneled DoH.
-If proxy DNS times out, becomes unreachable or returns SERVFAIL, the gateway
-retries through Direct DNS. This availability fallback sends the query outside
-the proxy; it is not encrypted DoH. NXDOMAIN and explicit refusals are preserved,
-not retried. When the proxy engine is OFF, requests go straight to Direct DNS.
+While proxy mode is enabled, engine DNS errors, timeouts and SERVFAIL responses
+never retry through Direct DNS. The client receives a DNS error instead of
+exposing a proxied query to the direct resolver. NXDOMAIN and explicit refusals
+are also preserved. This protection remains during engine reloads and crashes.
+Explicitly turning the proxy OFF sends requests straight to Direct DNS.
+Local/bypass rules and explicitly Direct devices remain intentional exceptions.
 
 ## Listen address
 
@@ -74,7 +76,7 @@ this dependency. HTTPS certificate verification remains enabled.
 Tunneled DNS uses the global active proxy, including its selected chain or
 group. Clients assigned Direct use Direct DNS when their source IP is visible
 to HooLAN. A shared forwarding resolver hides the original device IP; those
-queries use the global DNS policy with the same outage fallback. Per-device
+queries use the global DNS policy and its no-fallback protection. Per-device
 proxy assignments do not choose a separate DNS proxy. Hash-distribution
 groups use their selector for this locally generated connection.
 
@@ -99,8 +101,10 @@ alone does not prove that subsequent client traffic follows the gateway.
 
 ## Cache, shutdown and recovery
 
-Stopping the proxy engine leaves the Go DNS listener on port 1053 available,
-using Direct DNS. Stopping the **HooLAN service itself** stops this listener;
+Explicitly switching the proxy OFF leaves the Go DNS listener on port 1053
+available, using Direct DNS. An unexpected engine exit or a failed reload does
+not enable Direct DNS for proxied clients; restart the proxy or explicitly
+switch it OFF to change that policy. Stopping the **HooLAN service itself** stops this listener;
 configure another resolver before shutting down the service. If FakeDNS was
 enabled, clear downstream DNS caches and reconnect applications after stopping
 the engine: cached virtual addresses cannot be forwarded as ordinary internet
@@ -160,7 +164,27 @@ dig @GATEWAY_IP -p 1053 example.com A +time=5 +tries=1
 dig @GATEWAY_IP -p 1053 example.com A +tcp +time=5 +tries=1
 ```
 
-Check Direct DNS independently if fallback also fails. It must reach the
+Check Direct DNS independently if DNS fails after explicitly switching OFF. It must reach the
 internet without HooLAN and must not forward requests back to HooLAN or another
 resolver that uses HooLAN as its upstream. Engine OFF still needs working host
 forwarding/NAT for client traffic.
+
+## DNS leak checks
+
+For clients using a shared forwarding resolver, set its upstream to HooLAN's
+saved address on port 1053. Remove public/router fallback resolvers and extra
+upstreams for those clients; an upstream timeout must not trigger a separate
+lookup outside HooLAN. Check DHCP-advertised DNS, IPv6 DNS and browser/OS Secure
+DNS separately. HooLAN cannot enforce DNS policy on traffic that bypasses it.
+
+Run a fresh leak test from a device assigned to a proxy or Global Default. A
+Direct device or a domain deliberately matched by a direct rule can show the
+direct resolver by design. Bootstrap queries for proxy endpoint names still use
+Direct DNS; a public leak test's random domain queries should use tunneled DoH.
+Clear resolver/client caches after changing upstream settings. A successful
+lookup alone does not identify its upstream. To confirm the engine path without
+the public relay, query `127.0.0.1:1054` locally while the engine is running.
+
+This change prevents automatic direct DNS fallback; it is not a network-wide
+kill switch. Existing firewall crash handling can still allow ordinary
+forwarding, and IPv6 is outside this gateway's interception scope.

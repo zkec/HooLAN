@@ -90,15 +90,23 @@ func TestRelayOffFailureAndRecovery(t *testing.T) {
 			if e != nil {
 				t.Fatal(network, m, e)
 			}
-			if r[3]&15 != 0 {
-				t.Fatal("no usable DNS answer")
+			wantCode := byte(0)
+			if m == 2 || m == 3 {
+				wantCode = 2
+			}
+			if r[3]&15 != wantCode {
+				t.Fatal("unexpected DNS result", network, m, r[3]&15)
 			}
 			if m == 1 {
 				if primaryCalls.Load() != p+1 || directCalls.Load() != d {
 					t.Fatal("healthy proxy must not leak to direct")
 				}
-			} else if directCalls.Load() != d+1 {
-				t.Fatal("offline/failed DNS must fall back")
+			} else if m == 0 {
+				if directCalls.Load() != d+1 {
+					t.Fatal("explicit OFF must use Direct DNS")
+				}
+			} else if directCalls.Load() != d {
+				t.Fatal("failed proxy DNS leaked to direct")
 			}
 		}
 	}
@@ -113,6 +121,39 @@ func TestNoFallbackForNXDOMAINOrPolicyRejection(t *testing.T) {
 			if r[3]&15 != code || calls.Load() != 0 {
 				t.Fatal("DNS policy overridden")
 			}
+		}
+	}
+}
+
+func TestProxyTimeoutNeverQueriesDirect(t *testing.T) {
+	udp, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udp.Close()
+	tcp, err := net.Listen("tcp4", udp.LocalAddr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tcp.Close()
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			c, err := tcp.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer c.Close(); <-done }()
+		}
+	}()
+	direct, calls := upstream(t, 0)
+	s := New(func(net.IP) Policy { return Policy{Primary: udp.LocalAddr().String(), Direct: direct} })
+	s.timeout = 30 * time.Millisecond
+	for _, network := range []string{"udp", "tcp"} {
+		r := s.answer(context.Background(), network, nil, query)
+		if r[3]&15 != 2 || calls.Load() != 0 {
+			t.Fatal("timeout leaked DNS", network)
 		}
 	}
 }
