@@ -8,7 +8,7 @@
   var POLL_BACKOFF = 15000;
   var MAX_LOG_LINES = 500;
   var state = {
-    tableSorts: new Map(), balanceMembers: new Set(), usageSnapshot: null, speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
+    tablePages: {usage:{size:storedRowCount('usage'),page:0}, devices:{size:storedRowCount('devices'),page:0}}, tableSorts: new Map(), balanceMembers: new Set(), usageSnapshot: null, speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
     containerSnapshot: null, deviceSnapshot: null, inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
@@ -47,6 +47,7 @@
 
   function clearPrivateView() {
     stopLogs();
+    state.tablePages.usage.page = 0; state.tablePages.devices.page = 0;
     state.tableSorts.clear(); state.balanceMembers.clear(); state.usageSnapshot = null; state.deviceSnapshot = null; state.containerSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
     state.nodes = [];
     state.subscriptions = [];
@@ -54,7 +55,7 @@
     state.settings = null;
     state.selection = {};
     state.csrf = '';
-    ['subscriptions-list', 'manual-group', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes', 'usage-devices', 'containers-list', 'containers-status', 'balance-members'].forEach(function (id) { text($(id), ''); });
+    ['subscriptions-list', 'manual-group', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes', 'usage-devices', 'usage-page-status', 'devices-page-status', 'device-presence-status', 'containers-list', 'containers-status', 'balance-members'].forEach(function (id) { text($(id), ''); });
     ['stat-engine', 'stat-rules', 'stat-nodes', 'stat-active'].forEach(function (id) { text($(id), '—'); });
     ['stat-pid', 'stat-rules-err', 'stat-nodes-sub', 'stat-active-sub'].forEach(function (id) { text($(id), ''); });
     state.groupSelections.clear(); state.chainHops = []; state.chainExistingNodes = []; state.chainEditingID = null;
@@ -740,6 +741,7 @@
   }
   function wireBatchEvents() {
     wireDeviceSettings();
+    wireUsagePagination();
     wireContainerSettings();
     document.addEventListener('change', function (event) {
       var target = event.target, id = target.dataset.selectNode, group = target.dataset.selectGroup;
@@ -939,7 +941,8 @@
   function byteCount(n) { var units=['B','KiB','MiB','GiB','TiB'];var i=0;while(n>=1024&&i<4){n/=1024;i++;}return n.toFixed(i?2:0)+' '+units[i]; }
   // One sorter for every data table. Keep raw values separate from formatted
   // bytes/dates and sort DOM rows without changing selections or API data.
-  function sortableTable(header, body, id, columns, initial) {
+  function sortableTable(header, body, id, columns, initial, options) {
+    options = options || {};
     var order = state.tableSorts.get(id) || initial;
     if (order) state.tableSorts.set(id, order);
     function compare(a, b) {
@@ -951,7 +954,7 @@
       return String(a).localeCompare(String(b), document.documentElement && document.documentElement.lang || 'en', {numeric: true, sensitivity: 'base'});
     }
     var controls = [];
-    function apply() {
+    function apply(userSorted) {
       controls.forEach(function (control) {
         var active = order && order.column === control.index;
         control.th.setAttribute('aria-sort', active ? order.descending ? 'descending' : 'ascending' : 'none');
@@ -960,6 +963,7 @@
       });
       if (!order) return;
       Array.from(body.children).sort(function (a, b) {
+        if (options.onlineFirst && !!a.online !== !!b.online) return a.online ? -1 : 1;
         // Keep measured, failed and untested latency in that order in both directions.
         var rank = ((a.sortRanks || {})[order.column] || 0) - ((b.sortRanks || {})[order.column] || 0);
         if (rank) return rank;
@@ -969,6 +973,7 @@
         var value = av == null ? 0 : compare(av, bv);
         return (order.descending ? -value : value) || compare(a.sortKey, b.sortKey);
       }).forEach(function (row) { body.appendChild(row); });
+      if (options.onSorted) options.onSorted(!!userSorted);
     }
     columns.forEach(function (column, index) {
       if (!column) return; // Selection and action controls are not data columns.
@@ -981,13 +986,55 @@
       button.appendChild(icon); th.appendChild(button);
       button.addEventListener('click', function () {
         order = {column: index, descending: order && order.column === index ? !order.descending : column === 'desc'};
-        state.tableSorts.set(id, order); apply();
+        state.tableSorts.set(id, order); apply(true);
       });
       controls.push({index: index, descending: column === 'desc', th: th, button: button, icon: icon});
     });
     apply();
   }
-  function renderUsage(response) {
+  var rowCounts = [10, 20, 50, 100, 200, 0];
+  function storedRowCount(table) {
+    try { var value = localStorage.getItem('hoolan-rows-' + table); if (value !== null && [10,20,50,100,200,0].includes(Number(value))) return Number(value); } catch (ignored) {}
+    return 10;
+  }
+  function paginateTable(body, table, keepOnline, reset) {
+    var view = state.tablePages[table], rows = Array.from(body.children), online = keepOnline ? rows.filter(function(row) {return row.online;}).length : 0;
+    if (reset) view.page = 0;
+    // Keep every online device together on the first page, even above the cap.
+    var size = view.size ? Math.max(view.size, online) : Math.max(1, rows.length);
+    var pages = Math.max(1, Math.ceil(rows.length / size)); view.page = Math.min(view.page, pages - 1);
+    var start = view.page * size, end = Math.min(rows.length, start + size);
+    rows.forEach(function(row, index) {row.hidden = index < start || index >= end;});
+    $(table + '-pagination').hidden = !rows.length;
+    text($(table + '-page-status'), rows.length ? 'Showing ' + (start + 1) + '–' + end + ' of ' + rows.length : '');
+    $(table + '-page-prev').disabled = view.page === 0;
+    $(table + '-page-next').disabled = view.page >= pages - 1;
+    $(table + '-page-size').value = String(view.size);
+  }
+  function wireUsagePagination() {
+    ['usage', 'devices'].forEach(function(table) {
+      $(table + '-page-size').value = String(state.tablePages[table].size);
+      function render() {if (state.usageSnapshot) {if (table === 'usage') renderUsage(state.usageSnapshot, true); else renderDevices(state.usageSnapshot, true);}}
+      $(table + '-page-size').addEventListener('change', function() {
+        var size = Number(this.value); if (!rowCounts.includes(size)) return;
+        state.tablePages[table] = {size:size,page:0};
+        try {localStorage.setItem('hoolan-rows-' + table, String(size));} catch (ignored) {}
+        render();
+      });
+      [['prev',-1],['next',1]].forEach(function(pair) {
+        $(table + '-page-' + pair[0]).addEventListener('click', function() {
+          state.tablePages[table].page = Math.max(0, state.tablePages[table].page + pair[1]); render();
+        });
+      });
+    });
+  }
+  function onlineIndicator(online) {
+    var dot = element('span', 'presence-indicator' + (online ? ' is-online' : ''));
+    dot.setAttribute('role', 'img'); dot.setAttribute('aria-label', online ? 'Online' : 'Offline');
+    dot.title = online ? 'Online' : 'Offline'; return dot;
+  }
+
+  function renderUsage(response, force) {
     state.usageSnapshot = response;
     var u=response.usage; var total=u.total || {};
     var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
@@ -995,7 +1042,7 @@
     text($('usage-status'),'Last sample: '+ago(u.last_sample)+(u.error?' · '+u.error:'')+(!response.supported?' · Clash statistics unavailable':''));
     var list = $('usage-nodes');
     // Keep focused header controls usable while a background poll completes.
-    if (!list.contains(document.activeElement)) {
+    if (force || !list.contains(document.activeElement)) {
       text(list, '');
       var table = element('table', 'node-table'), head = element('thead'), header = element('tr'), body = element('tbody');
       ['Configuration / route (estimated)', 'Upload', 'Download'].forEach(function (label) { header.appendChild(element('th', '', label)); });
@@ -1008,11 +1055,11 @@
         row.sortKey = key; row.sortValues = [name, Number(value.upload) || 0, Number(value.download) || 0];
         row.appendChild(caption); row.appendChild(element('td', '', byteCount(value.upload || 0))); row.appendChild(element('td', '', byteCount(value.download || 0))); body.appendChild(row);
       });
-      sortableTable(header, body, 'usage', ['asc', 'desc', 'desc'], {column: 2, descending: true});
+      sortableTable(header, body, 'usage', ['asc', 'desc', 'desc'], {column: 2, descending: true}, {onSorted:function(reset) {paginateTable(body, 'usage', false, reset);}});
       list.appendChild(table);
       if (!body.children.length) list.appendChild(element('p', 'muted', 'No configuration has recorded traffic yet.'));
     }
-    renderDevices(response, false);
+    renderDevices(response, force);
   }
 
   function deviceRouteOptions(select, assigned, proxyOnly) {
@@ -1101,18 +1148,21 @@
     var list = $('usage-devices');
     if (!force && list.contains(document.activeElement)) return;
     text(list, '');
+    text($('device-presence-status'), response.device_presence_error ? 'LAN presence unavailable; indicators use recent proxy traffic.' : '');
     text($('device-qos-status'), response.usage.qos_error ? 'QoS classification unavailable; unclassified connections use the stricter limit.' : '');
     var values = response.usage.devices || {}, aliases = response.device_aliases || {}, routes = response.device_routes || {}, limits = response.device_limits || {};
-    var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits))));
+    var presence = response.device_presence || {};
+    var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits), Object.keys(presence))));
     ips = ips.filter(function (ip) { return !(response.container_ips || []).includes(ip); });
-    if (!ips.length) { list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
+    if (!ips.length) { $('devices-pagination').hidden = true; text($('devices-page-status'), ''); list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
     var table = element('table', 'node-table device-table'), header = element('tr'), head = element('thead'), body = element('tbody');
     ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'Speed set', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
     head.appendChild(header); table.appendChild(head); table.appendChild(body);
     var nodesByID = new Map(state.nodes.map(function (n) { return [n.id, n]; }));
     ips.forEach(function (ip) {
-      var value = values[ip] || {}, row = element('tr'), address = element('td', 'node-server', ip);
-      address.dir = 'ltr'; address.dataset.noI18n = ''; row.appendChild(address);
+      var value = values[ip] || {}, row = element('tr'), address = element('td', 'node-server'), online = !!(presence[ip] && presence[ip].online);
+      var addressLabel = element('span', '', ip), addressName = element('span', 'presence-name'); addressLabel.dir = 'ltr'; addressLabel.dataset.noI18n = '';
+      addressName.appendChild(onlineIndicator(online)); addressName.appendChild(addressLabel); address.appendChild(addressName); row.appendChild(address); row.online = online;
       var name = element('td', '', aliases[ip] || '—'); name.dataset.noI18n = ''; row.appendChild(name);
       row.appendChild(element('td', '', byteCount(value.upload || 0))); row.appendChild(element('td', '', byteCount(value.download || 0)));
       var id = routes[ip] || '', node = nodesByID.get(id);
@@ -1126,18 +1176,10 @@
         ['proxy_upload_mbps', 'proxy_download_mbps', 'direct_upload_mbps', 'direct_download_mbps'].map(function (key) { return Number((limits[ip] || {})[key]) > 0 ? Number(limits[ip][key]) : Infinity; })];
       actions.appendChild(button); row.appendChild(actions); body.appendChild(row);
     });
-    sortableTable(header, body, 'devices', ['asc', 'asc', 'desc', 'desc', 'asc', 'asc', null], {column: 3, descending: true});
+    sortableTable(header, body, 'devices', ['asc', 'asc', 'desc', 'desc', 'asc', 'asc', null], {column: 3, descending: true}, {onlineFirst:true,onSorted:function(reset) {paginateTable(body, 'devices', true, reset);}});
     list.appendChild(table); updateControls();
   }
 
-  function containerSwitch(key, checked, unavailable) {
-    var label = element('label', 'switch'), input = document.createElement('input');
-    input.type = 'checkbox'; input.checked = checked; input.setAttribute('role', 'switch');
-    input.setAttribute('aria-label', 'Route through proxy'); input.dataset.containerToggle = key;
-    input.dataset.mutation = ''; input.dataset.job = ''; input.dataset.unavailable = unavailable ? 'true' : 'false';
-    label.appendChild(input); var track = element('span', 'switch-track'); track.setAttribute('aria-hidden', 'true');
-    label.appendChild(track); label.appendChild(element('span', '', checked ? 'On' : 'Off')); return label;
-  }
   function renderContainers(response, force) {
     if (state.busy && !force) return;
     state.containerSnapshot = response;
@@ -1150,20 +1192,19 @@
     var items = response.containers || [];
     if (!items.length) { list.appendChild(element('p', 'table-empty', 'No Docker containers found.')); updateControls(); return; }
     var table = element('table', 'node-table container-table'), header = element('tr'), head = element('thead'), body = element('tbody');
-    ['Container', 'Image', 'Status', 'IP address', 'Proxy', 'Route through', 'Speed set', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
+    ['Container', 'Image', 'IP address', 'Route through', 'Speed set', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
     head.appendChild(header); table.appendChild(head); table.appendChild(body);
     var nodes = new Map(state.nodes.map(function (n) {return [n.id,n];}));
     items.forEach(function (item) {
       var row = element('tr'), policy = item.settings || {}, limits = policy.qos || {}, blocked = !item.supported || !!response.error;
-      var name = element('td', 'container-name'), label = element('strong', '', item.name); label.dataset.noI18n = ''; name.appendChild(label);
+      var name = element('td', 'container-name'), label = element('strong', '', item.name), heading = element('span', 'presence-name'); label.dataset.noI18n = '';
+      var online = item.state === 'running' && !response.error && Date.now() - Date.parse(response.updated_at) < 30000;
+      heading.appendChild(onlineIndicator(online)); heading.appendChild(label); name.appendChild(heading); name.title = item.status || item.state;
       if (item.reason) name.appendChild(element('span', 'muted small container-reason', item.reason)); row.appendChild(name);
       var image = element('td', 'node-server', item.image); image.dataset.noI18n = ''; row.appendChild(image);
-      var status = element('td', '', item.state); status.title = item.status; row.appendChild(status);
       var ips = element('td', 'node-server container-addresses');
       (item.bindings || []).forEach(function (binding) {var address = element('span', '', binding.ip); address.dir = 'ltr'; address.dataset.noI18n = ''; address.title = binding.network; ips.appendChild(address);});
       if (!ips.children.length) text(ips, '—'); row.appendChild(ips);
-      var proxy = element('td'), toggle = containerSwitch(item.key, !!policy.proxy, blocked); proxy.appendChild(toggle); row.appendChild(proxy);
-      if (focused.containerToggle === item.key) focusTarget = toggle.children[0];
       var node = nodes.get(policy.node_id), route = element('td', 'device-route-label', !policy.proxy ? 'Direct' : !policy.node_id ? 'Global Default' : node && node.enabled ? node.tag || node.server : 'Unavailable node (using Global Default)');
       if (policy.proxy && node && node.enabled) route.dataset.noI18n = ''; row.appendChild(route);
       var speed = element('td'); speed.appendChild(deviceLimitSummary(limits)); row.appendChild(speed);
@@ -1171,43 +1212,38 @@
       button.dataset.containerSettings = item.key; button.dataset.mutation = ''; button.dataset.job = ''; button.dataset.unavailable = blocked ? 'true' : 'false';
       action.appendChild(button); row.appendChild(action);
       if (focused.containerSettings === item.key) focusTarget = button;
-      row.sortKey = item.key; row.sortValues = [item.name,item.image,item.state,(item.bindings || []).map(function(b) {return b.ip;}).join(', '),policy.proxy ? 1 : 0,route.textContent,
+      row.sortKey = item.key; row.sortValues = [item.name,item.image,(item.bindings || []).map(function(b) {return b.ip;}).join(', '),route.textContent,
         qosFields.map(function (field) {return Number(limits[field]) > 0 ? Number(limits[field]) : Infinity;})];
       body.appendChild(row);
     });
-    sortableTable(header, body, 'containers', ['asc','asc','asc','asc','desc','asc','asc',null], {column:0,descending:false});
+    sortableTable(header, body, 'containers', ['asc','asc','asc','asc','asc',null], {column:0,descending:false});
     if (focused.sortTable === 'containers' && header.children[Number(focused.sortColumn)]) focusTarget = header.children[Number(focused.sortColumn)].children[0];
     list.appendChild(table); updateControls(); if (focusTarget && !focusTarget.disabled) focusTarget.focus();
   }
-  function containerProxyControls() { $('container-route-field').hidden = !$('container-use-proxy').checked; }
   function openContainerSettings(key) {
     var item = (state.containerSnapshot.containers || []).find(function(c) {return c.key === key;}); if (!item || !item.supported) return;
     var dialog = $('container-settings'), policy = item.settings || {}, limits = policy.qos || {};
-    dialog.dataset.key = key; dialog.dataset.route = policy.node_id || ''; dialog.dataset.proxy = String(!!policy.proxy); text($('container-settings-ip'), item.name); text($('container-settings-error'), '');
-    $('container-use-proxy').checked = !!policy.proxy; deviceRouteOptions($('container-route'), policy.node_id || '', true);
+    dialog.dataset.key = key; dialog.dataset.route = policy.proxy ? policy.node_id || '' : 'direct'; text($('container-settings-ip'), item.name); text($('container-settings-error'), '');
+    deviceRouteOptions($('container-route'), dialog.dataset.route);
+    // Containers start on Direct; keep the same route choices as LAN devices.
+    var direct = Array.from($('container-route').children).find(function(option) {return option.value === 'direct';});
+    if (direct) $('container-route').insertBefore(direct, $('container-route').firstChild);
     qosFields.forEach(function(field) {$('container-' + field).value = limits[field] || '';});
-    containerProxyControls(); dialog.showModal(); updateControls();
+    dialog.showModal(); updateControls();
   }
   function wireContainerSettings() {
     $('containers-refresh').addEventListener('click', function() { mutate('Refresh containers', async function() {await call('POST','/api/containers/refresh');}); });
     $('containers-list').addEventListener('click', function(event) {var button = event.target.closest('[data-container-settings]'); if (button && !button.disabled) openContainerSettings(button.dataset.containerSettings);});
-    $('containers-list').addEventListener('change', function(event) {
-      var input = event.target.closest('[data-container-toggle]'); if (!input || input.disabled) return;
-      var enabled = input.checked;
-      mutate('Container routing', async function() {await call('PUT','/api/containers',{key:input.dataset.containerToggle,proxy:enabled}); toast('Container settings saved and applied.', 'ok');});
-    });
-    $('container-use-proxy').addEventListener('change', containerProxyControls);
     $('container-reset-limits').addEventListener('click', function() {qosFields.forEach(function(field) {$('container-' + field).value = '';});});
     $('container-settings-cancel').addEventListener('click', function() {$('container-settings').close();});
     $('container-settings').addEventListener('cancel', function(event) {if (state.busy) event.preventDefault();});
     $('container-settings').addEventListener('close', function() {
-      var key = $('container-settings').dataset.key; delete $('container-settings').dataset.key; delete $('container-settings').dataset.route; delete $('container-settings').dataset.proxy; $('container-settings-form').reset();
+      var key = $('container-settings').dataset.key; delete $('container-settings').dataset.key; delete $('container-settings').dataset.route; $('container-settings-form').reset();
       var button = Array.from($('containers-list').querySelectorAll('[data-container-settings]')).find(function(b) {return b.dataset.containerSettings === key;}); if (button) button.focus();
     });
     $('container-settings-form').addEventListener('submit', function(event) {
       event.preventDefault(); var dialog = $('container-settings'); if (!dialog.dataset.key) return;
       var payload = {key:dialog.dataset.key,qos:{}};
-      if (String($('container-use-proxy').checked) !== dialog.dataset.proxy) payload.proxy = $('container-use-proxy').checked;
       if ($('container-route').value !== dialog.dataset.route) payload.node_id = $('container-route').value;
       qosFields.forEach(function(field) {payload.qos[field] = Number($('container-' + field).value);});
       mutate('Save container settings', async function() {

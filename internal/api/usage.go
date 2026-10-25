@@ -114,6 +114,7 @@ func (s *Service) sampleUsage(ctx context.Context) {
 	u.Total.Download += delta(snap.Download, u.Previous.Download)
 	u.Previous = Bytes{snap.Upload, snap.Download}
 	u.LastSample = time.Now().UTC()
+	s.pruneDevicePresenceLocked(u.LastSample)
 	u.Error = ""
 	next := make(map[string]Bytes, len(snap.Connections))
 	idByTag := make(map[string]string, len(s.tagByID))
@@ -126,6 +127,9 @@ func (s *Service) sampleUsage(ctx context.Context) {
 		// Only original LAN sources on the transparent inbound are devices.
 		// Count independently of outbound attribution (including direct traffic).
 		if ip, err := deviceIP(c.Metadata.SourceIP); err == nil && strings.HasPrefix(c.Metadata.Type, "tproxy/") {
+			if _, observed := s.usageSeen[c.ID]; !observed || c.Upload != old.Upload || c.Download != old.Download {
+				s.noteDeviceSeenLocked(ip, u.LastSample)
+			}
 			v := u.Devices[ip]
 			v.Upload += delta(c.Upload, old.Upload)
 			v.Download += delta(c.Download, old.Download)
@@ -216,6 +220,8 @@ func (h *handlers) usage(w http.ResponseWriter, r *http.Request) {
 	usage := s.state.Usage
 	usage.Devices = cloneBytes(usage.Devices)
 	usage.Outbounds = cloneBytes(usage.Outbounds)
+	presence := s.devicePresenceLocked(time.Now())
+	presenceError := s.devicePresenceError
 	aliases, routes, limits := copyStrings(s.state.DeviceAliases), copyStrings(s.state.DeviceRoutes), cloneLimits(s.state.DeviceLimits)
 	containerIPs := []string{}
 	for _, c := range s.containers {
@@ -224,7 +230,7 @@ func (h *handlers) usage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.mu.RUnlock()
-	writeJSON(w, 200, map[string]any{"container_ips": containerIPs, "usage": usage, "device_aliases": aliases, "device_routes": routes, "device_limits": limits, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
+	writeJSON(w, 200, map[string]any{"device_presence": presence, "device_presence_error": presenceError, "device_online_window_seconds": int(deviceOnlineWindow / time.Second), "container_ips": containerIPs, "usage": usage, "device_aliases": aliases, "device_routes": routes, "device_limits": limits, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
 }
 
 func supportsTraffic(v any) bool {

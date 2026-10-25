@@ -94,15 +94,13 @@
     </section>
     <section id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" tabindex="0" hidden>
 
-      <div class="card form-card"><div class="usage-heading"><h2>Internet usage</h2></div><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><p class="muted small">Totals are payload bytes reported by the engine. Per-device, per-node and direct attribution is estimated from one-second connection samples; short flows can be missed.</p><div id="usage-nodes" class="table-wrap"></div></div>
+      <div class="card form-card"><div class="usage-heading"><h2>Internet usage</h2><label class="row-count"><span>Rows</span><select id="usage-page-size" aria-label="Internet usage rows"><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="0">All</option></select></label></div><p id="usage-total" role="status"></p><p id="usage-status" class="muted small"></p><div id="usage-nodes" class="table-wrap"></div><div id="usage-pagination" class="table-pagination" hidden><span id="usage-page-status" class="muted small" role="status"></span><div class="pagination-actions"><button id="usage-page-prev" class="button subtle" type="button">Previous</button><button id="usage-page-next" class="button subtle" type="button">Next</button></div></div></div>
 
-      <div class="card form-card"><div class="usage-heading"><h2>LAN devices</h2></div><p class="muted small">Estimated usage by original client IP, including traffic sing-box routes directly.</p><p id="device-qos-status" class="muted small" role="status"></p><div id="usage-devices" class="table-wrap"></div></div>
+      <div class="card form-card"><div class="usage-heading"><h2>LAN devices</h2><label class="row-count"><span>Rows</span><select id="devices-page-size" aria-label="LAN devices rows"><option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="0">All</option></select></label></div><p class="muted small">Estimated usage by original client IP, including traffic sing-box routes directly.</p><p id="device-presence-status" class="muted small" role="status"></p><p id="device-qos-status" class="muted small" role="status"></p><div id="usage-devices" class="table-wrap"></div><div id="devices-pagination" class="table-pagination" hidden><span id="devices-page-status" class="muted small" role="status"></span><div class="pagination-actions"><button id="devices-page-prev" class="button subtle" type="button">Previous</button><button id="devices-page-next" class="button subtle" type="button">Next</button></div></div></div>
     </section>
     <section id="panel-containers" role="tabpanel" aria-labelledby="tab-containers" tabindex="0" hidden>
       <div class="card form-card">
         <div class="usage-heading"><h2>Docker containers</h2><button id="containers-refresh" type="button" class="button" data-mutation data-job>Refresh containers</button></div>
-        <p class="muted small">Automatically discovered every 10 seconds. Enable proxy routing for a container or keep its normal direct connection. Local services and published-port replies keep Docker's normal routing.</p>
-        <p class="muted small">Controls support running containers on local IPv4 bridge networks. Proxy routing requires the engine to be on. Speed limits also apply when it is off.</p>
         <p id="containers-status" class="small" role="status"></p>
         <div id="containers-list" class="table-wrap"></div>
       </div>
@@ -202,8 +200,7 @@
   <dialog id="container-settings" aria-labelledby="container-settings-title" aria-describedby="container-settings-ip">
     <form id="container-settings-form">
       <div class="device-dialog-heading"><h2 id="container-settings-title">Container settings</h2><span id="container-settings-ip" class="pill" dir="ltr" data-no-i18n></span></div>
-      <label class="switch" for="container-use-proxy"><input id="container-use-proxy" type="checkbox" role="switch" data-mutation data-job /><span class="switch-track" aria-hidden="true"></span><span>Route through proxy</span></label>
-      <div id="container-route-field" class="field"><label for="container-route">Assigned outbound routing</label><select id="container-route" data-mutation data-job></select></div>
+      <div class="field"><label for="container-route">Assigned outbound routing</label><select id="container-route" data-mutation data-job></select></div>
       <fieldset class="device-qos-card"><legend>Speed limits</legend><button id="container-reset-limits" type="button" class="button subtle" data-mutation>Reset limits</button>
         <p class="muted small" id="container-qos-help">Blank or 0 means unlimited. All IPv4 endpoints of this container share these four limits. Reset clears the fields; save to apply.</p>
         <div class="qos-grid">

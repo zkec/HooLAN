@@ -15,6 +15,8 @@ function checkDashboard(source) {
     get rows() { return this.children.flatMap(c => c.tag === 'tr' ? [c] : c.rows); }
     appendChild(child) { if(child.parentNode) child.parentNode.children = child.parentNode.children.filter(c => c !== child); this.children.push(child); child.parentNode = this; return child; }
     setAttribute(name, value) { this.attrs[name] = value; }
+    get firstChild() {return this.children[0] || null;}
+    insertBefore(child, reference) {if (child.parentNode) child.parentNode.children = child.parentNode.children.filter(c => c !== child); const index = this.children.indexOf(reference); if (index < 0) this.children.push(child); else this.children.splice(index,0,child); child.parentNode = this; return child;}
     addEventListener(name, fn) { this.events[name] = fn; }
     focus() { document.activeElement = this; }
     showModal() {this.open = true;}
@@ -30,7 +32,7 @@ function checkDashboard(source) {
   const window = {};
   const entry = '  init();\n}());';
   assert(source.includes(entry), 'dashboard entry point changed; update fixture');
-  eval(source.replace(entry, '  window.test = {state:state, nodeTable:makeNodeTable, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, containers:renderContainers, containerEditor:openContainerSettings, wireContainers:wireContainerSettings, containerProxy:containerProxyControls, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls, groupIDs:groupActionIDs};\n}());'));
+  eval(source.replace(entry, '  window.test = {state:state, nodeTable:makeNodeTable, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, containers:renderContainers, containerEditor:openContainerSettings, wireContainers:wireContainerSettings, pagination:wireUsagePagination, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls, groupIDs:groupActionIDs};\n}());'));
   const app = window.test, state = app.state;
   app.settings({dns_server:'9.9.9.9', iran_bypass:true, fake_dns:{enabled:true,listen:'192.168.3.5'}});
   assert(document.getElementById('fakedns-enabled').checked && !document.getElementById('direct-dns').disabled, 'FakeDNS form not rendered');
@@ -146,29 +148,69 @@ function checkDashboard(source) {
   state.groupSelections.set('manual',new Set(['two']));
   assert(app.groupIDs('manual','delete').join(',') === 'two' && app.groupIDs('manual','ping').join(',') === 'two', 'checked rows must narrow actions');
   assert(app.groupIDs('empty','delete').length === 0, 'empty group action');
-  // Container discovery uses switches and a separate four-way editor.
+  // Containers use the same outbound selector as devices and show presence by name.
   const key = 'a'.repeat(64);
-  const containerResponse = {enabled:true,updated_at:'2026-01-01T00:00:00Z',error:'',containers:[
+  const containerResponse = {enabled:true,updated_at:new Date().toISOString(),error:'',containers:[
     {key,name:'Example',image:'image:latest',state:'running',supported:true,bindings:[{ip:'172.18.0.3',network:'stack'}],settings:{proxy:true,node_id:'one',qos:{proxy_upload_mbps:5}}},
-    {key:'b'.repeat(64),name:'Host service',image:'host:latest',state:'running',supported:false,reason:'Host, shared and isolated network modes cannot be controlled separately',bindings:[],settings:{}}
+    {key:'b'.repeat(64),name:'Host service',image:'host:latest',state:'exited',supported:false,reason:'Container is not running',bindings:[],settings:{}}
   ]};
   app.containers(containerResponse);
   const containerTable = document.getElementById('containers-list').children[0];
   assert(containerTable.rows.length === 3, 'container inventory lost rows');
-  const proxySwitch = containerTable.rows[1].children[4].children[0].children[0];
-  assert(proxySwitch.attrs.role === 'switch' && proxySwitch.checked && proxySwitch.dataset.containerToggle === key, 'container proxy switch missing');
-  assert(containerTable.rows[2].children[7].children[0].dataset.unavailable === 'true', 'unsupported container editable');
-  assert(containerTable.rows[1].children[6].textContent.includes('5 Mbps'), 'container limits not shown');
+  assert(containerTable.rows[0].children.length === 6, 'container status/proxy columns were not removed');
+  const lamp = containerTable.rows[1].children[0].children[0].children[0];
+  assert(lamp.attrs['aria-label'] === 'Online' && lamp.className.includes('is-online'), 'running container indicator missing');
+  const offlineLamp = containerTable.rows[2].children[0].children[0].children[0];
+  assert(offlineLamp.attrs['aria-label'] === 'Offline' && !offlineLamp.className.includes('is-online'), 'offline container indicator shown');
+  assert(containerTable.rows[2].children[5].children[0].dataset.unavailable === 'true', 'unsupported container editable');
+  assert(containerTable.rows[1].children[4].textContent.includes('5 Mbps'), 'container limits not shown');
   app.containerEditor(key);
   assert(document.getElementById('container-settings').open && document.getElementById('container-proxy_upload_mbps').value === 5, 'container editor did not load limits');
   assert(document.getElementById('container-route').value === 'one', 'container pin lost');
-  document.getElementById('container-use-proxy').checked = false; app.containerProxy();
-  assert(document.getElementById('container-route-field').hidden, 'direct container still shows proxy selector');
+  containerResponse.containers[0].settings = {};
+  app.containers(containerResponse); app.containerEditor(key);
+  assert(document.getElementById('container-route').value === 'direct' && document.getElementById('container-route').children[0].value === 'direct', 'new container must default to Direct');
+  const routeOptions = document.getElementById('container-route').children;
+  assert(routeOptions.some(option => option.value === '') && routeOptions.some(option => option.value === 'direct'), 'container selector missing Global Default or Direct');
   app.wireContainers();
   document.getElementById('container-reset-limits').events.click();
   assert(['proxy_upload_mbps','proxy_download_mbps','direct_upload_mbps','direct_download_mbps'].every(field => document.getElementById('container-'+field).value === ''), 'container reset must clear all four fields');
   app.devices({...response,container_ips:['192.168.3.2']}, true);
   assert(!document.getElementById('usage-devices').textContent.includes('192.168.3.2'), 'container was also shown as a LAN device');
+  app.pagination();
+  const many = {supported:true,usage:{total:{},outbounds:{},devices:{}},device_presence:{}};
+  for (let i=1;i<=27;i++) {
+    many.usage.outbounds['node-'+i] = {upload:i,download:100-i};
+    many.usage.devices['192.168.5.'+i] = {upload:100-i,download:i};
+    many.device_presence['192.168.5.'+i] = {online:i<=14};
+  }
+  state.tableSorts.clear(); state.tablePages.usage={size:10,page:0}; state.tablePages.devices={size:10,page:0};
+  app.usage(many,true);
+  let usageTable = document.getElementById('usage-nodes').children[0];
+  function visibleRows(table) {return table.rows.slice(1).filter(row => !row.hidden);}
+  assert(visibleRows(usageTable).length === 10 && document.getElementById('usage-page-status').textContent === 'Showing 1–10 of 27', 'usage default must show 10 rows');
+  document.getElementById('usage-page-next').events.click(); usageTable = document.getElementById('usage-nodes').children[0];
+  assert(visibleRows(usageTable).length === 10 && visibleRows(usageTable)[0].sortKey === 'node-11', 'usage next page lost sorting');
+  usageTable.rows[0].children[1].children[0].events.click();
+  assert(state.tablePages.usage.page === 0 && visibleRows(usageTable)[0].sortKey === 'node-27', 'sorting must happen before pagination and return to page 1');
+  const usageCount = document.getElementById('usage-page-size'); usageCount.value='20'; usageCount.events.change.call(usageCount);
+  assert(visibleRows(document.getElementById('usage-nodes').children[0]).length === 20, 'usage size selector ignored');
+  usageCount.value='0'; usageCount.events.change.call(usageCount);
+  assert(visibleRows(document.getElementById('usage-nodes').children[0]).length === 27, 'All should show every entry');
+  let deviceTable = document.getElementById('usage-devices').children[0];
+  assert(visibleRows(deviceTable).length === 14 && visibleRows(deviceTable).every(row => row.online), '14 online devices must override the 10-row cap');
+  assert(deviceTable.rows.slice(1,15).every(row => row.online) && !deviceTable.rows[15].online, 'online devices not sorted first');
+  deviceTable.rows[0].children[2].children[0].events.click();
+  assert(visibleRows(deviceTable).every(row => row.online), 'column sorting hid an online device');
+  document.getElementById('devices-page-next').events.click(); deviceTable=document.getElementById('usage-devices').children[0];
+  assert(visibleRows(deviceTable).length === 13 && visibleRows(deviceTable).every(row => !row.online), 'offline devices inaccessible on next page');
+  const deviceCount=document.getElementById('devices-page-size');deviceCount.value='20';deviceCount.events.change.call(deviceCount);
+  assert(visibleRows(document.getElementById('usage-devices').children[0]).length === 20 && state.tablePages.devices.page === 0, 'device size selection ignored');
+  many.device_presence = {};
+  state.tablePages.devices={size:10,page:0}; app.devices(many,true);
+  assert(visibleRows(document.getElementById('usage-devices').children[0]).length === 10, 'offline list should retain the row cap');
+  app.devices({usage:{devices:{}},device_presence:{}},true);
+  assert(document.getElementById('devices-pagination').hidden, 'empty device list retained stale pagination');
   assert(app.limits({}).textContent === 'Unlimited', 'zero limits must be unlimited');
   const limits = app.limits({proxy_download_mbps:12.5,direct_upload_mbps:1});
   assert(limits.children.length === 4 && limits.textContent.includes('12.5 Mbps'), 'four-way fractional limits');

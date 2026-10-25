@@ -24,11 +24,17 @@ See [updating an installation](installation.md#updating-an-installation).
 
 ## Routing
 
-Newly discovered containers keep Docker's normal direct connection. Turn on the
-row's **Proxy** switch to use HooLAN. Open **Settings** to choose **Global
-Default**, an enabled node, a chain or a saved load balancer. Turn **Route through
-proxy** off to restore Docker's normal path. The saved node choice is retained
-for the next time proxy routing is enabled.
+Newly discovered containers default to **Direct**, keeping Docker's normal
+connection. Open **Settings → Assigned outbound routing** and choose **Direct**,
+**Global Default**, an enabled node, a chain or a saved load balancer. One
+selector controls the route; there is no separate proxy switch. Existing saved
+routes and four-way limits are preserved.
+
+A pulsing green light beside a container name means Docker reported it as
+running in the latest discovery. Stopped, paused or restarting containers have
+a blank indicator. The light also clears when discovery fails or its snapshot
+is more than 30 seconds old. Detailed state remains available as a tooltip on
+the name, without a separate Status column.
 
 Global Default follows the gateway's active selection. Pinned configurations
 use their own outbound. Existing DNS, private-network, custom and Iran bypass

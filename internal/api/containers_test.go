@@ -143,7 +143,7 @@ func TestContainerValidationRollbackAndNodeDelete(t *testing.T) {
 	if h.svc.state.ContainerSettings[key].QoS != l || fw.installed["172.18.0.3"] != l {
 		t.Fatal("failed settings not rolled back")
 	}
-	for _, req := range []ContainerUpdate{{Key: key}, {Key: "bad", Proxy: boolptr(true)}, {Key: key, NodeID: strptr("direct")}, {Key: key, NodeID: strptr(strings.Repeat("f", 32))}, {Key: key, QoS: &netfilter.DeviceLimits{ProxyUpload: -1}}} {
+	for _, req := range []ContainerUpdate{{Key: key}, {Key: "bad", Proxy: boolptr(true)}, {Key: key, NodeID: strptr("direct"), Proxy: boolptr(true)}, {Key: key, NodeID: strptr(strings.Repeat("f", 32))}, {Key: key, QoS: &netfilter.DeviceLimits{ProxyUpload: -1}}} {
 		if err := h.svc.UpdateContainer(ctx, req); err == nil {
 			t.Fatalf("invalid update accepted: %+v", req)
 		}
@@ -274,10 +274,50 @@ func TestContainerStateWritePrecedesFirewallChanges(t *testing.T) {
 	}
 	h.svc.cfg.StatePath = filepath.Join(h.svc.cfg.StatePath, "not-a-directory")
 	before := fw.syncs
-	if err := h.svc.UpdateContainer(context.Background(), ContainerUpdate{Key: key, Proxy: boolptr(true)}); err == nil {
+	if err := h.svc.UpdateContainer(context.Background(), ContainerUpdate{Key: key, Proxy: boolptr(false)}); err == nil {
 		t.Fatal("state write failure accepted")
 	}
-	if fw.syncs != before || h.svc.state.ContainerSettings[key].Proxy {
+	if fw.syncs != before || !h.svc.state.ContainerSettings[key].Proxy {
 		t.Fatal("write failure changed policy")
+	}
+}
+
+func TestContainerRouteSelectorDefaultsAndLegacyCompatibility(t *testing.T) {
+	h, fw, _ := containerHarness(t)
+	ctx := context.Background()
+	key := containerSample().Key
+	id := h.store.All()[0].ID
+	if h.svc.state.ContainerSettings[key].Proxy {
+		t.Fatal("new containers must default Direct")
+	}
+	limits := netfilter.UniformLimits(5)
+	if err := h.svc.UpdateContainer(ctx, ContainerUpdate{Key: key, NodeID: &id, QoS: &limits}); err != nil {
+		t.Fatal(err)
+	}
+	if !h.svc.state.ContainerSettings[key].Proxy || fw.routes["172.18.0.3"] != id {
+		t.Fatal("choosing a node did not activate its route")
+	}
+	if err := h.svc.UpdateContainer(ctx, ContainerUpdate{Key: key, NodeID: strptr("direct")}); err != nil {
+		t.Fatal(err)
+	}
+	policy := h.svc.state.ContainerSettings[key]
+	if policy.Proxy || policy.NodeID != "" || fw.installed["172.18.0.3"] != limits {
+		t.Fatal("Direct must bypass interception and retain limits")
+	}
+	if _, exists := fw.routes["172.18.0.3"]; exists {
+		t.Fatal("Direct still has a proxy source rule")
+	}
+	if err := h.svc.UpdateContainer(ctx, ContainerUpdate{Key: key, NodeID: strptr("")}); err != nil {
+		t.Fatal(err)
+	}
+	if !h.svc.state.ContainerSettings[key].Proxy || h.svc.state.ContainerSettings[key].NodeID != "" {
+		t.Fatal("empty node ID must use Global Default")
+	}
+	// Existing API clients can still save a pin with explicit proxy=false.
+	if err := h.svc.UpdateContainer(ctx, ContainerUpdate{Key: key, NodeID: &id, Proxy: boolptr(false)}); err != nil {
+		t.Fatal(err)
+	}
+	if h.svc.state.ContainerSettings[key].Proxy || h.svc.state.ContainerSettings[key].NodeID != id {
+		t.Fatal("legacy proxy flag stopped working")
 	}
 }

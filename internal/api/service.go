@@ -111,11 +111,14 @@ type Service struct {
 	telegramError        string
 	failedActive         string
 
-	usageSeen    map[string]Bytes
-	usageSaved   time.Time
-	usageStarted bool
-	cfg          Config
-	log          *slog.Logger
+	deviceSeen          map[string]time.Time
+	devicePresenceError string
+	presenceStarted     bool
+	usageSeen           map[string]Bytes
+	usageSaved          time.Time
+	usageStarted        bool
+	cfg                 Config
+	log                 *slog.Logger
 
 	// jobCtx bounds background work. Cancelled by Shutdown so an in-flight
 	// latency sweep does not outlive the process; deliberately NOT derived from
@@ -356,6 +359,7 @@ func (s *Service) StartBackground() {
 	s.startNotifications()
 	s.startRuleScheduler()
 	s.startUsageSampler()
+	s.startDevicePresence()
 	s.startContainerDiscovery()
 }
 

@@ -13,6 +13,25 @@ Saving a changed route applies it to the engine and can briefly restart it.
 Global Default follows the gateway's selection. Configurations are grouped by
 manual ownership and subscription in the selector.
 
+## Online indicators and table size
+
+The LAN table shows recently online devices first, then offline devices. A
+green pulsing light appears beside an online IP; offline IPs have a blank
+indicator. HooLAN checks the configured LAN interface's neighbour table every
+five seconds, even with the proxy engine OFF, and also observes new or changing
+transparent connection counters. Confirmed reachability or observed traffic in
+the last 60 seconds counts as online. Cached STALE/PERMANENT neighbours and idle
+connections do not indefinitely renew presence. No network scan is performed.
+This is a passive estimate: an idle device can appear offline. If neighbour
+lookup fails, recent proxy activity remains usable and the UI shows a notice.
+
+Both Internet usage and LAN devices default to 10 rows. Choose 20, 50, 100, 200
+or All, with Previous/Next controls for remaining rows. The browser remembers
+the row-count choice. Device pages expand when necessary to keep all online
+devices together on the first page: with 14 online devices and a limit of 10,
+all 14 are shown before the offline page. Column sorting orders devices within
+their online/offline group and resets to the first page.
+
 ## Four-way limits
 
 | Field | Applies to |

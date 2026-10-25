@@ -244,11 +244,22 @@ func (s *Service) UpdateContainer(ctx context.Context, req ContainerUpdate) erro
 	wasEnabled := s.proxyEnabled
 	p := old[req.Key]
 	oldRoutes, _, oldBindings, _ := s.endpointPoliciesLocked()
-	if req.Proxy != nil {
-		p.Proxy = *req.Proxy
-	}
-	if req.NodeID != nil {
-		p.NodeID = *req.NodeID
+	if req.NodeID != nil && *req.NodeID == "direct" {
+		if req.Proxy != nil && *req.Proxy {
+			s.mu.Unlock()
+			return fmt.Errorf("%w: Direct cannot be combined with proxy=true", ErrInvalidInput)
+		}
+		p.Proxy = false
+		p.NodeID = ""
+	} else {
+		if req.NodeID != nil {
+			p.NodeID = *req.NodeID
+			p.Proxy = true
+		}
+		// Accept legacy explicit proxy settings for existing API clients/backups.
+		if req.Proxy != nil {
+			p.Proxy = *req.Proxy
+		}
 	}
 	if req.QoS != nil {
 		p.QoS = *req.QoS

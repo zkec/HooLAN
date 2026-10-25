@@ -33,7 +33,13 @@ See [configuration management](configurations.md) and [group strategies](load-ba
 Click a column heading to sort; click it again to reverse the direction. The
 arrow shows the current order, which is kept during automatic refreshes. Node
 and device tables support names, upload and download; device tables also support
-IP address, route and speed limits. Nodes with zero usage stay hidden. A device's **Speed set** column shows its saved limits;
+IP address, route and speed limits. Nodes with zero usage stay hidden. Both tables start at 10 rows, with 20, 50,
+100, 200 or All choices and Previous/Next controls. Row-count choices are saved
+in the browser. Devices stay online-first, with the chosen column sorting
+within the online/offline groups; the first page expands to show all online
+devices (14 online devices means 14 rows even when 10 is selected). A green
+pulsing light means recent observed activity; offline entries have a blank
+indicator. A device's **Speed set** column shows its saved limits;
 **Settings** edits its alias, outbound and four limit fields. Reset limits clears
 all four inputs; Save device settings applies the reset.
 
@@ -43,12 +49,12 @@ be missed. [Device and usage details](devices.md).
 
 ## Containers
 
-Docker containers appear automatically, including their image, state, IPv4
-addresses, proxy preference, selected outbound and speed limits. The **Proxy**
-switch enables interception for an individual container; **Settings** selects
-the node and edits the four limits. Global Default, saved chains and load
-balancers are available. **Refresh containers** updates discovery immediately.
-Column headings sort this table too.
+Docker containers appear automatically, including their image, IPv4 addresses,
+selected outbound and speed limits. A green light beside the name means the
+container is running; otherwise the indicator is blank. **Settings** selects
+Direct (the default), Global Default, a node, chain or load balancer and edits
+the four limits. **Refresh containers** updates discovery immediately. Column
+headings sort this table too.
 
 Settings follow the container identity rather than its current IP. Unsupported
 network modes show an explanation. See [Docker containers](containers.md) for

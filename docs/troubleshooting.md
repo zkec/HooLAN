@@ -12,13 +12,15 @@ sudo bash /opt/hoolan/scripts/tproxy/diagnose.sh 192.168.x.x
 
 ## Engine OFF and no internet
 
-If other DNS services uses HooLAN port 1053, restore its normal upstream before stopping
-the engine; this DNS listener stops even when FakeDNS is disabled. See
-[split DNS](dns.md).
+The DNS listener on port 1053 stays available when the proxy is explicitly switched
+OFF and uses Direct DNS. Check that Direct DNS works independently and does not
+forward back to HooLAN. An unexpected engine crash keeps proxied DNS from falling
+back to Direct DNS; restart the engine or explicitly switch the proxy OFF.
 
-If FakeDNS was enabled, restore DNS-services's real upstream and clear its and the
-clients' caches first. Port 1053 stops with the engine; cached `198.18.0.0/15`
-destinations cannot use raw forwarding. See [FakeDNS recovery](dns.md#cache-shutdown-and-recovery).
+If FakeDNS was enabled, clear downstream resolver and client caches: cached
+`198.18.0.0/15` destinations cannot use raw forwarding. Stopping the entire
+**HooLAN service** also stops port 1053; configure another upstream before doing
+so. See [DNS recovery](dns.md#cache-shutdown-and-recovery).
 
 Test IPv4 forwarding, the host's upstream default route, FORWARD rules and return
 routing/NAT. With clients using the host as gateway, turning interception off still

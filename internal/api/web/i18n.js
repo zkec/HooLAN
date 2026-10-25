@@ -2,6 +2,16 @@
 (function () {
   "use strict";
   var fa = {
+  "Rows": "تعداد ردیف‌ها",
+  "All": "همه",
+  "Previous": "قبلی",
+  "Next": "بعدی",
+  "Online": "آنلاین",
+  "Offline": "آفلاین",
+  "Internet usage rows": "تعداد ردیف‌های مصرف اینترنت",
+  "LAN devices rows": "تعداد ردیف‌های دستگاه‌های شبکه",
+  "LAN presence unavailable; indicators use recent proxy traffic.": "اطلاعات دسترسی شبکه در دسترس نیست؛ چراغ‌ها بر اساس ترافیک اخیر پروکسی نمایش داده می‌شوند.",
+
   "Containers": "کانتینرها",
   "Docker containers": "کانتینرهای Docker",
   "Container": "کانتینر",
@@ -22,8 +32,6 @@
   "created": "ایجادشده",
   "restarting": "در حال راه‌اندازی مجدد",
   "dead": "از کار افتاده",
-  "Automatically discovered every 10 seconds. Enable proxy routing for a container or keep its normal direct connection. Local services and published-port replies keep Docker's normal routing.": "هر ۱۰ ثانیه به‌صورت خودکار شناسایی می‌شوند. پروکسی را برای کانتینر فعال کنید یا اتصال مستقیم معمول آن را نگه دارید. سرویس‌های محلی و پاسخ درگاه‌های منتشرشده مسیر معمول Docker را حفظ می‌کنند.",
-  "Controls support running containers on local IPv4 bridge networks. Proxy routing requires the engine to be on. Speed limits also apply when it is off.": "کنترل‌ها برای کانتینرهای در حال اجرا روی شبکهٔ bridge محلی IPv4 هستند. عبور از پروکسی به موتور روشن نیاز دارد. محدودیت سرعت هنگام خاموش بودن موتور هم اعمال می‌شود.",
   "Blank or 0 means unlimited. All IPv4 endpoints of this container share these four limits. Reset clears the fields; save to apply.": "خالی یا صفر یعنی نامحدود. تمام نشانی‌های IPv4 این کانتینر این چهار محدودیت را به‌صورت مشترک استفاده می‌کنند. بازنشانی فیلدها را پاک می‌کند؛ برای اعمال ذخیره کنید.",
   "Settings follow the Compose service or container name when its IP changes. Container DNS handled by Docker or a shared resolver follows that resolver's routing.": "با تغییر IP، تنظیمات بر اساس سرویس Compose یا نام کانتینر حفظ می‌شوند. DNS کانتینر که توسط Docker یا حل‌کنندهٔ مشترک پردازش می‌شود، مسیر همان حل‌کننده را دنبال می‌کند.",
   "Rootless Docker does not expose an interceptable host bridge": "Docker بدون دسترسی ریشه، bridge قابل رهگیری روی میزبان ندارد",
@@ -71,7 +79,6 @@
   "Speed set": "سرعت تنظیم‌شده",
   "Add & create": "افزودن و ساخت",
   "Internet usage": "مصرف اینترنت",
-  "Totals are payload bytes reported by the engine. Per-device, per-node and direct attribution is estimated from one-second connection samples; short flows can be missed.": "مجموع مصرف بر اساس بایت‌های دادهٔ گزارش‌شده توسط موتور است. سهم هر دستگاه، هر گره و ترافیک مستقیم با نمونه‌برداری یک‌ثانیه‌ای از اتصال‌ها تخمین زده می‌شود؛ اتصال‌های کوتاه ممکن است ثبت نشوند.",
   "Estimated usage by original client IP, including traffic sing-box routes directly.": "مصرف تخمینی بر اساس IP اصلی کاربر، شامل ترافیکی که sing-box به‌صورت مستقیم مسیریابی می‌کند.",
   "Sort by": "مرتب‌سازی بر اساس",
   "Most downloaded": "بیشترین دریافت",
@@ -442,6 +449,7 @@
 };
   var originals = new WeakMap(), attributes = new WeakMap();
   var patterns = [
+ [/^Showing (\d+)–(\d+) of (\d+)$/, 'نمایش $1 تا $2 از $3'],
  [/^Last discovery: (.*)$/, 'آخرین شناسایی: $1'],
       [/^(\d+) configurations saved\.$/, '$1 پیکربندی ذخیره شد.'],
       [/^(\d+)\/(\d+) tested \((\d+)%\)$/, '$1 از $2 آزمایش‌شده ($3٪)'],

@@ -117,7 +117,14 @@ func (m *Manager) buildSplitDNS(route *RouteOptions, clients []string) (*DNSOpti
 	if _, e := netip.ParseAddr(u.Hostname()); e != nil {
 		remote["domain_resolver"] = directDNSTag
 	}
-	dns := &DNSOptions{Servers: []any{udp, remote}, Final: secureDNSServer}
+	dns := &DNSOptions{
+		Servers: []any{udp, remote}, Final: secureDNSServer,
+		// A cache miss pays the proxy's network round trip. Keep a bounded
+		// working set warm across TTL expiry; refreshes retain the selected
+		// transport, so tunneled answers never fall back to Direct DNS.
+		CacheCapacity: 8192,
+		Optimistic:    &DNSOptimisticOptions{Enabled: true, Timeout: "1h"},
+	}
 	// Only proxy endpoint / rule-set bootstrap uses these direct aliases. Client
 	// requests always enter the split policy, never the system's /etc/resolv.conf.
 	for _, tag := range []string{DefaultResolverTag, DefaultBootstrapResolverTag} {

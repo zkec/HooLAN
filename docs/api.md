@@ -117,7 +117,6 @@ starts or stops containers.
 ```json
 {
   "key": "STABLE_KEY_FROM_CONTAINER_INVENTORY",
-  "proxy": true,
   "node_id": "",
   "qos": {
     "proxy_upload_mbps": 5,
@@ -128,8 +127,12 @@ starts or stops containers.
 }
 ```
 
-Empty `node_id` means Global Default; otherwise use an enabled visible node,
-chain or load-balancer ID. Use `proxy: false` for Direct (not `node_id: "direct"`).
+Use `node_id: "direct"` for Direct, `node_id: ""` for Global Default, or an
+enabled visible node, chain or load-balancer ID. Selecting Global Default or a
+node enables proxy routing; Direct disables interception. Newly discovered
+containers default Direct. The legacy `proxy` field remains accepted for
+existing clients and in persisted settings; it is not a separate UI control.
+`proxy: true` combined with `node_id: "direct"` is rejected.
 Omitted fields are preserved; supplied `qos` replaces all four limits. Rates are
 0 (unlimited) or 0.01–10000 Mbps. Unsupported or stale inventory cannot be edited.
 Browser mutations require the same session, origin and CSRF checks as device
@@ -140,3 +143,19 @@ It returns 200 on success; conflicting jobs return 409. Automatic discovery
 runs every ten seconds. Route changes apply through an engine reload; limits-only
 updates atomically replace nftables policing without restarting sing-box.
 See [container networking and limitations](containers.md).
+
+## Device presence
+
+`GET /api/usage` includes `device_presence`, keyed by private LAN IPv4, with
+`online` and `last_seen` fields. Presence comes from confirmed LAN neighbour
+reachability and recent transparent traffic, with a 60-second window reported
+as `device_online_window_seconds`. `device_presence_error` reports neighbour
+lookup failures; the UI then uses recent observed traffic. Presence is runtime
+state and is not restored from backups. Neighbour discovery runs every five
+seconds independently of engine ON/OFF. A cached neighbour or an idle connection
+alone is not proof of current reachability.
+
+The Usage UI sorts complete tables before paginating, remembers separate
+row-count preferences for Internet usage and LAN devices, and keeps all online
+devices together on the first page even above the selected count. The API
+continues returning complete counters; pagination does not affect accounting.

@@ -572,6 +572,7 @@ func (m *Manager) BuildConfig(nodes []subscription.Node) (*Config, error) {
 		cfg.Experimental.CacheFile = &CacheFileOptions{
 			Enabled:     true,
 			StoreFakeIP: m.opts.FakeDNS.Enabled,
+			StoreDNS:    dns != nil && dns.Optimistic != nil && dns.Optimistic.Enabled,
 			Path:        m.opts.CacheFilePath,
 		}
 	}

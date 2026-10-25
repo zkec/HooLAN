@@ -1412,7 +1412,18 @@ select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 .container-name strong { display: block; }
 .container-addresses { min-width: 10rem; }
 .container-addresses span { display: block; }
-.container-table .switch { white-space: nowrap; }
 .container-reason { max-width: 24rem; display: block; margin-top: .35rem; }
 #containers-status { color: var(--muted); margin-block: .85rem; }
 #containers-status.error { color: var(--error); padding: .75rem; border: 1px solid var(--error); border-radius: .6rem; }
+
+/* Compact presence and pagination controls use logical spacing for RTL. */
+.presence-name { display: inline-flex; align-items: center; gap: .6rem; }
+.container-name .presence-name strong { display: inline; }
+.presence-indicator { width: .5rem; height: .5rem; flex: 0 0 .5rem; border-radius: 50%; background: #22c55e; opacity: 0; }
+.presence-indicator.is-online { opacity: 1; box-shadow: 0 0 .4rem #22c55e66; animation: presence-pulse 2s ease-in-out infinite; }
+@keyframes presence-pulse { 50% { opacity: .35; box-shadow: 0 0 .15rem #22c55e33; } }
+.row-count { display: inline-flex; align-items: center; gap: .6rem; color: var(--muted); font-size: .85rem; }
+.row-count select { width: auto; min-width: 5rem; }
+.table-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+.pagination-actions { display: flex; gap: .6rem; margin-inline-start: auto; }
+@media (prefers-reduced-motion: reduce) { .presence-indicator.is-online { animation: none; } }

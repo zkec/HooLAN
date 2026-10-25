@@ -51,10 +51,19 @@ type TProxyInbound struct {
 // DNSOptions contains the modern typed DNS servers and rules used by the
 // ordinary resolver and optional FakeDNS. No legacy dns.fakeip block is emitted.
 type DNSOptions struct {
-	Servers  []any  `json:"servers,omitempty"`
-	Rules    []any  `json:"rules,omitempty"`
-	Final    string `json:"final,omitempty"`
-	Strategy string `json:"strategy,omitempty"`
+	Servers       []any                 `json:"servers,omitempty"`
+	Rules         []any                 `json:"rules,omitempty"`
+	Final         string                `json:"final,omitempty"`
+	Strategy      string                `json:"strategy,omitempty"`
+	CacheCapacity int                   `json:"cache_capacity,omitempty"`
+	Optimistic    *DNSOptimisticOptions `json:"optimistic,omitempty"`
+}
+
+// DNSOptimisticOptions serves recently expired answers while sing-box refreshes
+// them through the same DNS transport. It never selects a different resolver.
+type DNSOptimisticOptions struct {
+	Enabled bool   `json:"enabled"`
+	Timeout string `json:"timeout"`
 }
 
 type RouteOptions struct {
@@ -132,6 +141,7 @@ type ExperimentalOptions struct {
 // restart, so BuildConfig warns about that combination.
 type CacheFileOptions struct {
 	StoreFakeIP bool   `json:"store_fakeip,omitempty"`
+	StoreDNS    bool   `json:"store_dns,omitempty"`
 	Enabled     bool   `json:"enabled"`
 	Path        string `json:"path,omitempty"`
 }

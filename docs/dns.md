@@ -19,8 +19,9 @@ network discovery. Click **Save settings** to apply changes.
 
 Local and bypassed domains use Direct DNS. Other queries use tunneled DoH.
 While proxy mode is enabled, engine DNS errors, timeouts and SERVFAIL responses
-never retry through Direct DNS. The client receives a DNS error instead of
-exposing a proxied query to the direct resolver. NXDOMAIN and explicit refusals
+never retry through Direct DNS. Previously cached answers can remain available;
+an uncached query receives a DNS error instead of exposing it to the direct
+resolver. NXDOMAIN and explicit refusals
 are also preserved. This protection remains during engine reloads and crashes.
 Explicitly turning the proxy OFF sends requests straight to Direct DNS.
 Local/bypass rules and explicitly Direct devices remain intentional exceptions.
@@ -100,6 +101,36 @@ non-bypass queries fail, check the active proxy and DoH server. A DNS answer
 alone does not prove that subsequent client traffic follows the gateway.
 
 ## Cache, shutdown and recovery
+
+Split DNS enables sing-box's optimistic cache with a **one-hour** expiry window.
+Fresh cached answers return immediately. Recently expired answers can also return
+immediately while a refresh runs through the same resolver and proxy path. Answers
+older than that window require a successful lookup. This can briefly retain an
+old address; it does not freeze TTLs or enable a direct DNS fallback. DNSSEC and
+other extended queries may bypass the engine cache.
+
+If a forwarding resolver requests DNSSEC upstream, keep DNSSEC enabled and use
+that resolver's own cache and bounded background refresh as well. This covers
+queries that intentionally bypass the engine cache without removing their
+security options.
+
+DNS answers are saved in `/var/lib/hoolan/cache.db` when a cache path is configured,
+so ordinary engine restarts do not empty the working DNS cache. Writes are
+asynchronous, so the newest entries can be lost on shutdown. FakeIP mappings use
+the same file. Protect it as resolver history and keep it across upgrades.
+
+The first uncached encrypted lookup still pays the proxy and resolver round trips.
+To compare fresh and cached queries, run these twice from the gateway:
+
+```bash
+dig @127.0.0.1 -p 1054 example.com A +nocookie +noall +answer +stats
+dig @GATEWAY_IP -p 1053 example.com A +nocookie +noall +answer +stats
+```
+
+`+nocookie` makes this a normal cacheable probe. DNS cookies and DNSSEC requests
+are handled by the upstream rather than being stripped to improve a benchmark.
+An upstream dashboard's 24-hour average includes earlier slow requests and will
+not immediately reflect a configuration change.
 
 Explicitly switching the proxy OFF leaves the Go DNS listener on port 1053
 available, using Direct DNS. An unexpected engine exit or a failed reload does
