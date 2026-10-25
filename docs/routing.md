@@ -1,10 +1,11 @@
 # Routing guide
 
-[Home](../README.md) · [Documentation](../README.md#documentation) · [DNS & FakeDNS](dns.md) · [Devices](devices.md)
+[Home](../README.md) · [Documentation](../README.md#documentation) · [DNS & FakeDNS](dns.md) · [Devices](devices.md) · [Containers](containers.md)
 
 HooLAN decides which connections use a proxy, connect directly or are rejected.
 Configure the policy in **Settings → Routing & DNS**. Choose the global outbound
-in **Configurations**, and assign individual devices in **Usage → Settings**.
+in **Configurations**, assign individual devices in **Usage → Settings**, and
+choose container routes in **Containers → Settings**.
 
 ## How routing works
 
@@ -14,6 +15,7 @@ then sing-box decides where an intercepted connection should go.
 ```mermaid
 flowchart TD
   LAN[LAN client packet] --> Eligible{Eligible for interception?}
+  Container[Opted-in container connection] --> Eligible
   Eligible -->|No| Host[Host delivery or ordinary forwarding]
   Eligible -->|IPv4 TCP/UDP| TPROXY[TPROXY listener and policy route]
   TPROXY --> DNS{DNS request?}
@@ -22,7 +24,7 @@ flowchart TD
   Safety --> Custom[Custom routing rules in order]
   Custom --> Sets[Custom rule sets in order]
   Sets --> Iran[Iran preset]
-  Iran --> Device[Device route or assigned group member]
+  Iran --> Device[Device/container route or assigned group member]
   Device --> Default[Global outbound if nothing matched]
   Custom -. Matching action .-> Action[Direct / selected proxy / reject]
   Sets -. Matching action .-> Action
@@ -36,11 +38,17 @@ information and continues evaluation; it is not itself an outbound choice.
 
 The `inet proxy_tproxy` table handles prerouting at priority `mangle` (`-150`).
 This runs before destination NAT, so host services are recognized by their
-original address. Only eligible IPv4 TCP/UDP arriving on `LAN_IF` is intercepted.
+original address. Eligible IPv4 TCP/UDP arriving on `LAN_IF` is intercepted,
+along with explicitly opted-in [container endpoints](containers.md). Container
+dispatch matches both the Docker bridge and the original source IPv4 address
+before the general Docker bypass. Replies from published container services
+keep Docker's ordinary path; only container-initiated internet connections are
+intercepted.
 
 The following traffic stays outside the proxy:
 
-- Loopback and Docker bridge/veth ingress, and traffic arriving on another interface.
+- Loopback, unmanaged Docker bridge/veth ingress, and traffic arriving on an
+  interface that is neither `LAN_IF` nor a managed container bridge.
 - Addresses belonging to the host, broadcast and multicast destinations.
 - Destinations in the LAN interface's subnets, private ranges, link-local,
   loopback, CGNAT and other reserved ranges listed in the template.
@@ -76,7 +84,7 @@ For normal client connections, the generated policy has this precedence:
 | Custom routing rules | Enabled domain, domain suffix and IP CIDR rules, in displayed order | Apply the first matching action |
 | Custom rule sets | Enabled compiled sources, in displayed order | Apply the first matching action |
 | Iran preset | Enabled GeoIP/geosite matches | Apply the preset's saved action |
-| Device/group routing | Assigned device outbound or distribution listener member | Use the assigned route |
+| Device/container/group routing | Assigned source-IP outbound or distribution listener member | Use the assigned route |
 | Global default | No earlier match | Use the selected global outbound |
 
 Dedicated DNS and intercepted port-53 handling are placed ahead of ordinary

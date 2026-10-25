@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/http"
 	"hoolan/internal/engine"
 	"hoolan/internal/store"
 	"hoolan/internal/subscription"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -204,8 +204,11 @@ func (s *Service) configureDistribution() error {
 	if s.state.AutoSelect {
 		selected = engine.AutomaticFallback(all)
 	}
-	routes := copyStrings(s.state.DeviceRoutes)
+	routes, _, _, policyErr := s.endpointPoliciesLocked()
 	s.mu.RUnlock()
+	if policyErr != nil {
+		return policyErr
+	}
 	valid := map[string]bool{engine.DefaultDirect: true}
 	for _, n := range all {
 		if !n.ChainInternal {

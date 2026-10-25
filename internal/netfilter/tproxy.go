@@ -1,6 +1,6 @@
 package netfilter
 
-// Bare-metal TPROXY controller — NOT Docker.
+// Host TPROXY controller, including opt-in Docker bridge interception.
 // The Go hoolan runs as a systemd unit on Debian and owns the
 // nftables ruleset via scripts/tproxy/*.sh. This package is a thin os/exec
 // wrapper; all netlink/nft logic lives in the shell scripts so it can be
@@ -29,16 +29,17 @@ const (
 // tproxy.nft.template. Resolve them at construction so a bad install fails
 // fast instead of at first Apply().
 type Manager struct {
-	qosMu           sync.Mutex
-	fakeDNS         bool
-	qosFlowsPresent bool
-	deviceLimits    map[string]DeviceLimits
-	distribution    []engine.DistributionGroup
-	defaultGroup    string
-	deviceRoutes    map[string]string
-	applyScript     string
-	removeScript    string
-	confFile        string
+	qosMu             sync.Mutex
+	fakeDNS           bool
+	qosFlowsPresent   bool
+	deviceLimits      map[string]DeviceLimits
+	containerBindings []ContainerBinding
+	distribution      []engine.DistributionGroup
+	defaultGroup      string
+	deviceRoutes      map[string]string
+	applyScript       string
+	removeScript      string
+	confFile          string
 }
 
 // New resolves script locations relative to repo root or explicit dir.
@@ -105,6 +106,19 @@ func (m *Manager) Apply(ctx context.Context) error {
 			return fmt.Errorf("update apply.sh and tproxy.nft.template alongside the Go binary to enable distribution/QoS")
 		}
 	}
+	if len(m.containerBindings) > 0 {
+		template, err := os.ReadFile(filepath.Join(filepath.Dir(m.applyScript), "tproxy.nft.template"))
+		if err != nil {
+			return err
+		}
+		script, err := os.ReadFile(m.applyScript)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(template), "{{CONTAINER_CHAINS}}") || !strings.Contains(string(script), "HOOLAN_CONTAINERS_FILE") {
+			return fmt.Errorf("update apply.sh and tproxy.nft.template alongside the Go binary to enable containers")
+		}
+	}
 	if m.fakeDNS {
 		template, err := os.ReadFile(filepath.Join(filepath.Dir(m.applyScript), "tproxy.nft.template"))
 		if err != nil {
@@ -128,7 +142,12 @@ func (m *Manager) Apply(ctx context.Context) error {
 		return err
 	}
 	defer balanceCleanup()
-	err = m.run(ctx, m.applyScript, "PROXY_QOS_FILE="+path, "PROXY_BALANCE_FILE="+balancePath, "HOOLAN_FAKEDNS="+strconv.FormatBool(m.fakeDNS))
+	containerPath, containerCleanup, err := m.containerFile()
+	if err != nil {
+		return err
+	}
+	defer containerCleanup()
+	err = m.run(ctx, m.applyScript, "HOOLAN_CONTAINERS_FILE="+containerPath, "PROXY_QOS_FILE="+path, "PROXY_BALANCE_FILE="+balancePath, "HOOLAN_FAKEDNS="+strconv.FormatBool(m.fakeDNS))
 	if err == nil {
 		m.qosFlowsPresent = false
 	}

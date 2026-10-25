@@ -7,31 +7,21 @@ Collect evidence while the failure is present, using an affected LAN client IP:
 ```bash
 sing-box version
 sudo journalctl -u hoolan -n 100 --no-pager
-sudo bash /opt/hoolan/scripts/tproxy/diagnose.sh 192.168.3.141
+sudo bash /opt/hoolan/scripts/tproxy/diagnose.sh 192.168.x.x
 ```
-
-## DNS shows an ISP resolver while proxy mode is on
-
-Use the latest build: proxied queries must return an error if engine DNS fails,
-without retrying Direct DNS. In a forwarding resolver, use HooLAN port 1053 as
-the upstream and remove alternate/fallback resolvers for proxied clients. Check
-that the test device is not assigned Direct and no custom direct rule matches
-the tested domains. Check IPv6 and browser/OS DNS separately. See
-[DNS leak checks](dns.md#dns-leak-checks).
 
 ## Engine OFF and no internet
 
-HooLAN keeps port 1053 available when the proxy is explicitly switched OFF and uses the saved
-Direct DNS server. Check that `hoolan.service` is running and test both TCP and
-UDP DNS from the actual caller. Direct DNS must work independently of HooLAN
-and must not forward requests back into it. See [DNS checks](dns.md).
+If other DNS services uses HooLAN port 1053, restore its normal upstream before stopping
+the engine; this DNS listener stops even when FakeDNS is disabled. See
+[split DNS](dns.md).
 
-If FakeDNS was enabled, clear downstream and client caches: cached
-`198.18.0.0/15` destinations cannot use raw forwarding. New DNS queries receive
-real answers while the engine is off. See [FakeDNS recovery](dns.md#cache-shutdown-and-recovery).
+If FakeDNS was enabled, restore DNS-services's real upstream and clear its and the
+clients' caches first. Port 1053 stops with the engine; cached `198.18.0.0/15`
+destinations cannot use raw forwarding. See [FakeDNS recovery](dns.md#cache-shutdown-and-recovery).
 
-Test IPv4 forwarding, the Debian host's upstream default route, FORWARD rules and return
-routing/NAT. With clients using the Debian host as gateway, turning interception off still
+Test IPv4 forwarding, the host's upstream default route, FORWARD rules and return
+routing/NAT. With clients using the host as gateway, turning interception off still
 requires a working router. HooLAN's removal script preserves routing/NAT and
 limits; it cannot invent missing host forwarding. See [installation](installation.md).
 
@@ -58,7 +48,7 @@ sudo ss -lntup '( sport = :7892 )'
 
 TPROXY preserves the original destination IP and port. Capturing only loopback
 or port 7892 can miss it; observe client ingress and node egress. A curl started
-on the Debian host tests host output, not client interception. Established packets must
+on the host tests host's output, not client interception. Established packets must
 continue to reach their transparent socket rather than bypass interception.
 
 An ACCEPT in one nftables base chain does not override a later DROP. UFW's
@@ -100,3 +90,20 @@ offline. Avoid flushing the host's entire ruleset.
 
 References: [Linux TPROXY](https://docs.kernel.org/networking/tproxy.html),
 [IPv4 sysctls](https://docs.kernel.org/networking/ip-sysctl.html).
+
+## Container discovery or routing
+
+Check the Containers tab's discovery error and unsupported-network explanation.
+The Docker socket must be accessible to the HooLAN service, and the displayed
+bridge must exist in the host namespace. Host/shared/rootless/non-bridge and
+IPv6-enabled container networks cannot be controlled with these IPv4 rules.
+
+Install the updated `apply.sh` and `tproxy.nft.template` with the binary. A saved
+Proxy switch needs the main engine ON; Direct traffic relies on Docker's usual
+forwarding/NAT. Published-port replies and private destinations are deliberately
+excluded from proxy interception. Shared or Docker-managed DNS follows the
+resolver's route, which can differ from the container's route.
+
+See [Docker containers](containers.md) for the supported setup and settings
+persistence. Docker API errors keep the last good bindings until discovery
+succeeds; they do not remove running containers or restart Docker.

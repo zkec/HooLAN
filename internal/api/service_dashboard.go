@@ -245,6 +245,9 @@ func (s *Service) Settings() Settings {
 }
 
 func (s *Service) configureEngineRouting() error {
+	if err := s.configureContainerBindings(); err != nil {
+		return err
+	}
 	if err := s.configureDistribution(); err != nil {
 		return err
 	}
@@ -262,8 +265,11 @@ func (s *Service) configureEngineRouting() error {
 	}
 	if configurable, ok := s.cfg.Engine.(interface{ ConfigureDeviceRoutes(map[string]string) }); ok {
 		s.mu.RLock()
-		routes := copyStrings(s.state.DeviceRoutes)
+		routes, _, _, err := s.endpointPoliciesLocked()
 		s.mu.RUnlock()
+		if err != nil {
+			return err
+		}
 		configurable.ConfigureDeviceRoutes(routes)
 	}
 	settings := s.Settings()
@@ -596,8 +602,10 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, _ 
 			}
 		}
 	}
+	oldContainers := s.state.ContainerSettings
 	oldRoutes := s.state.DeviceRoutes
 	s.state.DeviceRoutes = withoutRoutes(oldRoutes, invalid)
+	s.state.ContainerSettings = remapContainerNodes(oldContainers, invalid, "", "")
 	oldAuto, oldSelected := s.state.AutoSelect, s.state.SelectedNodeID
 	if invalid[s.state.SelectedNodeID] {
 		s.state.AutoSelect = true
@@ -626,6 +634,7 @@ func (s *Service) refreshSources(ctx context.Context, sources []Subscription, _ 
 	if err != nil {
 		s.state.Subscriptions = previous
 		s.state.DeviceRoutes = oldRoutes
+		s.state.ContainerSettings = oldContainers
 		s.state.AutoSelect = oldAuto
 		s.state.SelectedNodeID = oldSelected
 		err = errors.Join(err, s.cfg.Store.ReplaceRecords(before))

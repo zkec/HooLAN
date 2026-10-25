@@ -11,7 +11,7 @@
     tableSorts: new Map(), balanceMembers: new Set(), usageSnapshot: null, speedResults: new Map(), telegramLoaded: false, qrLoad: null, qrGeneration: 0, groupSelections: new Map(), groupOpen: new Map(), editingNode: null, chainEditingID: null, chainExistingNodes: [], chainHops: [], csrf: '', authenticated: false, exiting: false, busy: false, offline: false,
     status: null, nodes: [], subscriptions: [], selection: {}, settings: null,
     rulesDirty: false, rulesLoaded: false, settingsDirty: false, jobRunning: false, lastJob: null, pollTimer: null,
-    deviceSnapshot: null, inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
+    containerSnapshot: null, deviceSnapshot: null, inventoryAt: 0, inventoryKey: '', source: null, logWanted: false,
     lastLogID: 0, lastLogTime: 0, logAuthCheck: false
   };
 
@@ -47,20 +47,21 @@
 
   function clearPrivateView() {
     stopLogs();
-    state.tableSorts.clear(); state.balanceMembers.clear(); state.usageSnapshot = null; state.deviceSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
+    state.tableSorts.clear(); state.balanceMembers.clear(); state.usageSnapshot = null; state.deviceSnapshot = null; state.containerSnapshot = null; state.speedResults.clear(); state.groupOpen.clear();
     state.nodes = [];
     state.subscriptions = [];
     state.status = null;
     state.settings = null;
     state.selection = {};
     state.csrf = '';
-    ['subscriptions-list', 'manual-group', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes', 'usage-devices', 'balance-members'].forEach(function (id) { text($(id), ''); });
+    ['subscriptions-list', 'manual-group', 'log-lines', 'toasts', 'job', 'job-warnings-list', 'routing-rule-list', 'rule-source-list', 'usage-nodes', 'usage-devices', 'containers-list', 'containers-status', 'balance-members'].forEach(function (id) { text($(id), ''); });
     ['stat-engine', 'stat-rules', 'stat-nodes', 'stat-active'].forEach(function (id) { text($(id), '—'); });
     ['stat-pid', 'stat-rules-err', 'stat-nodes-sub', 'stat-active-sub'].forEach(function (id) { text($(id), ''); });
     state.groupSelections.clear(); state.chainHops = []; state.chainExistingNodes = []; state.chainEditingID = null;
     if ($('qr-dialog').open) $('qr-dialog').close();
     if ($('node-editor').open) $('node-editor').close();
     if ($('device-settings').open) $('device-settings').close();
+    if ($('container-settings').open) $('container-settings').close();
     ['balance-form', 'telegram-form', 'subscription-form', 'node-form', 'settings-form', 'rules-form', 'chain-builder-form'].forEach(function (id) { $(id).reset(); });
   }
   function signInRequired() {
@@ -376,6 +377,7 @@
   async function reconcile() {
     await fetchStatus();
     await fetchInventory();
+    if (window.location.hash === '#containers') renderContainers(await call('GET', '/api/containers'), true);
   }
   function schedulePoll(delay) {
     window.clearTimeout(state.pollTimer);
@@ -392,6 +394,7 @@
       if (state.jobRunning || Date.now() - state.inventoryAt > 15000) await fetchInventory();
       if (!state.telegramLoaded) await loadTelegram();
       if (!state.settings) renderSettings(await call('GET', '/api/settings'));
+      if (window.location.hash === '#containers') renderContainers(await call('GET', '/api/containers'));
       if (window.location.hash === '#usage') renderUsage(await call('GET', '/api/usage'));
       if (state.rulesLoaded || window.location.hash === '#settings') renderRules(await call('GET', '/api/rules'));
     } catch (error) {
@@ -451,7 +454,7 @@
       if (active && focus) tab.focus();
     });
     window.history.replaceState(null, '', '#' + name);
-    if (name === 'usage' && state.authenticated) schedulePoll(100);
+    if ((name === 'usage' || name === 'containers') && state.authenticated) schedulePoll(100);
   }
 
   function stopLogs() {
@@ -737,6 +740,7 @@
   }
   function wireBatchEvents() {
     wireDeviceSettings();
+    wireContainerSettings();
     document.addEventListener('change', function (event) {
       var target = event.target, id = target.dataset.selectNode, group = target.dataset.selectGroup;
       if (id) { var selected = groupSelection(target.dataset.group); if (target.checked) selected.add(id); else selected.delete(id); }
@@ -1100,6 +1104,7 @@
     text($('device-qos-status'), response.usage.qos_error ? 'QoS classification unavailable; unclassified connections use the stricter limit.' : '');
     var values = response.usage.devices || {}, aliases = response.device_aliases || {}, routes = response.device_routes || {}, limits = response.device_limits || {};
     var ips = Array.from(new Set(Object.keys(values).concat(Object.keys(aliases), Object.keys(routes), Object.keys(limits))));
+    ips = ips.filter(function (ip) { return !(response.container_ips || []).includes(ip); });
     if (!ips.length) { list.appendChild(element('p', 'muted', 'No LAN devices observed yet. Use the internet through the proxy to populate this list.')); return; }
     var table = element('table', 'node-table device-table'), header = element('tr'), head = element('thead'), body = element('tbody');
     ['Device IP', 'Device name', 'Upload', 'Download', 'Route through', 'Speed set', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
@@ -1123,6 +1128,94 @@
     });
     sortableTable(header, body, 'devices', ['asc', 'asc', 'desc', 'desc', 'asc', 'asc', null], {column: 3, descending: true});
     list.appendChild(table); updateControls();
+  }
+
+  function containerSwitch(key, checked, unavailable) {
+    var label = element('label', 'switch'), input = document.createElement('input');
+    input.type = 'checkbox'; input.checked = checked; input.setAttribute('role', 'switch');
+    input.setAttribute('aria-label', 'Route through proxy'); input.dataset.containerToggle = key;
+    input.dataset.mutation = ''; input.dataset.job = ''; input.dataset.unavailable = unavailable ? 'true' : 'false';
+    label.appendChild(input); var track = element('span', 'switch-track'); track.setAttribute('aria-hidden', 'true');
+    label.appendChild(track); label.appendChild(element('span', '', checked ? 'On' : 'Off')); return label;
+  }
+  function renderContainers(response, force) {
+    if (state.busy && !force) return;
+    state.containerSnapshot = response;
+    var list = $('containers-list');
+    var focused = list.contains(document.activeElement) ? document.activeElement.dataset : {}, focusTarget = null;
+    text(list, '');
+    text($('containers-status'), response.error || (!response.enabled ? 'Docker discovery is disabled.' : 'Last discovery: ' + ago(response.updated_at)));
+    $('containers-status').classList.toggle('error', !!response.error);
+    $('containers-refresh').dataset.unavailable = response.enabled ? 'false' : 'true';
+    var items = response.containers || [];
+    if (!items.length) { list.appendChild(element('p', 'table-empty', 'No Docker containers found.')); updateControls(); return; }
+    var table = element('table', 'node-table container-table'), header = element('tr'), head = element('thead'), body = element('tbody');
+    ['Container', 'Image', 'Status', 'IP address', 'Proxy', 'Route through', 'Speed set', ''].forEach(function (name) { var th = element('th', '', name); th.scope = 'col'; header.appendChild(th); });
+    head.appendChild(header); table.appendChild(head); table.appendChild(body);
+    var nodes = new Map(state.nodes.map(function (n) {return [n.id,n];}));
+    items.forEach(function (item) {
+      var row = element('tr'), policy = item.settings || {}, limits = policy.qos || {}, blocked = !item.supported || !!response.error;
+      var name = element('td', 'container-name'), label = element('strong', '', item.name); label.dataset.noI18n = ''; name.appendChild(label);
+      if (item.reason) name.appendChild(element('span', 'muted small container-reason', item.reason)); row.appendChild(name);
+      var image = element('td', 'node-server', item.image); image.dataset.noI18n = ''; row.appendChild(image);
+      var status = element('td', '', item.state); status.title = item.status; row.appendChild(status);
+      var ips = element('td', 'node-server container-addresses');
+      (item.bindings || []).forEach(function (binding) {var address = element('span', '', binding.ip); address.dir = 'ltr'; address.dataset.noI18n = ''; address.title = binding.network; ips.appendChild(address);});
+      if (!ips.children.length) text(ips, '—'); row.appendChild(ips);
+      var proxy = element('td'), toggle = containerSwitch(item.key, !!policy.proxy, blocked); proxy.appendChild(toggle); row.appendChild(proxy);
+      if (focused.containerToggle === item.key) focusTarget = toggle.children[0];
+      var node = nodes.get(policy.node_id), route = element('td', 'device-route-label', !policy.proxy ? 'Direct' : !policy.node_id ? 'Global Default' : node && node.enabled ? node.tag || node.server : 'Unavailable node (using Global Default)');
+      if (policy.proxy && node && node.enabled) route.dataset.noI18n = ''; row.appendChild(route);
+      var speed = element('td'); speed.appendChild(deviceLimitSummary(limits)); row.appendChild(speed);
+      var action = element('td', 'device-actions'), button = element('button', 'button subtle', 'Settings'); button.type = 'button';
+      button.dataset.containerSettings = item.key; button.dataset.mutation = ''; button.dataset.job = ''; button.dataset.unavailable = blocked ? 'true' : 'false';
+      action.appendChild(button); row.appendChild(action);
+      if (focused.containerSettings === item.key) focusTarget = button;
+      row.sortKey = item.key; row.sortValues = [item.name,item.image,item.state,(item.bindings || []).map(function(b) {return b.ip;}).join(', '),policy.proxy ? 1 : 0,route.textContent,
+        qosFields.map(function (field) {return Number(limits[field]) > 0 ? Number(limits[field]) : Infinity;})];
+      body.appendChild(row);
+    });
+    sortableTable(header, body, 'containers', ['asc','asc','asc','asc','desc','asc','asc',null], {column:0,descending:false});
+    if (focused.sortTable === 'containers' && header.children[Number(focused.sortColumn)]) focusTarget = header.children[Number(focused.sortColumn)].children[0];
+    list.appendChild(table); updateControls(); if (focusTarget && !focusTarget.disabled) focusTarget.focus();
+  }
+  function containerProxyControls() { $('container-route-field').hidden = !$('container-use-proxy').checked; }
+  function openContainerSettings(key) {
+    var item = (state.containerSnapshot.containers || []).find(function(c) {return c.key === key;}); if (!item || !item.supported) return;
+    var dialog = $('container-settings'), policy = item.settings || {}, limits = policy.qos || {};
+    dialog.dataset.key = key; dialog.dataset.route = policy.node_id || ''; dialog.dataset.proxy = String(!!policy.proxy); text($('container-settings-ip'), item.name); text($('container-settings-error'), '');
+    $('container-use-proxy').checked = !!policy.proxy; deviceRouteOptions($('container-route'), policy.node_id || '', true);
+    qosFields.forEach(function(field) {$('container-' + field).value = limits[field] || '';});
+    containerProxyControls(); dialog.showModal(); updateControls();
+  }
+  function wireContainerSettings() {
+    $('containers-refresh').addEventListener('click', function() { mutate('Refresh containers', async function() {await call('POST','/api/containers/refresh');}); });
+    $('containers-list').addEventListener('click', function(event) {var button = event.target.closest('[data-container-settings]'); if (button && !button.disabled) openContainerSettings(button.dataset.containerSettings);});
+    $('containers-list').addEventListener('change', function(event) {
+      var input = event.target.closest('[data-container-toggle]'); if (!input || input.disabled) return;
+      var enabled = input.checked;
+      mutate('Container routing', async function() {await call('PUT','/api/containers',{key:input.dataset.containerToggle,proxy:enabled}); toast('Container settings saved and applied.', 'ok');});
+    });
+    $('container-use-proxy').addEventListener('change', containerProxyControls);
+    $('container-reset-limits').addEventListener('click', function() {qosFields.forEach(function(field) {$('container-' + field).value = '';});});
+    $('container-settings-cancel').addEventListener('click', function() {$('container-settings').close();});
+    $('container-settings').addEventListener('cancel', function(event) {if (state.busy) event.preventDefault();});
+    $('container-settings').addEventListener('close', function() {
+      var key = $('container-settings').dataset.key; delete $('container-settings').dataset.key; delete $('container-settings').dataset.route; delete $('container-settings').dataset.proxy; $('container-settings-form').reset();
+      var button = Array.from($('containers-list').querySelectorAll('[data-container-settings]')).find(function(b) {return b.dataset.containerSettings === key;}); if (button) button.focus();
+    });
+    $('container-settings-form').addEventListener('submit', function(event) {
+      event.preventDefault(); var dialog = $('container-settings'); if (!dialog.dataset.key) return;
+      var payload = {key:dialog.dataset.key,qos:{}};
+      if (String($('container-use-proxy').checked) !== dialog.dataset.proxy) payload.proxy = $('container-use-proxy').checked;
+      if ($('container-route').value !== dialog.dataset.route) payload.node_id = $('container-route').value;
+      qosFields.forEach(function(field) {payload.qos[field] = Number($('container-' + field).value);});
+      mutate('Save container settings', async function() {
+        text($('container-settings-error'), '');
+        try {await call('PUT','/api/containers',payload);} catch(error) {text($('container-settings-error'),error.message); throw error;}
+        dialog.close(); toast('Container settings saved and applied.', 'ok');
+      });
+    });
   }
 
   function ruleField(row, label, name, value, choices) {

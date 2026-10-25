@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"hoolan/internal/api"
+	"hoolan/internal/docker"
 	"hoolan/internal/engine"
 	"hoolan/internal/logstream"
 	"hoolan/internal/netfilter"
@@ -59,6 +60,7 @@ type config struct {
 	cachePath     string
 	singBox       string
 	scriptsDir    string
+	dockerSocket  string
 	subs          repeatable
 	clashAPI      string
 	clashSecret   string
@@ -86,6 +88,11 @@ func main() {
 
 func parseFlags() config {
 	var cfg config
+	dockerSocket, present := os.LookupEnv("HOOLAN_DOCKER_SOCKET")
+	if !present {
+		dockerSocket = "/var/run/docker.sock"
+	}
+	flag.StringVar(&cfg.dockerSocket, "docker-socket", dockerSocket, "local Docker Engine Unix socket (env HOOLAN_DOCKER_SOCKET); empty disables container management")
 	flag.StringVar(&cfg.listen, "listen", ":8080", "HTTP listen address for the API")
 	flag.StringVar(&cfg.token, "token", os.Getenv("HOOLAN_TOKEN"),
 		"API bearer token and browser login token (env HOOLAN_TOKEN); empty disables auth")
@@ -194,7 +201,17 @@ func run(cfg config, log *slog.Logger) error {
 		return fmt.Errorf("tester: %w", err)
 	}
 
+	dockerClient, err := docker.New(cfg.dockerSocket)
+	if err != nil {
+		return err
+	}
+	defer dockerClient.Close()
+	var inventory api.ContainerInventory
+	if dockerClient != nil {
+		inventory = dockerClient
+	}
 	svc, err := api.New(api.Config{
+		Docker:           inventory,
 		Store:            nodeStore,
 		Engine:           eng,
 		Firewall:         fw,

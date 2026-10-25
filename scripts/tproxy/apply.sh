@@ -92,12 +92,13 @@ fi
 # Only the Go manager supplies this mode-0600, generated fragment. Standalone
 # application leaves the independent QoS table unchanged.
 QOS_RENDER_TMP="$(mktemp "$RUNTIME_DIR/qos-render.XXXXXX")"
-for fragment in "${PROXY_QOS_FILE:-}" "${PROXY_BALANCE_FILE:-}"; do
+for fragment in "${PROXY_QOS_FILE:-}" "${PROXY_BALANCE_FILE:-}" "${HOOLAN_CONTAINERS_FILE:-}"; do
   [[ -z "$fragment" || -f "$fragment" ]] || { echo "generated firewall fragment missing" >&2; rm -f "$QOS_RENDER_TMP"; exit 1; }
 done
-awk -v fakeguard="$FAKEDNS_GUARD" -v qos="${PROXY_QOS_FILE:-}" -v balance="${PROXY_BALANCE_FILE:-}" '
+awk -v fakeguard="$FAKEDNS_GUARD" -v qos="${PROXY_QOS_FILE:-}" -v balance="${PROXY_BALANCE_FILE:-}" -v containers="${HOOLAN_CONTAINERS_FILE:-}" '
  /^[[:space:]]*{{FAKEDNS_GUARD}}$/ {print fakeguard; next}
  /^[[:space:]]*{{QOS_TABLE}}$/ { if (qos!="") {while ((getline line < qos)>0) print line; close(qos)}; next }
+ /^[[:space:]]*{{CONTAINER_CHAINS}}$/ { if (containers!="") {while ((getline line < containers)>0) print line; close(containers)} else {print "chain container_dispatch {}"}; next }
  /^[[:space:]]*{{BALANCE_CHAINS}}$/ { if (balance!="") {while ((getline line < balance)>0) print line; close(balance)} else {print "chain balance_dispatch {}"}; next }
  { print }
 ' "$RENDER_TMP" > "$QOS_RENDER_TMP"

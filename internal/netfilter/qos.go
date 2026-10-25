@@ -121,6 +121,9 @@ func RenderDeviceLimits(lan string, limits map[string]DeviceLimits) ([]byte, err
 // distinguishes delivery to sing-box, NOT its eventual outbound. Flow sets are
 // populated from Clash metadata. Unclassified flows use the stricter bucket.
 func renderDeviceLimits(lan, mark string, limits map[string]DeviceLimits) ([]byte, error) {
+	return renderEndpointLimits(lan, mark, limits, nil)
+}
+func renderEndpointLimits(lan, mark string, limits map[string]DeviceLimits, bindings []ContainerBinding) ([]byte, error) {
 	if err := ValidateDeviceLimits(limits); err != nil {
 		return nil, err
 	}
@@ -137,6 +140,24 @@ func renderDeviceLimits(lan, mark string, limits map[string]DeviceLimits) ([]byt
 		return nil, fmt.Errorf("invalid TPROXY_FWMARK")
 	}
 	mark = fmt.Sprintf("0x%x", parsed)
+	interfaces := map[string]bool{lan: true}
+	owners := map[string]string{}
+	for _, endpoint := range bindings {
+		if !interfacePattern.MatchString(endpoint.Bridge) {
+			return nil, fmt.Errorf("invalid container interface")
+		}
+		interfaces[endpoint.Bridge] = true
+		owners[endpoint.IP] = endpoint.Owner
+	}
+	interfaceNames := make([]string, 0, len(interfaces))
+	for name := range interfaces {
+		interfaceNames = append(interfaceNames, strconv.Quote(name))
+	}
+	sort.Strings(interfaceNames)
+	interfaceMatch := strconv.Quote(lan)
+	if len(interfaceNames) > 1 {
+		interfaceMatch = "{ " + strings.Join(interfaceNames, ", ") + " }"
+	}
 	var b strings.Builder
 	b.WriteString("add table inet proxy_qos\ndelete table inet proxy_qos\n")
 	limits = copyLimits(limits)
@@ -155,6 +176,26 @@ func renderDeviceLimits(lan, mark string, limits map[string]DeviceLimits) ([]byt
 		ips = append(ips, ip)
 	}
 	sort.Strings(ips)
+	// Multiple endpoints belonging to one container share one rate bucket.
+	representatives := []string{}
+	groupByOwner := map[string]int{}
+	groupByIP := map[string]int{}
+	for _, ip := range ips {
+		owner := owners[ip]
+		if owner == "" {
+			owner = "device:" + ip
+		}
+		group, ok := groupByOwner[owner]
+		if !ok {
+			group = len(representatives)
+			groupByOwner[owner] = group
+			representatives = append(representatives, ip)
+		}
+		if limits[representatives[group]] != limits[ip] {
+			return nil, fmt.Errorf("inconsistent container endpoint limits")
+		}
+		groupByIP[ip] = group
+	}
 	// Verdict-map dispatch avoids scanning every device for each packet.
 	for _, direction := range []string{"up", "down"} {
 		fmt.Fprintf(&b, " map devices_%s {\n  type ipv4_addr : verdict;\n  elements = { ", direction)
@@ -162,11 +203,11 @@ func renderDeviceLimits(lan, mark string, limits map[string]DeviceLimits) ([]byt
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			fmt.Fprintf(&b, "%s : jump device_%d_%s", ip, i, direction)
+			fmt.Fprintf(&b, "%s : jump device_%d_%s", ip, groupByIP[ip], direction)
 		}
 		b.WriteString(" }\n }\n")
 	}
-	for i, ip := range ips {
+	for i, ip := range representatives {
 		l := limits[ip]
 		for _, d := range []struct {
 			name, tuple, forwarded string
@@ -213,20 +254,20 @@ func renderDeviceLimits(lan, mark string, limits map[string]DeviceLimits) ([]byt
 	// Private destinations are not excluded: routed LAN traffic uses Direct.
 	fmt.Fprintf(&b, ` chain upload {
   type filter hook prerouting priority -149; policy accept;
-  iifname != %q return
+  iifname != %s return
   meta nfproto != ipv4 return
   fib daddr type { local, broadcast, multicast } return
   ip saddr vmap @devices_up
  }
  chain download {
   type filter hook postrouting priority 99; policy accept;
-  oifname != %q return
+  oifname != %s return
   meta nfproto != ipv4 return
   fib saddr type local return
   ip daddr vmap @devices_down
  }
 }
-`, lan, lan)
+`, interfaceMatch, interfaceMatch)
 	return []byte(b.String()), nil
 }
 func (m *Manager) qosFile(limits map[string]DeviceLimits) (string, func(), error) {
@@ -238,7 +279,7 @@ func (m *Manager) qosFile(limits map[string]DeviceLimits) (string, func(), error
 	if err != nil {
 		return "", func() {}, err
 	}
-	raw, err := renderDeviceLimits(lan, mark, limits)
+	raw, err := renderEndpointLimits(lan, mark, limits, m.containerBindings)
 	if err != nil {
 		return "", func() {}, err
 	}

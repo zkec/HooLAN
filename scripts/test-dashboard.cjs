@@ -9,7 +9,7 @@ function checkDashboard(source) {
     querySelectorAll() { return []; }, addEventListener(name, fn) { this.events[name] = fn; }
   };
   class Element {
-    constructor(tag, value = '') { this.tag = tag; this.children = []; this.dataset = {}; this.events = {}; this.value = ''; this.scrollTop = 0; this._text = value; this.attrs = {}; }
+    constructor(tag, value = '') { this.tag = tag; this.children = []; this.dataset = {}; this.events = {}; this.value = ''; this.scrollTop = 0; this._text = value; this.attrs = {}; this.classList = {toggle() {}}; }
     set textContent(value) { this._text = value; this.children = []; }
     get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
     get rows() { return this.children.flatMap(c => c.tag === 'tr' ? [c] : c.rows); }
@@ -17,6 +17,9 @@ function checkDashboard(source) {
     setAttribute(name, value) { this.attrs[name] = value; }
     addEventListener(name, fn) { this.events[name] = fn; }
     focus() { document.activeElement = this; }
+    showModal() {this.open = true;}
+    close() {this.open = false;}
+    reset() {}
     contains(node) { return node === this || this.children.some(c => c.contains(node)); }
     querySelectorAll(selector) {
       const match = node => selector[0] === '.' ? (node.className || '').split(' ').includes(selector.slice(1)) :
@@ -27,7 +30,7 @@ function checkDashboard(source) {
   const window = {};
   const entry = '  init();\n}());';
   assert(source.includes(entry), 'dashboard entry point changed; update fixture');
-  eval(source.replace(entry, '  window.test = {state:state, nodeTable:makeNodeTable, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls, groupIDs:groupActionIDs};\n}());'));
+  eval(source.replace(entry, '  window.test = {state:state, nodeTable:makeNodeTable, balanceSelection:balanceSelection, picker:renderBalancePicker, filter:filterBalancePicker, wire:wireBatchEvents, usage:renderUsage, devices:renderDevices, containers:renderContainers, containerEditor:openContainerSettings, wireContainers:wireContainerSettings, containerProxy:containerProxyControls, limits:deviceLimitSummary, settings:renderSettings, fakeControls:updateFakeDNSControls, groupIDs:groupActionIDs};\n}());'));
   const app = window.test, state = app.state;
   app.settings({dns_server:'9.9.9.9', iran_bypass:true, fake_dns:{enabled:true,listen:'192.168.3.5'}});
   assert(document.getElementById('fakedns-enabled').checked && !document.getElementById('direct-dns').disabled, 'FakeDNS form not rendered');
@@ -143,6 +146,29 @@ function checkDashboard(source) {
   state.groupSelections.set('manual',new Set(['two']));
   assert(app.groupIDs('manual','delete').join(',') === 'two' && app.groupIDs('manual','ping').join(',') === 'two', 'checked rows must narrow actions');
   assert(app.groupIDs('empty','delete').length === 0, 'empty group action');
+  // Container discovery uses switches and a separate four-way editor.
+  const key = 'a'.repeat(64);
+  const containerResponse = {enabled:true,updated_at:'2026-01-01T00:00:00Z',error:'',containers:[
+    {key,name:'Example',image:'image:latest',state:'running',supported:true,bindings:[{ip:'172.18.0.3',network:'stack'}],settings:{proxy:true,node_id:'one',qos:{proxy_upload_mbps:5}}},
+    {key:'b'.repeat(64),name:'Host service',image:'host:latest',state:'running',supported:false,reason:'Host, shared and isolated network modes cannot be controlled separately',bindings:[],settings:{}}
+  ]};
+  app.containers(containerResponse);
+  const containerTable = document.getElementById('containers-list').children[0];
+  assert(containerTable.rows.length === 3, 'container inventory lost rows');
+  const proxySwitch = containerTable.rows[1].children[4].children[0].children[0];
+  assert(proxySwitch.attrs.role === 'switch' && proxySwitch.checked && proxySwitch.dataset.containerToggle === key, 'container proxy switch missing');
+  assert(containerTable.rows[2].children[7].children[0].dataset.unavailable === 'true', 'unsupported container editable');
+  assert(containerTable.rows[1].children[6].textContent.includes('5 Mbps'), 'container limits not shown');
+  app.containerEditor(key);
+  assert(document.getElementById('container-settings').open && document.getElementById('container-proxy_upload_mbps').value === 5, 'container editor did not load limits');
+  assert(document.getElementById('container-route').value === 'one', 'container pin lost');
+  document.getElementById('container-use-proxy').checked = false; app.containerProxy();
+  assert(document.getElementById('container-route-field').hidden, 'direct container still shows proxy selector');
+  app.wireContainers();
+  document.getElementById('container-reset-limits').events.click();
+  assert(['proxy_upload_mbps','proxy_download_mbps','direct_upload_mbps','direct_download_mbps'].every(field => document.getElementById('container-'+field).value === ''), 'container reset must clear all four fields');
+  app.devices({...response,container_ips:['192.168.3.2']}, true);
+  assert(!document.getElementById('usage-devices').textContent.includes('192.168.3.2'), 'container was also shown as a LAN device');
   assert(app.limits({}).textContent === 'Unlimited', 'zero limits must be unlimited');
   const limits = app.limits({proxy_download_mbps:12.5,direct_upload_mbps:1});
   assert(limits.children.length === 4 && limits.textContent.includes('12.5 Mbps'), 'four-way fractional limits');

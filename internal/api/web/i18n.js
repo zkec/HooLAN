@@ -2,6 +2,42 @@
 (function () {
   "use strict";
   var fa = {
+  "Containers": "کانتینرها",
+  "Docker containers": "کانتینرهای Docker",
+  "Container": "کانتینر",
+  "Image": "ایمیج",
+  "Status": "وضعیت",
+  "IP address": "نشانی IP",
+  "Container settings": "تنظیمات کانتینر",
+  "Refresh containers": "بازخوانی کانتینرها",
+  "Container routing": "مسیریابی کانتینر",
+  "Save container settings": "ذخیرهٔ تنظیمات کانتینر",
+  "Container settings saved and applied.": "تنظیمات کانتینر ذخیره و اعمال شد.",
+  "Route through proxy": "عبور از پروکسی",
+  "Docker discovery is disabled.": "شناسایی Docker غیرفعال است.",
+  "No Docker containers found.": "کانتینر Docker پیدا نشد.",
+  "running": "در حال اجرا",
+  "exited": "متوقف",
+  "paused": "مکث‌شده",
+  "created": "ایجادشده",
+  "restarting": "در حال راه‌اندازی مجدد",
+  "dead": "از کار افتاده",
+  "Automatically discovered every 10 seconds. Enable proxy routing for a container or keep its normal direct connection. Local services and published-port replies keep Docker's normal routing.": "هر ۱۰ ثانیه به‌صورت خودکار شناسایی می‌شوند. پروکسی را برای کانتینر فعال کنید یا اتصال مستقیم معمول آن را نگه دارید. سرویس‌های محلی و پاسخ درگاه‌های منتشرشده مسیر معمول Docker را حفظ می‌کنند.",
+  "Controls support running containers on local IPv4 bridge networks. Proxy routing requires the engine to be on. Speed limits also apply when it is off.": "کنترل‌ها برای کانتینرهای در حال اجرا روی شبکهٔ bridge محلی IPv4 هستند. عبور از پروکسی به موتور روشن نیاز دارد. محدودیت سرعت هنگام خاموش بودن موتور هم اعمال می‌شود.",
+  "Blank or 0 means unlimited. All IPv4 endpoints of this container share these four limits. Reset clears the fields; save to apply.": "خالی یا صفر یعنی نامحدود. تمام نشانی‌های IPv4 این کانتینر این چهار محدودیت را به‌صورت مشترک استفاده می‌کنند. بازنشانی فیلدها را پاک می‌کند؛ برای اعمال ذخیره کنید.",
+  "Settings follow the Compose service or container name when its IP changes. Container DNS handled by Docker or a shared resolver follows that resolver's routing.": "با تغییر IP، تنظیمات بر اساس سرویس Compose یا نام کانتینر حفظ می‌شوند. DNS کانتینر که توسط Docker یا حل‌کنندهٔ مشترک پردازش می‌شود، مسیر همان حل‌کننده را دنبال می‌کند.",
+  "Rootless Docker does not expose an interceptable host bridge": "Docker بدون دسترسی ریشه، bridge قابل رهگیری روی میزبان ندارد",
+  "Container is not running": "کانتینر در حال اجرا نیست",
+  "Host, shared and isolated network modes cannot be controlled separately": "حالت‌های شبکهٔ host، مشترک و ایزوله را نمی‌توان مستقل کنترل کرد",
+  "Only local IPv4 bridge networks are supported": "فقط شبکه‌های bridge محلی IPv4 پشتیبانی می‌شوند",
+  "Disable container IPv6 to prevent traffic bypassing IPv4 controls": "برای جلوگیری از دور زدن کنترل‌های IPv4، IPv6 کانتینر را غیرفعال کنید",
+  "Container needs a private bridge IPv4 address": "کانتینر به نشانی IPv4 خصوصی روی bridge نیاز دارد",
+  "Invalid Docker bridge interface": "رابط bridge در Docker نامعتبر است",
+  "Docker bridge is not present in the gateway's network namespace": "رابط bridge در فضای شبکهٔ دروازه وجود ندارد",
+  "No bridge IPv4 endpoint available": "نشانی IPv4 روی bridge در دسترس نیست",
+  "Ambiguous container identity": "شناسهٔ کانتینر مبهم است",
+  "Bridge IP is shared by multiple containers": "نشانی IP روی bridge بین چند کانتینر مشترک است",
+
   "DNS listens on port 1053 (TCP/UDP). Proxied queries never fall back to Direct DNS. Turning the proxy off uses Direct DNS.": "DNS روی درگاه ۱۰۵۳ با TCP و UDP پاسخ می‌دهد. پرس‌وجوهای پروکسی‌شده هرگز به DNS مستقیم برنمی‌گردند. با خاموش کردن پروکسی، DNS مستقیم استفاده می‌شود.",
   "Use virtual IP addresses for proxied domains.": "برای دامنه‌های پروکسی‌شده از نشانی IP مجازی استفاده کنید.",
   "Sort ascending": "مرتب‌سازی صعودی",
@@ -406,6 +442,7 @@
 };
   var originals = new WeakMap(), attributes = new WeakMap();
   var patterns = [
+ [/^Last discovery: (.*)$/, 'آخرین شناسایی: $1'],
       [/^(\d+) configurations saved\.$/, '$1 پیکربندی ذخیره شد.'],
       [/^(\d+)\/(\d+) tested \((\d+)%\)$/, '$1 از $2 آزمایش‌شده ($3٪)'],
       [/^(\d+) members$/, '$1 عضو'], [/^Process (\d+)$/, 'فرایند $1'], [/^(\d+) enabled$/, '$1 فعال'], [/^(\d+) healthy$/, '$1 سالم'],
@@ -421,7 +458,7 @@
       [/^(.*) \(disabled; Global Default\)$/, '$1 (غیرفعال؛ پیش‌فرض عمومی)'],
       [/^Delete (\d+) selected configurations\? Shared configurations are removed from every group\. Deleting the active config switches to Auto; deleting all configs stops the proxy\. Subscription refresh may reimport provider nodes\.$/, 'آیا $1 پیکربندی انتخاب‌شده حذف شود؟ پیکربندی‌های مشترک از همهٔ گروه‌ها حذف می‌شوند. حذف پیکربندی فعال، انتخاب را خودکار می‌کند؛ حذف همهٔ پیکربندی‌ها پروکسی را متوقف می‌کند. تازه‌سازی اشتراک ممکن است گره‌های ارائه‌دهنده را دوباره وارد کند.']
     ];
-  var messages = ['Remove subscription', 'Create Load Balancer', 'Save device limit', 'Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
+  var messages = ['Refresh containers', 'Container routing', 'Save container settings', 'Remove subscription', 'Create Load Balancer', 'Save device limit', 'Telegram test', 'Speed test', 'Restore backup', 'Active node health check', 'Save notifications', 'QR Code', 'Latency test', 'Subscription refresh', 'Background task', 'Save device name', 'Save device route', 'Edit configuration', 'Edit chain', 'Save chain', 'Start task', 'Load dashboard', 'Refresh status'];
   function translate(value) {
     if (document.documentElement.lang !== 'fa' || typeof value !== 'string') return value;
     var trimmed = value.trim();

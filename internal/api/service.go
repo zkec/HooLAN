@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"hoolan/internal/docker"
 	"hoolan/internal/engine"
 	"hoolan/internal/netfilter"
 	"hoolan/internal/store"
@@ -66,6 +67,8 @@ type Selector interface {
 
 // Config wires the service's dependencies.
 type Config struct {
+	Docker ContainerInventory
+
 	NotificationClient *http.Client
 
 	Store    *store.Store
@@ -97,6 +100,12 @@ type Config struct {
 
 // Service holds runtime state for the API.
 type Service struct {
+	dockerMu         sync.Mutex
+	containers       []docker.Container
+	containerUpdated time.Time
+	containerError   string
+	containerStarted bool
+
 	notifications        chan string
 	notificationsStarted bool
 	telegramError        string
@@ -144,6 +153,8 @@ type Service struct {
 
 // State is the persisted operator intent.
 type State struct {
+	ContainerSettings map[string]ContainerSettings `json:"container_settings,omitempty"`
+
 	Telegram TelegramSettings `json:"telegram"`
 
 	DeviceLimits           map[string]netfilter.DeviceLimits `json:"device_limits,omitempty"`
@@ -250,6 +261,20 @@ func New(cfg Config) (*Service, error) {
 		st = State{AutoSelect: true}
 	}
 	s.state = st
+	if err := validateContainerSettings(st.ContainerSettings); err != nil {
+		cancel()
+		return nil, fmt.Errorf("container settings: %w", err)
+	}
+	if cfg.Docker != nil {
+		discoverCtx, discoverCancel := context.WithTimeout(ctx, 10*time.Second)
+		s.containers, err = cfg.Docker.List(discoverCtx)
+		discoverCancel()
+		if err != nil {
+			s.containerError = err.Error()
+		} else {
+			s.containerUpdated = time.Now()
+		}
+	}
 	s.configureDNSProxy(st.ProxyEnabled)
 	s.seedSubscriptions()
 	if err := s.configureEngineRouting(); err != nil {
@@ -331,10 +356,13 @@ func (s *Service) StartBackground() {
 	s.startNotifications()
 	s.startRuleScheduler()
 	s.startUsageSampler()
+	s.startContainerDiscovery()
 }
 
 func (s *Service) Restore(ctx context.Context) error {
 	s.StartBackground()
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	s.mu.RLock()
 	want := s.state.ProxyEnabled
 	s.mu.RUnlock()

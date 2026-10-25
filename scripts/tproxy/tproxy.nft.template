@@ -81,16 +81,19 @@ table inet proxy_tproxy {
     counter marked_output {}
 
     {{BALANCE_CHAINS}}
+    {{CONTAINER_CHAINS}}
 
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
         comment "sing-box TPROXY interception (LAN clients)"
 
+        meta nfproto != ipv4 accept
+        jump container_dispatch
+
         # Intercept only the interface configured as facing LAN clients.
-        # Docker ingress is explicitly exempt even if LAN_IF is misconfigured.
+        # Unmanaged Docker ingress remains exempt after opt-in dispatch above.
         iifname { "lo", "docker0", "br-*", "veth*" } accept
         iifname != "{{LAN_IF}}" accept
-        meta nfproto != ipv4 accept
         counter name lan_packets
 
         # Preserve host services (including published Docker ports 80/443/53)
@@ -103,6 +106,10 @@ table inet proxy_tproxy {
         ip saddr @self_origin counter name bypass_source accept
         ip saddr { 127.0.0.0/8, 0.0.0.0/32 } counter name bypass_source accept
 
+        jump intercept
+    }
+
+    chain intercept {
         jump balance_dispatch
 
         # Every client packet, including established TCP ACK/data and UDP

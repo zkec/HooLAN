@@ -133,3 +133,16 @@ sudo systemctl start hoolan
 ```bash
 systemctl daemon-reload
 ```
+
+## Docker container management
+
+The Containers tab reads `/var/run/docker.sock` on the local host. The supplied
+root systemd service can access the standard socket. Configure another local
+socket with `HOOLAN_DOCKER_SOCKET=/absolute/path/docker.sock` in the environment
+file, or the `-docker-socket` flag. An empty value disables discovery. Docker
+being absent does not prevent the rest of HooLAN from starting.
+
+The gateway must run in the host network namespace; supported containers use
+rootful IPv4 bridge networking. Update both firewall helpers and the executable
+when installing this feature. Read [Docker containers](containers.md) before
+enabling per-container interception.

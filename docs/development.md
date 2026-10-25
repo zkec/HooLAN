@@ -13,6 +13,7 @@
 | `internal/store/` | JSON inventory, stable identities, health and private snapshots |
 | `internal/subscription/` | Protocol parsing, validation and share links |
 | `internal/tester/` | Isolated proxy latency/throughput probes |
+| `internal/docker/` | Read-only, bounded Docker Engine discovery over a Unix socket |
 | `internal/netfilter/` | Script coordination, distribution and device policers |
 | `internal/logstream/` | Bounded service/engine log replay |
 | `scripts/tproxy/` | Apply, remove, diagnose and host-router setup |
@@ -39,7 +40,8 @@ CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o hoolan ./cmd/server
 Node is optional for the development-only UI tests; it is not a runtime or build
 dependency. Tests with temporary HTTP servers need localhost sockets. Firewall
 fixtures use isolated or fake environments; do not run tests against a live
-LAN ruleset. `HOOLAN_TEST_NFT_NAMESPACE=1` opts into the isolated namespace test
+LAN ruleset. `HOOLAN_CHECK_NFT=1` checks container interception/shared buckets and FakeDNS
+expressions in disposable namespaces. `HOOLAN_TEST_NFT_NAMESPACE=1` opts into the isolated namespace test
 where supported. UI tests exercise behavior, not browser layout; inspect both
 themes, mobile widths and Persian RTL in a browser before releasing UI changes.
 
@@ -54,7 +56,8 @@ Interception is installed after listener ownership is verified and removed
 before engine shutdown. Never add a broad established-flow bypass to the TPROXY
 path. Do not give the engine the ingress mark as its outbound mark. Use atomic
 scoped nft batches instead of flushing unrelated tables. Preserve the local
-Docker/service exclusions and the independent OFF forwarding path.
+published-service exclusions, default Docker bypass with explicit container
+opt-in, and the independent OFF forwarding path.
 
 Stable node IDs describe connection identity, not display names. Saved chains
 and groups own their snapshots; editing or pruning sources must not mutate them.

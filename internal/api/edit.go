@@ -176,6 +176,8 @@ func (s *Service) commitEdit(ctx context.Context, before, after []store.Record, 
 		}
 	}
 	s.mu.Lock()
+	oldContainers := s.state.ContainerSettings
+	s.state.ContainerSettings = remapContainerNodes(oldContainers, nil, oldID, newID)
 	oldManual, oldRoutes, oldSelected := s.state.ManualNodeIDs, s.state.DeviceRoutes, s.state.SelectedNodeID
 	s.state.ManualNodeIDs = map[string]bool{}
 	for id, v := range oldManual {
@@ -198,6 +200,7 @@ func (s *Service) commitEdit(ctx context.Context, before, after []store.Record, 
 	rollback := func() error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		s.state.ContainerSettings = oldContainers
 		s.state.ManualNodeIDs, s.state.DeviceRoutes, s.state.SelectedNodeID = oldManual, oldRoutes, oldSelected
 		return errors.Join(s.cfg.Store.ReplaceRecords(before), s.saveState())
 	}

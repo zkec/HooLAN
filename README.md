@@ -8,7 +8,7 @@
 <h1 align="center">HooLAN</h1>
 
 <p align="center">
-  <a href="#installation">Installation</a> · <a href="docs/dashboard.md">Dashboard</a> · <a href="docs/routing.md">Routing</a> · <a href="#screenshots">Screenshots</a> · <a href="docs/dns.md">DNS &amp; FakeDNS</a> · <a href="docs/devices.md">Devices</a> · <a href="docs/troubleshooting.md">Troubleshooting</a> · <a href="README-fa.md"><s>Persian</s></a>
+  <a href="#installation">Installation</a> · <a href="docs/dashboard.md">Dashboard</a> · <a href="docs/routing.md">Routing</a> · <a href="#screenshots">Screenshots</a> · <a href="docs/dns.md">DNS &amp; FakeDNS</a> · <a href="docs/devices.md">Devices</a> · <a href="docs/containers.md">Containers</a> · <a href="docs/troubleshooting.md">Troubleshooting</a> · <a href="README-fa.md"><s>Persian</s></a>
 </p>
 
 HooLAN is a web dashboard for managing a transparent proxy gateway on Debian.
@@ -28,6 +28,8 @@ nftables, with no frontend build step.
 - **Routing & DNS:** split DNS, Iran preset, custom rule sets and
   routing rules.
 - **DNS & FakeDNS:** separate direct and encrypted DNS, with optional FakeDNS.
+- **Containers:** automatic Docker discovery, per-container proxy selection and
+  four independent speed limits, with settings that follow container recreation.
 - **Usage:** total, direct, per-node and per-device counters.
 - **Operations:** live SSE logs, Telegram notifications with a selectable proxy,
   ZIP backup/restore and systemd supervision.
@@ -46,7 +48,8 @@ flowchart LR
   Router -->|Return routing or NAT| WAN
 ```
 
-Routing happens in two stages. **nftables** intercepts eligible LAN IPv4 TCP/UDP;
+Routing happens in two stages. **nftables** intercepts eligible LAN IPv4 TCP/UDP
+and opted-in Docker bridge endpoints;
 local/private destinations and excluded traffic use ordinary host routing.
 **sing-box** handles DNS and safety rules first, then evaluates custom routing
 rules, custom rule sets and the Iran preset. The first matching action either:
@@ -228,6 +231,7 @@ See the [routing guide](docs/routing.md) for policy configuration and the
 | [Load balancing](docs/load-balancing.md) | Distribution versus best latency, behavior and limits |
 | [DNS & FakeDNS](docs/dns.md) | DNS servers, virtual addresses, setup and recovery |
 | [Routing](docs/routing.md) | DNS, Iran preset, custom rules and update schedules |
+| [Containers](docs/containers.md) | Docker discovery, routing, speed limits and network requirements |
 | [Devices](docs/devices.md) | Split tunneling, four-way speed limits and usage |
 | [Integrations](docs/integrations.md) | Telegram, backups, throughput tests and QR sharing |
 | [API](docs/api.md) | Authentication, routes, payloads and background jobs |

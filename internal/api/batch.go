@@ -108,8 +108,10 @@ func (s *Service) deleteNodesLocked(ctx context.Context, remove map[string]bool,
 		remaining = append(remaining, r)
 	}
 	s.mu.Lock()
+	oldContainers := s.state.ContainerSettings
 	oldRoutes := s.state.DeviceRoutes
 	s.state.DeviceRoutes = withoutRoutes(oldRoutes, remove)
+	s.state.ContainerSettings = remapContainerNodes(oldContainers, remove, "", "")
 	oldSubs, oldManual, oldAuto, oldSelected := s.state.Subscriptions, s.state.ManualNodeIDs, s.state.AutoSelect, s.state.SelectedNodeID
 	oldRemoved := s.state.RemovedSubscriptionIDs
 	if subscriptionID != "" {
@@ -151,6 +153,7 @@ func (s *Service) deleteNodesLocked(ctx context.Context, remove map[string]bool,
 		s.state.Subscriptions = oldSubs
 		s.state.RemovedSubscriptionIDs = oldRemoved
 		s.state.DeviceRoutes = oldRoutes
+		s.state.ContainerSettings = oldContainers
 		s.state.ManualNodeIDs = oldManual
 		s.state.AutoSelect = oldAuto
 		s.state.SelectedNodeID = oldSelected

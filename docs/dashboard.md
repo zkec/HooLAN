@@ -41,6 +41,19 @@ Counters are payload measurements from sing-box. Per-node, direct and per-device
 attribution is estimated from one-second connection samples, so short flows can
 be missed. [Device and usage details](devices.md).
 
+## Containers
+
+Docker containers appear automatically, including their image, state, IPv4
+addresses, proxy preference, selected outbound and speed limits. The **Proxy**
+switch enables interception for an individual container; **Settings** selects
+the node and edits the four limits. Global Default, saved chains and load
+balancers are available. **Refresh containers** updates discovery immediately.
+Column headings sort this table too.
+
+Settings follow the container identity rather than its current IP. Unsupported
+network modes show an explanation. See [Docker containers](containers.md) for
+host requirements, DNS behavior and network limitations.
+
 ## Settings
 
 The cards are Routing & DNS, Telegram notifications, then Backup & restore.

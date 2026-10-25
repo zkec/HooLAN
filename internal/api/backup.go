@@ -206,6 +206,17 @@ func decodeBackup(raw []byte, port int) (backupBundle, error) {
 		return out, err
 	}
 	state := &out.State
+	if err := validateContainerSettings(state.ContainerSettings); err != nil {
+		return out, err
+	}
+	for _, p := range state.ContainerSettings {
+		if p.NodeID != "" {
+			r, ok := byID[p.NodeID]
+			if !ok || !r.Enabled || r.Node.ChainInternal {
+				return out, fmt.Errorf("invalid container route")
+			}
+		}
+	}
 	if err := netfilter.ValidateDeviceLimits(state.DeviceLimits); err != nil {
 		return out, err
 	}

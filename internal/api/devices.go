@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/netip"
 	"hoolan/internal/engine"
 	"hoolan/internal/netfilter"
+	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 	"unicode"
@@ -94,6 +94,14 @@ func (s *Service) UpdateDevice(ctx context.Context, req DeviceUpdate) error {
 		}
 	}
 	s.mu.Lock()
+	for _, c := range s.containers {
+		for _, b := range c.Bindings {
+			if b.IP == ip && (req.NodeID != nil && *req.NodeID != "" || req.QoS != nil && *req.QoS != (netfilter.DeviceLimits{}) || req.Alias != nil && alias != "") {
+				s.mu.Unlock()
+				return fmt.Errorf("%w: use Container settings for this IP", ErrInvalidInput)
+			}
+		}
+	}
 	oldAliases, oldRoutes := s.state.DeviceAliases, s.state.DeviceRoutes
 	oldLimits := s.state.DeviceLimits
 	limitChanged := req.QoS != nil && oldLimits[ip] != *req.QoS
@@ -195,8 +203,11 @@ func cloneLimits(source map[string]netfilter.DeviceLimits) map[string]netfilter.
 }
 func (s *Service) configureDeviceLimits() error {
 	s.mu.RLock()
-	limits := cloneLimits(s.state.DeviceLimits)
+	_, limits, _, err := s.endpointPoliciesLocked()
 	s.mu.RUnlock()
+	if err != nil {
+		return err
+	}
 	if err := netfilter.ValidateDeviceLimits(limits); err != nil {
 		return err
 	}
@@ -209,8 +220,11 @@ func (s *Service) configureDeviceLimits() error {
 }
 func (s *Service) syncDeviceLimits(ctx context.Context) error {
 	s.mu.RLock()
-	limits := cloneLimits(s.state.DeviceLimits)
+	_, limits, _, err := s.endpointPoliciesLocked()
 	s.mu.RUnlock()
+	if err != nil {
+		return err
+	}
 	if limiter, ok := s.cfg.Firewall.(deviceLimiter); ok {
 		return limiter.ApplyDeviceLimits(ctx, limits)
 	}

@@ -81,7 +81,8 @@ func (s *Service) sampleUsage(ctx context.Context) {
 			SyncQoSFlows(context.Context, []netfilter.QoSFlow) error
 		}); ok {
 			s.mu.RLock()
-			flows := classifyQoSFlows(snap.Connections, s.state.DeviceLimits, s.tagByID, s.state.FakeDNS.Enabled)
+			_, limits, _, _ := s.endpointPoliciesLocked()
+			flows := classifyQoSFlows(snap.Connections, limits, s.tagByID, s.state.FakeDNS.Enabled)
 			s.mu.RUnlock()
 			qosErr = firewall.SyncQoSFlows(ctx, flows)
 		}
@@ -216,8 +217,14 @@ func (h *handlers) usage(w http.ResponseWriter, r *http.Request) {
 	usage.Devices = cloneBytes(usage.Devices)
 	usage.Outbounds = cloneBytes(usage.Outbounds)
 	aliases, routes, limits := copyStrings(s.state.DeviceAliases), copyStrings(s.state.DeviceRoutes), cloneLimits(s.state.DeviceLimits)
+	containerIPs := []string{}
+	for _, c := range s.containers {
+		for _, b := range c.Bindings {
+			containerIPs = append(containerIPs, b.IP)
+		}
+	}
 	s.mu.RUnlock()
-	writeJSON(w, 200, map[string]any{"usage": usage, "device_aliases": aliases, "device_routes": routes, "device_limits": limits, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
+	writeJSON(w, 200, map[string]any{"container_ips": containerIPs, "usage": usage, "device_aliases": aliases, "device_routes": routes, "device_limits": limits, "supported": supportsTraffic(s.cfg.Selector), "scope": "sing-box payload counters while managed; excludes raw forwarding, local Docker/AdGuard traffic and protocol overhead", "attribution": "Per-device/node/direct values are sampled estimates. Short connections between samples may be missed. Chain traffic is attributed once, not added to every hop."})
 }
 
 func supportsTraffic(v any) bool {

@@ -14,7 +14,7 @@ must match the public origin. `/healthz` is public liveness, not a routing test.
 | `GET /api/status`, `GET /api/nodes` | Engine, job, selection and inventory |
 | `POST /api/proxy/toggle`, `POST /api/proxy/select` | Engine control and selection |
 | `POST /api/nodes`, `PUT /api/nodes/edit` | Add link, edit manual endpoint |
-| `GET/POST/DELETE /api/subscriptions`, `POST /api/subscriptions/refresh` | Sources, removal and refresh |
+| `GET/POST /api/subscriptions`, `POST /api/subscriptions/refresh` | Sources and refresh |
 | `POST /api/nodes/test`, `POST /api/nodes/delete` | Batch `node_ids` actions |
 | `GET/POST/PUT /api/chains` | Ordered chain read/create/edit |
 | `POST /api/load-balancers` | Snapshot a group and its strategy |
@@ -23,6 +23,7 @@ must match the public origin. `/healthz` is public liveness, not a routing test.
 | `GET/PUT /api/rules`, `POST /api/rules/update` | Rule policy and schedules |
 | `GET /api/logs` | SSE logs, Last-Event-ID replay |
 | `GET/PUT /api/telegram`, `POST /api/telegram/test` | Notifications and delivery tests |
+| `GET/PUT /api/containers`, `POST /api/containers/refresh` | Docker inventory, container policies and immediate discovery |
 | `GET /api/backup`, `POST /api/restore` | Download/upload ZIP |
 | `POST /api/nodes/speed`, `POST /api/nodes/share` | Throughput job and explicit share link |
 
@@ -34,13 +35,6 @@ Set `HOOLAN_TOKEN` in your shell before using these examples.
 curl --fail-with-body -H "Authorization: Bearer $HOOLAN_TOKEN" \
   http://127.0.0.1:8080/api/status
 ```
-
-Manual import uses `POST /api/nodes` with `{"link":"LINK_1 LINK_2"}`. The
-`link` string accepts multiple links separated by spaces, tabs or newlines
-(JSON-escape newlines as `\n`). The response includes `node_ids` and `count`;
-`node_id` remains the first ID for single-link clients. The batch must contain
-1–500 links and fit within the endpoint's 64 KiB JSON request limit. Invalid
-links reject the entire batch before saving; duplicate endpoints are merged.
 
 Device update (`node_id: ""` means Global Default):
 
@@ -75,18 +69,6 @@ node_id preserves the pin; empty node_id selects Global Default. GET returns
 
 ## Jobs and errors
 
-Remove a subscription with `DELETE /api/subscriptions` and a JSON body:
-
-```json
-{"subscription_id":"SUBSCRIPTION_ID"}
-```
-
-The response contains `removed_nodes`. Removal deletes configurations owned only
-by that subscription and preserves shared or manually saved configurations.
-Removing an active configuration switches selection to Auto; removing the last
-usable configuration stops the proxy. Deleted sources stay removed after restart,
-including sources originally supplied through `HOOLAN_SUBS`.
-
 Refresh, latency, speed, Telegram test and restore operations use background jobs.
 A successful start returns HTTP 202 and job state; poll `/api/status` for progress
 and completion. HTTP 409 generally means a conflicting operation is running.
@@ -109,7 +91,7 @@ define the complete interface. Sensitive endpoints use no-store responses.
 }
 ```
 
-Use a private IPv4 address actually assigned to the Debian host. A missing/blank
+Use a private IPv4 address actually assigned to the host. A missing/blank
 listen address defaults to `127.0.0.1`; TCP/UDP port is 1053. Omitted top-level
 settings retain their previous values, so changing `iran_bypass` does not reset
 FakeDNS. A supplied `fake_dns` object replaces that object. `GET /api/settings`
@@ -120,3 +102,41 @@ The listener runs even with FakeDNS disabled. The legacy `dns_server` field is
 accepted as a Direct DNS input alias; existing state inherits it when
 `direct_dns` is absent. Blank resolver fields use the documented defaults.
 See [split DNS](dns.md) before pointing AdGuard at this listener.
+
+## Containers
+
+`GET /api/containers` returns `enabled`, `updated_at`, `error` and `containers`.
+Each entry includes `id`, stable `key`, `name`, `image`, `state`, `status`,
+`network_mode`, `bindings` (`ip`, `bridge`, `network`), `supported`, optional
+`reason`, and saved `settings` (`proxy`, `node_id`, `qos`). Discovery errors
+retain the last good inventory. Docker metadata is read only; neither endpoint
+starts or stops containers.
+
+`PUT /api/containers` accepts partial top-level updates:
+
+```json
+{
+  "key": "STABLE_KEY_FROM_CONTAINER_INVENTORY",
+  "proxy": true,
+  "node_id": "",
+  "qos": {
+    "proxy_upload_mbps": 5,
+    "proxy_download_mbps": 20,
+    "direct_upload_mbps": 10,
+    "direct_download_mbps": 30
+  }
+}
+```
+
+Empty `node_id` means Global Default; otherwise use an enabled visible node,
+chain or load-balancer ID. Use `proxy: false` for Direct (not `node_id: "direct"`).
+Omitted fields are preserved; supplied `qos` replaces all four limits. Rates are
+0 (unlimited) or 0.01–10000 Mbps. Unsupported or stale inventory cannot be edited.
+Browser mutations require the same session, origin and CSRF checks as device
+settings. Policies persist in `state.json` and are included in backups.
+
+`POST /api/containers/refresh` performs discovery/reconciliation synchronously.
+It returns 200 on success; conflicting jobs return 409. Automatic discovery
+runs every ten seconds. Route changes apply through an engine reload; limits-only
+updates atomically replace nftables policing without restarting sing-box.
+See [container networking and limitations](containers.md).

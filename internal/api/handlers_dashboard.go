@@ -20,6 +20,8 @@ func (h *handlers) registerDashboardRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/nodes/edit", h.editNode)
 	mux.Handle("/api/nodes/delete", only(http.MethodPost, h.deleteNode))
 	mux.Handle("/api/nodes/detour", only(http.MethodPut, h.detourNode))
+	mux.HandleFunc("/api/containers", h.containers)
+	mux.Handle("/api/containers/refresh", only(http.MethodPost, h.refreshContainers))
 	mux.Handle("/api/devices", only(http.MethodPut, h.updateDevice))
 	mux.Handle("/api/usage", only(http.MethodGet, h.usage))
 	mux.HandleFunc("/api/rules", h.rules)
