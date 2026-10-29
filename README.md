@@ -259,4 +259,4 @@ timestamps appear in Settings. Backups contain secrets; store them privately.
 
 See [troubleshooting](docs/troubleshooting.md) for any questions.
 
-Feel free to open an issue on github or contact me at [@zkeck1](https://t.me/zkeck1) on telegram
+Feel free to open an issue on github or contact me at [@hooman_tg](https://t.me/hooman_tg) on telegram
